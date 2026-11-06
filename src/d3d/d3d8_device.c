@@ -21,6 +21,7 @@
 #include "texture_mode.h"
 #endif
 #include "d3d8_display.h"
+#include "graphics/interpolation_depth.h"
 #ifdef TSFP_PC_DISPLAY
 #include "pc_display.h"
 #include "pc_ui_layout.h"
@@ -118,6 +119,16 @@ BOOL d3d8_target_is_screen(void)
     return g_cur_rt == NULL;
 }
 static D3D8Surface *g_cur_ds = NULL;
+static BOOL g_interp_on;
+static TsfpReplayDepth g_interp_depth;
+static D3D8Surface *g_interp_saved_rt, *g_interp_saved_ds;
+static RhiView *draw_depth_view(D3D8Surface *surface)
+{
+    if(!surface)return NULL;
+    return g_interp_on ? tsfp_replay_depth_view(&g_interp_depth,surface->image,surface->subresource)
+                       : surface->dsv;
+}
+
 /* The device's own depth buffer as a surface object, so SetRenderTarget can
  * name it: a NULL depth surface means no depth, as in D3D8. */
 static D3D8Surface *g_auto_ds = NULL;
@@ -854,7 +865,7 @@ static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3
     /* Clear the currently bound targets. With no depth surface bound there
      * is no depth to clear (SetRenderTarget). */
     RhiView *rtv = g_cur_rt ? g_cur_rt->rtv : g_device_state.rhi_default_rtv;
-    RhiView *dsv = g_cur_ds ? g_cur_ds->dsv : NULL;
+    RhiView *dsv = draw_depth_view(g_cur_ds);
 
     if ((Flags & (D3DCLEAR_TARGET | D3DCLEAR_CHANNEL_MASK)) && rtv) {
         float clear_color[4] = {
@@ -1668,6 +1679,8 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
                 target_width, target_height);
         return E_INVALIDARG;
     }
+    dsv = draw_depth_view(ds);
+    if(ds && !dsv)return E_FAIL;
     if (rt) IDirect3DSurface8_AddRef(pRenderTarget);
     if (ds) IDirect3DSurface8_AddRef(pZStencilSurface);
     if (g_cur_rt) IDirect3DSurface8_Release(&g_cur_rt->iface);
@@ -1676,7 +1689,6 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
     g_cur_ds = ds;
 
     rtv = rt ? rt->rtv : g_device_state.rhi_default_rtv;
-    dsv = ds ? ds->dsv : NULL;
     rhi_set_render_target(rtv, dsv);
     rebind_stage_srvs(rt ? rt->image : NULL);
     return S_OK;
@@ -2342,18 +2354,21 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
  * its vblank, so it cannot go to the scene target: that still holds the
  * frame about to be shown. Between Begin and End, "the back buffer" to
  * everything here -- SetRenderTarget(NULL), a screen copy, the resolve --
- * is a second image of the same size. The device depth buffer is shared:
- * the title's frame is finished with it, and the in-between frame starts
- * with the same clears that frame did.
+ * is a second image of the same size. Replay depth/stencil is separate for
+ * every depth subresource it touches. Fresh history avoids rejecting equal-Z
+ * translucent draws; guest depth survives for later draws and screen effects.
  * ================================================================ */
 
 static RhiImage *g_interp_image;
 static RhiView  *g_interp_rtv, *g_interp_srv;
 static UINT      g_interp_w, g_interp_h;
-static BOOL      g_interp_on;
 
 static void interp_target_destroy(void)
 {
+    g_interp_on=FALSE;
+    if(g_interp_saved_rt){IDirect3DSurface8_Release(&g_interp_saved_rt->iface);g_interp_saved_rt=NULL;}
+    if(g_interp_saved_ds){IDirect3DSurface8_Release(&g_interp_saved_ds->iface);g_interp_saved_ds=NULL;}
+    tsfp_replay_depth_destroy(&g_interp_depth);
     rhi_view_destroy(g_interp_srv); g_interp_srv = NULL;
     rhi_view_destroy(g_interp_rtv); g_interp_rtv = NULL;
     rhi_image_destroy(g_interp_image); g_interp_image = NULL;
@@ -2373,8 +2388,7 @@ static void interp_target_swap(void)
     g_interp_image = image;
     g_interp_rtv = rtv;
     g_interp_srv = srv;
-    if (!g_cur_rt)
-        rhi_set_render_target(s->rhi_default_rtv, g_cur_ds ? g_cur_ds->dsv : NULL);
+    rhi_set_render_target(g_cur_rt ? g_cur_rt->rtv : s->rhi_default_rtv, draw_depth_view(g_cur_ds));
 }
 
 BOOL xbox_D3D8InterpBegin(void)
@@ -2410,8 +2424,15 @@ BOOL xbox_D3D8InterpBegin(void)
         g_interp_w = s->width;
         g_interp_h = s->height;
     }
-    interp_target_swap();
+    tsfp_replay_depth_begin(&g_interp_depth);
     g_interp_on = TRUE;
+    if(g_cur_ds && !draw_depth_view(g_cur_ds)) {
+        g_interp_on=FALSE;tsfp_replay_depth_end(&g_interp_depth);return FALSE;
+    }
+    g_interp_saved_rt=g_cur_rt;g_interp_saved_ds=g_cur_ds;
+    if(g_interp_saved_rt)IDirect3DSurface8_AddRef(&g_interp_saved_rt->iface);
+    if(g_interp_saved_ds)IDirect3DSurface8_AddRef(&g_interp_saved_ds->iface);
+    interp_target_swap();
     return TRUE;
 }
 
@@ -2419,7 +2440,7 @@ BOOL xbox_D3D8InterpBegin(void)
  * none. */
 void xbox_D3D8InterpPresent(void)
 {
-    if (!g_interp_on)
+    if (!g_interp_on || g_interp_depth.failed)
         return;
     follow_vrr();
     present_scene();
@@ -2430,8 +2451,14 @@ void xbox_D3D8InterpEnd(void)
 {
     if (!g_interp_on)
         return;
-    interp_target_swap();
     g_interp_on = FALSE;
+    interp_target_swap();
+    dev_SetRenderTarget(&g_device,
+        g_interp_saved_rt ? &g_interp_saved_rt->iface : NULL,
+        g_interp_saved_ds ? &g_interp_saved_ds->iface : NULL);
+    if(g_interp_saved_rt){IDirect3DSurface8_Release(&g_interp_saved_rt->iface);g_interp_saved_rt=NULL;}
+    if(g_interp_saved_ds){IDirect3DSurface8_Release(&g_interp_saved_ds->iface);g_interp_saved_ds=NULL;}
+    tsfp_replay_depth_end(&g_interp_depth);
 }
 
 /* ================================================================
