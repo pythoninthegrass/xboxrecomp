@@ -90,6 +90,9 @@ PAD_SOURCES = (["pad:" + b for b in PAD_BUTTONS]
 # digits (which are their own code on Windows). Mirrors the KEYS table in
 # src/input/input_bindings.c.
 KEY_NAMES = {
+    "LBUTTON": 0x01, "RBUTTON": 0x02, "MBUTTON": 0x04,
+    "XBUTTON1": 0x05, "XBUTTON2": 0x06,
+    "F23": 0x86, "F24": 0x87,
     "UP": 0x26, "DOWN": 0x28, "LEFT": 0x25, "RIGHT": 0x27,
     "RETURN": 0x0D, "ENTER": 0x0D, "BACK": 0x08, "BACKSPACE": 0x08,
     "SPACE": 0x20, "TAB": 0x09, "ESCAPE": 0x1B,
