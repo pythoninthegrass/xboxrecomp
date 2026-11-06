@@ -700,6 +700,26 @@ void sub_002F3CA0(void)
 #endif
 }
 
+extern void sub_000771D0_gen(void);
+void sub_000771D0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_finish(sub_000771D0_gen);
+#else
+    sub_000771D0_gen();
+#endif
+}
+
+extern void sub_00077140_gen(void);
+void sub_00077140(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_finish(sub_00077140_gen);
+#else
+    sub_00077140_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
