@@ -222,6 +222,12 @@ extern void sub_000A5AF0_gen(void);
 void sub_000A5AF0(void)
 { pc_native_rocking_reset_guest(sub_000A5AF0_gen); }
 
+/* Preserve authored random light decisions between native subframes. */
+#include "pc_native_light_guest.h"
+extern void sub_00116130_gen(void);
+void sub_00116130(void)
+{ pc_native_light_preview_guest(sub_00116130_gen, *(const uint32_t *)((uintptr_t)g_esp+4+g_xbox_mem_offset)); }
+
 /* PC System Link: public XNet API boundary, US 45410066. */
 #include "pc_network_guest.inc"
 extern RECOMP_MANUAL_TLS uint32_t g_ecx;
