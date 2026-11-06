@@ -211,18 +211,11 @@ class MovsxRegisterTest(unittest.TestCase):
                 self.assertIn(f"ZX{width}(", zx,
                               f"movzx fell through on {src_reg}: {zx}")
 
-    def test_unhandled_source_register_is_loud(self):
-        """A source matching neither list must announce itself in the output.
-
-        movsx's source is always narrower than its destination, so there is no
-        legitimate unmatched case: reaching this branch means the lists have a
-        gap. Emitting the marker is what turns the next occurrence of this bug
-        into something a grep finds, rather than a wrong number in a game.
-        """
-        stmt = _lift("movsx",
-                     Operand(type="reg", reg="eax"),
-                     Operand(type="reg", reg="mm0"))
-        self.assertIn("movsx: unhandled source register", stmt)
+    def test_invalid_extension_source_is_rejected(self):
+        """An impossible vector-to-integer MOVSX must fail before C emission."""
+        with self.assertRaisesRegex(ValueError, "Extension requires"):
+            _lift("movsx", Operand(type="reg", reg="eax"),
+                  Operand(type="reg", reg="mm0"))
 
 
 if __name__ == "__main__":
