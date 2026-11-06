@@ -272,6 +272,16 @@ void sub_000D4BE0(void)
 #endif
 }
 
+extern void sub_000D7550_gen(void);
+void sub_000D7550(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_team(sub_000D7550_gen);
+#else
+    sub_000D7550_gen();
+#endif
+}
+
 extern void sub_00218910_gen(void);
 void sub_00218910(void)
 {
