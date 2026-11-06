@@ -60,6 +60,7 @@ if(APPLE AND TSFP_NATIVE_DIR)
     target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c"
                                       "${TSFP_NATIVE_DIR}/../pc_input.c"
                                       "${TSFP_NATIVE_DIR}/config_files.c"
+                                      "${TSFP_NATIVE_DIR}/text_bitmap_macos.m"
                                       "${TSFP_NATIVE_DIR}/settings_macos.m"
                                       "${TSFP_NATIVE_DIR}/../pc_prompts.c"
                                       "${TSFP_NATIVE_DIR}/../pc_debug.c")

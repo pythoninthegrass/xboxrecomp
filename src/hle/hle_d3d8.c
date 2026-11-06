@@ -665,6 +665,10 @@ static void shadow_create(uint32_t pp_va)
     if (!hwnd)
         return;
 
+#elif defined(TSFP_RHI_RENDERER)
+    extern void *tsfp_native_renderer_window(unsigned,unsigned);
+    hwnd=(HWND)tsfp_native_renderer_window(width,height);
+    if(!hwnd)return;
 #else
     hwnd = NULL; /* SDL creates the Cocoa window on this main guest thread. */
     xbox_D3D8SetWindowTitle("TimeSplitters: Future Perfect — Native Mac");
@@ -2017,7 +2021,7 @@ static void swap_timing_report(void)
  */
 /* The overlay's line, and whether it is shown: kept here so an in-between
  * frame (hle_d3d8_interp.c) carries the same line as the frames around it. */
-#ifdef _WIN32
+#if defined(_WIN32) || defined(TSFP_RHI_RENDERER)
 static int  g_overlay_shown;
 static char g_overlay_line[192];
 extern void d3d8_overlay_draw_watermark(const char *text);
@@ -2056,6 +2060,7 @@ static void overlay_frame(void)
         fflush(stderr);
     }
 
+#ifdef _WIN32
     front = g_shadow_hwnd && GetForegroundWindow() == g_shadow_hwnd;
     f9  = front && (GetAsyncKeyState(VK_F9)  & 0x8000) != 0;
     f10 = front && (GetAsyncKeyState(VK_F10) & 0x8000) != 0;
@@ -2090,6 +2095,8 @@ static void overlay_frame(void)
     }
     f9_was_down = f9;
     f10_was_down = f10;
+
+#endif /* native SDL adapter handles its hotkeys */
 
     QueryPerformanceCounter(&now);
 #ifdef TSFP_PC_CONTROLS
@@ -2226,7 +2233,7 @@ static void frame_end_shadow(void)
         g_inline_begin_frame = 0;
         g_inline_vdata_frame = 0;
         g_frame_draws = 0;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(TSFP_RHI_RENDERER)
         overlay_frame();                 /* after the dump: not in the captures */
 #endif
         {

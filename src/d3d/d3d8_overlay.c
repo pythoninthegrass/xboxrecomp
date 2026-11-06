@@ -6,7 +6,7 @@
  * input layout worth restoring, and the render target and viewport are put
  * back, so a title's own drawing is unaffected.
  *
- * The text is drawn by GDI into a 32-bit DIB and uploaded to a texture when
+ * The host rasterizes text into a 32-bit bitmap, uploaded to a texture when
  * it changes, which is roughly twice a second for a frame-rate counter. A
  * real font at a real size costs less code than an embedded glyph table and
  * reads better at any window size.
@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define OVERLAY_W   1024
 #define OVERLAY_H     28
@@ -32,14 +33,11 @@ typedef struct {
     RhiBlendState  *blend;
     RhiDepthState  *depth;
     RhiRasterState *raster;
-    HDC             dc;
-    HBITMAP         bitmap;
-    HFONT           font;
-    void           *bits;      /* the DIB's pixels, BGRA top-down */
+    void           *bits;      /* host pixels, red-channel coverage, top-down */
     int             text_w;    /* what the last render measured */
     char            text[128];
 } OverlayState;
-/* Each line has its own cached texture, avoiding repeated GDI uploads. */
+/* Each line has its own cached texture, avoiding repeated host rasterization. */
 static OverlayState overlays[2];
 static OverlayState *active = &overlays[0];
 #define g (*active)
@@ -109,7 +107,6 @@ static int overlay_create(void)
     RhiBlendDesc bl;
     RhiDepthDesc ds;
     RhiRasterDesc rd;
-    BITMAPINFO bi;
 
     if (g.failed) return 0;
     if (g.tried) return g.texture != NULL;
@@ -169,36 +166,16 @@ static int overlay_create(void)
     rd.depth_clip = 1;
     if (!(g.raster = rhi_raster_state_create(&rd))) { overlay_fail("CreateRasterizerState"); return 0; }
 
-    /* GDI side: a top-down 32-bit DIB the text is drawn into. */
-    g.dc = CreateCompatibleDC(NULL);
-    if (!g.dc) { overlay_fail("CreateCompatibleDC"); return 0; }
-    memset(&bi, 0, sizeof bi);
-    bi.bmiHeader.biSize = sizeof bi.bmiHeader;
-    bi.bmiHeader.biWidth = OVERLAY_W;
-    bi.bmiHeader.biHeight = -OVERLAY_H;          /* top-down */
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
-    g.bitmap = CreateDIBSection(g.dc, &bi, DIB_RGB_COLORS, &g.bits, NULL, 0);
-    if (!g.bitmap) { overlay_fail("CreateDIBSection"); return 0; }
-    SelectObject(g.dc, g.bitmap);
-    g.font = CreateFontW(-18, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-                         DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-                         CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
-    if (g.font) SelectObject(g.dc, g.font);
-    SetBkMode(g.dc, OPAQUE);
-    SetBkColor(g.dc, RGB(0, 0, 0));
-    SetTextColor(g.dc, RGB(255, 255, 255));
+    g.bits=calloc((size_t)OVERLAY_W*OVERLAY_H,4);
+    if(!g.bits){overlay_fail("host text bitmap");return 0;}
     return 1;
 }
 
 /* Draw the text into the DIB and upload it. Only when it has changed. */
 static int overlay_set_text(const char *text)
 {
-    wchar_t wide[128];
-    RECT rect;
-    SIZE extent;
-    int len, i;
+    int len;
+    uint32_t used=0;
 
     if (strcmp(text, g.text) == 0)
         return g.text_w > 0;
@@ -207,18 +184,10 @@ static int overlay_set_text(const char *text)
     if (len > (int)(sizeof g.text - 1)) len = (int)(sizeof g.text - 1);
     memcpy(g.text, text, (size_t)len);
     g.text[len] = '\0';
-    for (i = 0; i < len; i++)
-        wide[i] = (wchar_t)(unsigned char)g.text[i];
-
-    rect.left = rect.top = 0;
-    rect.right = OVERLAY_W;
-    rect.bottom = OVERLAY_H;
-    memset(g.bits, 0, (size_t)OVERLAY_W * OVERLAY_H * 4);
-    if (!GetTextExtentPoint32W(g.dc, wide, len, &extent))
-        extent.cx = OVERLAY_W;
-    g.text_w = extent.cx + 12 > OVERLAY_W ? OVERLAY_W : (int)extent.cx + 12;
-    ExtTextOutW(g.dc, 6, 4, ETO_OPAQUE, &rect, wide, (UINT)len, NULL);
-    GdiFlush();
+    if(!rhi_text_bitmap(g.text,g.bits,OVERLAY_W,OVERLAY_H,&used)) {
+        g.text[0]='\0';g.text_w=0;return 0;
+    }
+    g.text_w=(int)used;
 
     rhi_image_update(g.texture, 0, NULL, g.bits, OVERLAY_W * 4, 0);
     return g.text_w > 0;
@@ -286,9 +255,7 @@ static void overlay_shutdown_current(void)
     rhi_blend_state_destroy(g.blend);    g.blend = NULL;
     rhi_depth_state_destroy(g.depth);    g.depth = NULL;
     rhi_raster_state_destroy(g.raster);  g.raster = NULL;
-    if (g.bitmap)  { DeleteObject(g.bitmap);                     g.bitmap = NULL; }
-    if (g.font)    { DeleteObject(g.font);                       g.font = NULL; }
-    if (g.dc)      { DeleteDC(g.dc);                             g.dc = NULL; }
+    free(g.bits);
     g.bits = NULL;
     g.text[0] = '\0';
     g.text_w = 0;

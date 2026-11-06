@@ -2,7 +2,8 @@
 #   _WIN32 -> backed by Direct3D 11 (d3d8_*.c, d3d8_combiners.c, d3d8_vsh.c)
 #   POSIX  -> backed by OpenGL 3.3 core via SDL3 + libepoxy (d3d8_gl.c)
 
-if(WIN32)
+option(TSFP_NATIVE_RHI "Use the common Xbox renderer on native Mac (experimental)" OFF)
+if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
     add_library(xbox_d3d8 STATIC
         d3d8_device.c
         d3d8_resources.c
@@ -17,7 +18,6 @@ if(WIN32)
         d3d8_compile.c
         rhi.c
         rhi_shader_cache.c
-        rhi_d3d11.c
     )
     if(TSFP_PC_CONTROLS_DIR)
         target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/texture_pack.c")
@@ -34,6 +34,8 @@ if(WIN32)
         add_executable(tsfp_texture_format_test "${TSFP_PC_CONTROLS_DIR}/../tests/texture_pack_format.c")
         target_include_directories(tsfp_texture_format_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
     endif()
+    if(WIN32)
+    target_sources(xbox_d3d8 PRIVATE rhi_d3d11.c)
     # gdi32: the overlay renders its text with GDI rather than an embedded font.
     target_link_libraries(xbox_d3d8 PUBLIC platform d3d11 dxgi dxguid d3dcompiler gdi32)
 
@@ -78,9 +80,22 @@ if(WIN32)
         endif()
     endif()
 
+    else()
+        target_sources(xbox_d3d8 PRIVATE
+            "${TSFP_NATIVE_DIR}/renderer_rhi_sdl.c" "${TSFP_NATIVE_DIR}/renderer_host_sdl.c"
+            "${TSFP_NATIVE_DIR}/../texture_pack.c")
+        target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}" "${TSFP_NATIVE_DIR}/..")
+        target_compile_definitions(xbox_d3d8 PUBLIC TSFP_RHI_RENDERER TSFP_PC_DISPLAY TSFP_TEXTURE_PACK)
+        target_link_libraries(xbox_d3d8 PUBLIC platform SDL3::SDL3)
+        include("${TSFP_NATIVE_DIR}/vulkan_backend.cmake")
+        tsfp_add_vulkan_backend(xbox_d3d8 "${CMAKE_CURRENT_SOURCE_DIR}/../.." "${TSFP_VULKAN_SDK}")
+    endif()
+
+    if(WIN32)
     # Offline smoke test for the pure format layer (no D3D11 device needed).
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../tests/d3d8_smoke
                      ${CMAKE_CURRENT_BINARY_DIR}/d3d8_smoke)
+    endif()
 else()
     if(APPLE AND TSFP_NATIVE_DIR)
         add_library(xbox_d3d8 STATIC "${TSFP_NATIVE_DIR}/renderer_gl.c"
@@ -119,7 +134,7 @@ if(TSFP_PC_CONTROLS_DIR)
     endif()
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(APPLE AND TSFP_NATIVE_DIR AND NOT TSFP_NATIVE_RHI)
     target_sources(xbox_d3d8 PRIVATE d3d8_resources.c)
     set_source_files_properties(d3d8_resources.c PROPERTIES COMPILE_DEFINITIONS TSFP_FORMAT_ONLY)
     target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}")

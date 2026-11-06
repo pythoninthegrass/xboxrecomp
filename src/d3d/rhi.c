@@ -53,8 +53,48 @@ int rhi_drawable_size(void *window,uint32_t *width,uint32_t *height)
     *width=w;*height=h;return 1;
 }
 
+int rhi_text_bitmap(const char *text,unsigned char *pixels,uint32_t width,uint32_t height,uint32_t *used_width)
+{
+    uint32_t used=0;
+    if(!text || !pixels || !used_width || !width || !height || width>16384 || height>4096)return 0;
+    if(g_host.text_bitmap) {
+        if(!g_host.text_bitmap(g_host.context,text,pixels,width,height,&used) || !used || used>width)return 0;
+    } else {
+#if defined(_WIN32)
+        HDC dc=CreateCompatibleDC(NULL);
+        BITMAPINFO bi={0};void *bits=NULL;
+        if(!dc)return 0;
+        bi.bmiHeader.biSize=sizeof bi.bmiHeader;bi.bmiHeader.biWidth=(LONG)width;
+        bi.bmiHeader.biHeight=-(LONG)height;bi.bmiHeader.biPlanes=1;
+        bi.bmiHeader.biBitCount=32;bi.bmiHeader.biCompression=BI_RGB;
+        HBITMAP bitmap=CreateDIBSection(dc,&bi,DIB_RGB_COLORS,&bits,NULL,0);
+        HFONT font=CreateFontW(-18,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+            DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+            FIXED_PITCH|FF_MODERN,L"Consolas");
+        if(!bitmap || !font) {DeleteDC(dc);if(bitmap)DeleteObject(bitmap);if(font)DeleteObject(font);return 0;}
+        SelectObject(dc,bitmap);SelectObject(dc,font);
+        SetBkMode(dc,OPAQUE);SetBkColor(dc,RGB(0,0,0));SetTextColor(dc,RGB(255,255,255));
+        wchar_t wide[384];size_t count=strlen(text);if(count>383)count=383;
+        for(size_t i=0;i<count;i++)wide[i]=(wchar_t)(unsigned char)text[i];
+        RECT rect={0,0,(LONG)width,(LONG)height};SIZE extent={0};
+        memset(bits,0,(size_t)width*height*4);
+        int ok=GetTextExtentPoint32W(dc,wide,(int)count,&extent) &&
+            ExtTextOutW(dc,6,4,ETO_OPAQUE,&rect,wide,(UINT)count,NULL);
+        GdiFlush();
+        if(ok){memcpy(pixels,bits,(size_t)width*height*4);used=(uint32_t)extent.cx+12;if(used>width)used=width;}
+        DeleteDC(dc);DeleteObject(bitmap);DeleteObject(font);
+        if(!ok || !used)return 0;
+#else
+        return 0;
+#endif
+    }
+    *used_width=used;return 1;
+}
+
 #if defined(_WIN32)
 const RhiBackend *g_rhi = &rhi_d3d11_backend;
+#elif defined(RHI_HAVE_VULKAN)
+const RhiBackend *g_rhi = &rhi_vulkan_backend;
 #else
 const RhiBackend *g_rhi = NULL;
 #endif

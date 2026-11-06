@@ -2557,7 +2557,7 @@ static int reflect(RhiShader *sh)
  * shifts below. Bump the trailing number if those arguments change. */
 #define VK_CACHE_STR2(x) #x
 #define VK_CACHE_STR(x)  VK_CACHE_STR2(x)
-#define VK_CACHE_TAG "vulkan-dxc-1-b" VK_CACHE_STR(RHI_VK_PS_UNIFORM_BASE) \
+#define VK_CACHE_TAG "vulkan-dxc-2-hlsl2018-b" VK_CACHE_STR(RHI_VK_PS_UNIFORM_BASE) \
                      "-t" VK_CACHE_STR(RHI_VK_TEXTURE_BASE) "-s" VK_CACHE_STR(RHI_VK_SAMPLER_BASE)
 
 static RhiShader *v_shader_create(uint32_t stage, const RhiShaderSource *src, char *err, size_t err_len)

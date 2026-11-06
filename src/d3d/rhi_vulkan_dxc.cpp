@@ -137,6 +137,9 @@ extern "C" int rhi_vk_dxc_compile(uint32_t stage, const RhiShaderSource *src,
     swprintf(b_shift, 16, L"%u", stage == RHI_STAGE_VERTEX ? RHI_VK_VS_UNIFORM_BASE
                                                            : RHI_VK_PS_UNIFORM_BASE);
     keep.push_back(L"-spirv");
+    /* The common generators target FXC's vector conditionals and legacy
+     * loop scope. Do not inherit a newer DXC default language dialect. */
+    keep.push_back(L"-HV"); keep.push_back(L"2018");
     keep.push_back(L"-T");
     keep.push_back(dxc_profile(src->target));
     keep.push_back(L"-E");

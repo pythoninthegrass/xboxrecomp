@@ -316,9 +316,15 @@ typedef struct RhiHost {
     void *context;
     void (*pump_events)(void *context);
     int (*drawable_size)(void *context, void *window, uint32_t *width, uint32_t *height);
+    /* White glyph coverage in the red channel, top-down 4-byte pixels,
+     * with padding included in used_width. No GPU/OS window access. */
+    int (*text_bitmap)(void *context, const char *text, unsigned char *pixels,
+                       uint32_t width, uint32_t height, uint32_t *used_width);
 } RhiHost;
 void rhi_set_host(const RhiHost *host);
 void rhi_pump_events(void);
+int rhi_text_bitmap(const char *text, unsigned char *pixels,
+                    uint32_t width, uint32_t height, uint32_t *used_width);
 int rhi_drawable_size(void *window, uint32_t *width, uint32_t *height);
 
 /* Chooses the backend before the device is created. NULL or "" means
