@@ -878,6 +878,17 @@ void sub_00077140(void)
 #endif
 }
 
+/* Keep the title reveal's outer black panels outside a widened camera. */
+extern void sub_002BD810_gen(void);
+void sub_002BD810(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_title_matte(sub_002BD810_gen);
+#else
+    sub_002BD810_gen();
+#endif
+}
+
 /* US animated frontend background sheet. */
 extern void sub_002DB010_gen(void);
 void sub_002DB010(void)
