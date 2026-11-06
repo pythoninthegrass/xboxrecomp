@@ -29,6 +29,8 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_text_codec.c"
+    "${TSFP_SHARED_SOURCE}/runtime/host_text_codec.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_memory_ops.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_integer_division.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_integer_fault.c"

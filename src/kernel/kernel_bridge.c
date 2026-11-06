@@ -4607,117 +4607,11 @@ static void bridge_XcUpdateCrypto(void)
  * translated; nothing is written. */
 /* Original RTL import selected above. */
 
-/* Legacy guest charset conversion; original replacement remains pending. */
-static void bridge_RtlAnsiStringToUnicodeString(void)
-{
-    uint32_t dst_va  = STACK_ARG(0);
-    uint32_t src_va  = STACK_ARG(1);
-    uint32_t do_alloc = STACK_ARG(2);
-    uint32_t s_len, s_buf_va, d_max, d_buf_va = 0;
-    uint32_t unicode_bytes;
-    int result;
-
-    if (!dst_va || !src_va) {
-        g_eax = 0xC000000Du;   /* STATUS_INVALID_PARAMETER */
-        return;
-    }
-    s_len   = BRIDGE_MEM16(src_va + 0);
-    s_buf_va = BRIDGE_MEM32(src_va + 4);
-    if (!s_buf_va) {
-        g_eax = 0xC000000Du;
-        return;
-    }
-    unicode_bytes = (uint32_t)(s_len + 1) * sizeof(WCHAR);
-
-    d_max = BRIDGE_MEM16(dst_va + 2);
-    if (do_alloc) {
-        d_buf_va = xbox_HeapAlloc(unicode_bytes, 16);
-        if (!d_buf_va) {
-            g_eax = 0xC0000017u;   /* STATUS_NO_MEMORY */
-            return;
-        }
-        BRIDGE_MEM16(dst_va + 2) = (uint16_t)unicode_bytes;
-        BRIDGE_MEM32(dst_va + 4) = d_buf_va;
-    } else {
-        if (d_max < unicode_bytes) {
-            g_eax = 0xC0000205u;   /* STATUS_BUFFER_OVERFLOW */
-            return;
-        }
-        d_buf_va = BRIDGE_MEM32(dst_va + 4);
-        if (!d_buf_va) {
-            g_eax = 0xC000000Du;
-            return;
-        }
-    }
-
-    result = MultiByteToWideChar(CP_ACP, 0,
-        (const char*)XBOX_TO_NATIVE(s_buf_va), (int)s_len,
-        (WCHAR*)XBOX_TO_NATIVE(d_buf_va), (int)(unicode_bytes / sizeof(WCHAR)));
-    if (result > 0) {
-        BRIDGE_MEM16(dst_va + 0) = (uint16_t)(result * sizeof(WCHAR));
-        ((WCHAR*)XBOX_TO_NATIVE(d_buf_va))[result] = 0;
-        g_eax = 0;
-    } else {
-        g_eax = 0xC0000001u;   /* STATUS_UNSUCCESSFUL */
-    }
-}
+/* Original checked counted conversion and ownership imports. */
+#include "guest_kernel_text_codec.inc"
 
 /* ── RtlUnicodeStringToAnsiString (ordinal 308, 3 args)
  * Mirror of the ANSI→Unicode bridge above. */
-static void bridge_RtlUnicodeStringToAnsiString(void)
-{
-    uint32_t dst_va  = STACK_ARG(0);
-    uint32_t src_va  = STACK_ARG(1);
-    uint32_t do_alloc = STACK_ARG(2);
-    uint32_t s_len, s_buf_va, d_max, d_buf_va = 0;
-    uint32_t ansi_bytes;
-    int result;
-
-    if (!dst_va || !src_va) {
-        g_eax = 0xC000000Du;
-        return;
-    }
-    s_len   = BRIDGE_MEM16(src_va + 0);
-    s_buf_va = BRIDGE_MEM32(src_va + 4);
-    if (!s_buf_va) {
-        g_eax = 0xC000000Du;
-        return;
-    }
-    ansi_bytes = s_len / sizeof(WCHAR) + 1;
-
-    d_max = BRIDGE_MEM16(dst_va + 2);
-    if (do_alloc) {
-        d_buf_va = xbox_HeapAlloc(ansi_bytes, 16);
-        if (!d_buf_va) {
-            g_eax = 0xC0000017u;
-            return;
-        }
-        BRIDGE_MEM16(dst_va + 2) = (uint16_t)ansi_bytes;
-        BRIDGE_MEM32(dst_va + 4) = d_buf_va;
-    } else {
-        if (d_max < ansi_bytes) {
-            g_eax = 0xC0000205u;
-            return;
-        }
-        d_buf_va = BRIDGE_MEM32(dst_va + 4);
-        if (!d_buf_va) {
-            g_eax = 0xC000000Du;
-            return;
-        }
-    }
-
-    result = WideCharToMultiByte(CP_ACP, 0,
-        (const WCHAR*)XBOX_TO_NATIVE(s_buf_va), (int)(s_len / sizeof(WCHAR)),
-        (char*)XBOX_TO_NATIVE(d_buf_va), (int)ansi_bytes, NULL, NULL);
-    if (result > 0) {
-        BRIDGE_MEM16(dst_va + 0) = (uint16_t)result;
-        if ((uint16_t)result < d_max)
-            ((char*)XBOX_TO_NATIVE(d_buf_va))[result] = 0;
-        g_eax = 0;
-    } else {
-        g_eax = 0xC0000001u;
-    }
-}
 
 /* ── NtDuplicateObject (ordinal 197, 3 args)
  *
@@ -4837,20 +4731,6 @@ static void bridge_RtlCreateUnicodeString(void)
 }
 
 /* 287: VOID RtlFreeUnicodeString(PXBOX_UNICODE_STRING Str) */
-static void bridge_RtlFreeUnicodeString(void)
-{
-    uint32_t str_va = STACK_ARG(0);
-    uint32_t buf_va;
-
-    if (!str_va) { g_eax = 0; return; }
-    buf_va = BRIDGE_MEM32(str_va + 4);
-    if (buf_va)
-        xbox_HeapFree(buf_va);
-    BRIDGE_MEM16(str_va + 0) = 0;
-    BRIDGE_MEM16(str_va + 2) = 0;
-    BRIDGE_MEM32(str_va + 4) = 0;
-    g_eax = 0;
-}
 
 /* ── Rtl Control characters (ordinals 275, 296, 313, 316) ── */
 
@@ -6727,23 +6607,6 @@ static void bridge_PsSetCreateThreadNotifyRoutine(void)
  * VOID RtlFreeAnsiString(PANSI_STRING AnsiString);
  * Frees AnsiString->Buffer (a guest-heap allocation) and clears the struct.
  * ANSI_STRING layout: +0 Length(USHORT), +2 MaximumLength(USHORT), +4 Buffer. */
-static void bridge_RtlFreeAnsiString(void)
-{
-    uint32_t str_va = STACK_ARG(0);
-    uint32_t buf;
-
-    if (!str_va) {
-        g_eax = 0;
-        return;
-    }
-    buf = BRIDGE_MEM32(str_va + 4);
-    if (buf)
-        xbox_HeapFree(buf);
-    BRIDGE_MEM16(str_va + 0) = 0;
-    BRIDGE_MEM16(str_va + 2) = 0;
-    BRIDGE_MEM32(str_va + 4) = 0;
-    g_eax = 0;
-}
 
 /* --- RtlRaiseStatus (ordinal 303, 1 arg = 4 bytes) --- */
 static void bridge_RtlRaiseStatus(void)
