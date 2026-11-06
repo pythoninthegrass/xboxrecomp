@@ -126,6 +126,7 @@ typedef struct Stream {
     long     drift_ms, drift_total_ms, drift_worst_ms;
     unsigned long starved;
     int      dry;
+    int      flush_pending;
     int32_t  level;                  /* the volume last given the host voice */
 } Stream;
 
@@ -419,7 +420,7 @@ static void pump(Stream *s, uint64_t now)
     uint64_t target;
     int guard = 0;
 
-    if (!s->output || s->paused || !s->resumed_ms)
+    if (!s->output || s->paused || s->flush_pending || !s->resumed_ms)
         return;
     target = consumed(s, now) + ms_to_bytes(s, LEAD_MS);
     if (target > s->queued)
@@ -514,8 +515,11 @@ static void refeed(Stream *s, uint64_t now)
     pump(s, now);
 }
 
+static void flush_stream(Stream *s);
+
 static void tick(Stream *s, uint64_t now)
 {
+    if (s->flush_pending) return; /* ASYNC callbacks belong to DoWork */
     sync_to_host(s, now);
     complete_passed(s, now);
     pump(s, now);
@@ -535,6 +539,8 @@ void hle_dsound_stream_tick(uint64_t now)
     lock();
     for (i = 0; i < MAX_STREAMS; i++)
         if (g_streams[i].iface) {
+            if (g_streams[i].flush_pending)
+                flush_stream(&g_streams[i]);
             tick(&g_streams[i], now);
             any = 1;
         }
@@ -745,6 +751,10 @@ HLE_EXPORT(CDirectSoundStream_Process)
             fprintf(stderr, "[DSOUND] stream Process on unknown object %08X\n", object);
         HLE_RETURN(DS_OK);
     }
+    if (s->flush_pending) {
+        unlock();
+        HLE_RETURN(HR_E_FAIL);
+    }
     sync_to_host(s, now);
     complete_passed(s, now);
     if (s->count >= (int)s->max_packets) {
@@ -775,39 +785,105 @@ HLE_EXPORT(CDirectSoundStream_Process)
     HLE_RETURN(DS_OK);
 }
 
-/* HRESULT CDirectSoundStream::Flush(this). Every pending packet comes back
- * flushed, and the clock moves to the end of the data. */
+/* Cancel the host queue before returning packet ownership to the title.
+ * Remove all packets first: a completion callback may enqueue new audio. */
+static void flush_stream(Stream *s)
+{
+    Packet flushed[MAX_PACKETS];
+    int n = 0, i;
+    while (s->count > 0) {
+        flushed[n++] = s->packets[s->head];
+        s->head = (s->head + 1) % MAX_PACKETS;
+        s->count--;
+    }
+    s->consumed_base = s->queued;
+    s->resumed_ms = 0u;
+    s->sent = s->queued;
+    s->play_origin = s->queued;
+    s->play_anchored = 0;
+    s->host_clock = 0;
+    s->dry = 0;
+    s->flush_pending = 0;
+    recomp_audio_output_reset_voice(slot_of(s));
+    for (i = 0; i < n; i++)
+        complete(s, &flushed[i], XMP_STATUS_FLUSHED, 0u);
+}
+
+/* HRESULT CDirectSoundStream::Flush(this). */
 HLE_EXPORT(CDirectSoundStream_Flush)
 {
+    Stream *s;
     g_calls_flush++;
     note_caller("Flush");
-    uint64_t now = now_ms();
-    Stream *s;
+    lock();
+    s = find_by_object(HLE_ARG(0));
+    if (s) flush_stream(s);
+    unlock();
+    HLE_RETURN(DS_OK);
+}
 
+HLE_ORIGINAL(CDirectSoundStream_FlushEx);
+/* Future Perfect stops story streams with FlushEx(0, ASYNC). The unhooked
+ * XDK method only flushed the emulated chip, leaving our packet pointers
+ * alive after the title reused their memory. Zero-time ASYNC completes in
+ * DoWork; IMMEDIATE cancels synchronously. Keep other scheduling/envelope
+ * modes on their existing XDK path until that timing is modelled here. */
+HLE_EXPORT(CDirectSoundStream_FlushEx)
+{
+    uint32_t flags = HLE_ARG(3);
+    Stream *s;
+    if (flags > 1u || (flags && (HLE_ARG(1) || HLE_ARG(2)))) {
+        if (hle_original_CDirectSoundStream_FlushEx) {
+            HLE_CALL_ORIGINAL(CDirectSoundStream_FlushEx);
+            return;
+        }
+        HLE_RETURN(HR_E_FAIL);
+    }
+    g_calls_flush++;
+    note_caller("FlushEx");
     lock();
     s = find_by_object(HLE_ARG(0));
     if (s) {
-        Packet flushed[MAX_PACKETS];
-        int n = 0, i;
-        while (s->count > 0) {
-            flushed[n++] = s->packets[s->head];
-            s->head = (s->head + 1) % MAX_PACKETS;
-            s->count--;
+        if (flags) {
+            s->flush_pending = 1;
+            recomp_audio_output_reset_voice(slot_of(s));
+        } else {
+            flush_stream(s);
         }
-        s->consumed_base = s->queued;
-        s->resumed_ms = 0u;
-        s->sent = s->queued;
-        s->play_origin = s->queued;
-        s->play_anchored = 0;
-        s->host_clock = 0;
-        s->dry = 0;
-        recomp_audio_output_reset_voice(slot_of(s));
-        for (i = 0; i < n; i++)
-            complete(s, &flushed[i], XMP_STATUS_FLUSHED, 0u);
-        (void)now;
     }
     unlock();
     HLE_RETURN(DS_OK);
+}
+
+HLE_ORIGINAL(CDirectSoundStream_Release);
+/* Preserve the XDK reference count and destructor. At its final Release,
+ * retire the host model as well: creation can reuse the same guest address.
+ * Packet owners still live until this call returns, so return their packets
+ * now, never from a later tick after their storage has been freed. */
+HLE_EXPORT(CDirectSoundStream_Release)
+{
+    Stream *s;
+    uint32_t result;
+    if (!hle_original_CDirectSoundStream_Release)
+        HLE_RETURN(HR_E_FAIL);
+    lock();
+    s = find_by_object(HLE_ARG(0));
+    HLE_CALL_ORIGINAL(CDirectSoundStream_Release);
+    result = g_eax;
+    if (s && result == 0u) {
+        Stream released = *s;
+        int i;
+        recomp_audio_output_reset_voice(slot_of(s));
+        memset(s, 0, sizeof *s);
+        /* Clear the slot before callbacks, which may create another stream. */
+        for (i = 0; i < released.count; i++)
+            complete(&released, &released.packets[(released.head + i) % MAX_PACKETS],
+                     XMP_STATUS_FLUSHED, 0u);
+        fprintf(stderr, "[DSOUND] released stream %08X: retired host voice and %d packets\n",
+                released.iface, released.count);
+    }
+    unlock();
+    HLE_RETURN(result);
 }
 
 /* HRESULT CDirectSoundStream::Discontinuity(this). Marks the end of the
@@ -889,7 +965,7 @@ HLE_EXPORT(CDirectSoundStream_GetStatus__r2)
     s = find_by_object(HLE_ARG(0));
     if (s) {
         tick(s, now);
-        if (s->count < (int)s->max_packets)
+        if (!s->flush_pending && s->count < (int)s->max_packets)
             status |= DSSTREAMSTATUS_READY;
         if (s->paused)
             status |= DSSTREAMSTATUS_PAUSED;
