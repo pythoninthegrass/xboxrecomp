@@ -173,7 +173,8 @@ extern void sub_00195110_gen(void);
 extern void sub_001950B0_gen(void);
 void sub_001953B0(void) { pc_surface_disturbance_guest(sub_001953B0_gen); }
 void sub_001952D0(void) { pc_surface_disturbance_guest(sub_001952D0_gen); }
-void sub_00195110(void) { pc_surface_feedback_guest(sub_00195110_gen); }
+#include "pc_surface_capture_guest.h"
+void sub_00195110(void) { pc_surface_capture_feedback_guest(sub_00195110_gen); }
 void sub_001950B0(void) { pc_surface_smoothing_guest(sub_001950B0_gen); }
 void sub_00195280(void) { pc_surface_final_guest(sub_00195280_gen); }
 #include "pc_surface_precision_guest.h"
