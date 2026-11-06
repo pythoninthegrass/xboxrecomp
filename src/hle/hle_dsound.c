@@ -145,6 +145,7 @@ static void unlock(void) { LeaveCriticalSection(&g_lock); }
  * old behaviour exactly (tick clock, no lead), for comparison. */
 static uint32_t g_lead_ms = 0xFFFFFFFFu;
 static int g_adaptive_lead = 1; /* an explicit lead override stays fixed */
+static uint32_t g_effects_lead_ms; /* active service headroom shared by fresh voices */
 
 static uint32_t lead_ms(void)
 {
@@ -470,7 +471,13 @@ static void pump(Buffer *b, uint64_t now)
             uint32_t want = gap >= 80u ? 90u : (uint32_t)gap + 10u;
             if (want > b->adaptive_lead_ms) b->adaptive_lead_ms = want;
         }
-        if (b->adaptive_lead_ms > lead) lead = b->adaptive_lead_ms;
+        /* Burst effects often retire before they can learn a busy frame.
+         * Carry measured active service headroom across slot lifetimes, so
+         * each new gunshot does not have to underrun first. Protected by the
+         * existing buffer lock; fixed/zero overrides never enter this path. */
+        if (b->adaptive_lead_ms > g_effects_lead_ms)
+            g_effects_lead_ms = b->adaptive_lead_ms;
+        if (g_effects_lead_ms > lead) lead = g_effects_lead_ms;
     }
     b->service_ms = now;
     until = now + lead;
