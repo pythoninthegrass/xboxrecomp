@@ -19,156 +19,100 @@ def _mem(base=None, disp=0, size=16):
 
 
 class SsePackedLifterTest(unittest.TestCase):
-    """An XMM register is 128 bits wide. Lifting packed moves as scalar
-    floats transferred 4 of every 16 bytes, which left every matrix built by
-    packed SSE sparse, and dropped packed arithmetic to a bare comment."""
+    """Production routing and memory/lane structure; compiled oracles live in
+    the project's test_translation_sse.py and execute the emitted statements."""
+
+    def code(self, mnemonic, operands):
+        code = "\n".join(Lifter().lift_instruction(_insn(mnemonic, "", operands)))
+        self.assertNotIn("TODO", code)
+        self.assertNotIn("RECOMP_UNIMPL", code)
+        return code
+
+    def memory_width(self, code, words, store=False):
+        self.assertEqual(code.count("MEM32("), words)
+        for lane in range(words):
+            name = "_simd_dest" if store else "_simd_b_address"
+            self.assertIn(f"MEM32({name} + {lane * 4}u)", code)
 
     def test_aligned_packed_load_transfers_sixteen_bytes(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movaps", "xmm0, xmmword ptr [eax]",
-                      [_xmm("xmm0"), _mem("eax")])),
-            ["xmm0 = XMM_MEM(eax); /* movaps */"],
-        )
+        code = self.code("movaps", [_xmm("xmm0"), _mem("eax")])
+        self.memory_width(code, 4)
+        self.assertIn("xmm0 = _simd_b;", code)
 
     def test_aligned_packed_store_transfers_sixteen_bytes(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movaps", "xmmword ptr [ecx], xmm0",
-                      [_mem("ecx"), _xmm("xmm0")])),
-            ["XMM_STORE(ecx, xmm0); /* movaps */"],
-        )
+        code = self.code("movaps", [_mem("ecx"), _xmm("xmm0")])
+        self.memory_width(code, 4, True)
+        self.assertLess(code.index("_simd_b = xmm0"), code.index("MEM32("))
 
     def test_unaligned_packed_move_is_also_sixteen_bytes(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movups", "xmmword ptr [ecx + 0x10], xmm1",
-                      [_mem("ecx", 0x10), _xmm("xmm1")])),
-            ["XMM_STORE(ecx + 0x10, xmm1); /* movups */"],
-        )
+        code = self.code("movups", [_mem("ecx", 0x10), _xmm("xmm1")])
+        self.memory_width(code, 4, True)
+        self.assertIn("_simd_dest = (uint32_t)(ecx + 0x10)", code)
 
     def test_scalar_move_stays_on_lane_zero(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movss", "xmm0, dword ptr [eax + 4]",
-                      [_xmm("xmm0"), _mem("eax", 4, size=4)])),
-            ["xmm0 = XMM_SCALAR(MEMF(eax + 4)); /* movss */"],
-        )
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movss", "dword ptr [ecx], xmm2",
-                      [_mem("ecx", 0, size=4), _xmm("xmm2")])),
-            ["MEMF(ecx) = xmm2.f[0]; /* movss */"],
-        )
+        code = self.code("movss", [_xmm("xmm0"), _mem("eax", 4, size=4)])
+        self.memory_width(code, 1)
+        self.assertIn("_simd_result.q[0] = _simd_result.q[1] = 0;", code)
+        self.assertIn("_simd_result.u[0] = _simd_b.u[0];", code)
+        code = self.code("movss", [_mem("ecx", size=4), _xmm("xmm2")])
+        self.memory_width(code, 1, True)
+        self.assertIn("_simd_b = xmm2", code)
 
     def test_packed_arithmetic_emits_a_statement(self):
-        for mnemonic, helper in (("mulps", "XMM_MUL"), ("addps", "XMM_ADD"),
-                                 ("subps", "XMM_SUB"), ("divps", "XMM_DIV")):
-            self.assertEqual(
-                Lifter().lift_instruction(
-                    _insn(mnemonic, "xmm0, xmm1",
-                          [_xmm("xmm0"), _xmm("xmm1")])),
-                ["xmm0 = %s(xmm0, xmm1); /* %s */" % (helper, mnemonic)],
-            )
+        for op, symbol in (("add", "+"), ("sub", "-"), ("mul", "*"), ("div", "/")):
+            code = self.code(op + "ps", [_xmm("xmm0"), _xmm("xmm1")])
+            for lane in range(4):
+                self.assertIn(f"_simd_result.f[{lane}] = _simd_a.f[{lane}] {symbol} _simd_b.f[{lane}];", code)
 
     def test_packed_arithmetic_against_memory(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("mulps", "xmm0, xmmword ptr [0xa24190]",
-                      [_xmm("xmm0"), _mem(disp=0xA24190)])),
-            ["xmm0 = XMM_MUL(xmm0, XMM_MEM(0xA24190)); /* mulps */"],
-        )
-
-    def test_shuffle_uses_the_immediate(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("shufps", "xmm7, xmm7, 0",
-                      [_xmm("xmm7"), _xmm("xmm7"),
-                       Operand(type="imm", imm=0)])),
-            ["xmm7 = XMM_SHUFFLE(xmm7, xmm7, 0); /* shufps */"],
-        )
-
-    def test_bitwise_ops_use_the_integer_lanes(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("andps", "xmm4, xmmword ptr [0x240430]",
-                      [_xmm("xmm4"), _mem(disp=0x240430)])),
-            ["xmm4 = XMM_AND(xmm4, XMM_MEM(0x240430)); /* andps */"],
-        )
-
-    def test_self_xor_zeroes_the_whole_register(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("xorps", "xmm0, xmm0",
-                      [_xmm("xmm0"), _xmm("xmm0")])),
-            ["xmm0 = XMM_ZERO(); /* xorps self = zero */"],
-        )
-
-    def test_move_mask_gathers_real_sign_bits(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movmskps", "eax, xmm3",
-                      [Operand(type="reg", reg="eax"), _xmm("xmm3")])),
-            ["eax = XMM_MOVEMASK(xmm3); /* movmskps */"],
-        )
+        code = self.code("mulps", [_xmm("xmm0"), _mem(disp=0xa24190)])
+        self.memory_width(code, 4)
+        self.assertEqual(code.count(" * _simd_b.f["), 4)
 
     def test_half_width_moves_target_one_half(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movlps", "xmm0, qword ptr [ecx]",
-                      [_xmm("xmm0"), _mem("ecx", 0, size=8)])),
-            ["XMM_LOAD_LOW(xmm0, ecx); /* movlps */"],
-        )
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("movhps", "qword ptr [eax + 8], xmm1",
-                      [_mem("eax", 8, size=8), _xmm("xmm1")])),
-            ["XMM_STORE_HIGH(eax + 8, xmm1); /* movhps */"],
-        )
+        code = self.code("movlps", [_xmm("xmm0"), _mem("ecx", size=8)])
+        self.memory_width(code, 2)
+        self.assertIn("_simd_result = xmm0", code)
+        self.assertNotIn("_simd_result.u[2] =", code)
+        code = self.code("movhps", [_mem("eax", 8, size=8), _xmm("xmm1")])
+        self.memory_width(code, 2, True)
+        self.assertIn("_simd_b.q[0] = _simd_b.q[1];", code)
 
     def test_scalar_arithmetic_reads_and_writes_lane_zero(self):
-        self.assertEqual(
-            Lifter().lift_instruction(
-                _insn("mulss", "xmm0, xmm1",
-                      [_xmm("xmm0"), _xmm("xmm1")])),
-            ["xmm0.f[0] = RECOMP_F32_MUL_AT(0x0, xmm0.f[0], xmm1.f[0]); /* mulss */"],
-        )
+        code = self.code("mulss", [_xmm("xmm0"), _xmm("xmm1")])
+        self.assertIn("RECOMP_F32_MUL_AT(0x0, _simd_a.f[0], _simd_b.f[0])", code)
+        self.assertEqual(code.count("_simd_result.f["), 1)
+        self.assertIn("_simd_result = _simd_a;", code)
+
+    def test_bitwise_ops_use_the_integer_lanes(self):
+        for name, symbol in (("andps", "&"), ("orps", "|"), ("xorps", "^")):
+            code = self.code(name, [_xmm("xmm0"), _xmm("xmm1")])
+            for lane in range(4):
+                self.assertIn(f"_simd_a.u[{lane}] {symbol} _simd_b.u[{lane}]", code)
+
+    def test_self_xor_zeroes_the_whole_register(self):
+        code = self.code("xorps", [_xmm("xmm0"), _xmm("xmm0")])
+        self.assertIn("_simd_a = xmm0", code)
+        self.assertIn("_simd_b = xmm0", code)
+        self.assertEqual(code.count(" ^ _simd_b.u["), 4)
+
+    def test_shuffle_uses_the_immediate(self):
+        code = self.code("shufps", [_xmm("xmm0"), _xmm("xmm1"), Operand(type="imm", imm=0x55)])
+        for lane, source in enumerate(("a", "a", "b", "b")):
+            self.assertIn(f"_simd_result.u[{lane}] = _simd_{source}.u[1];", code)
+
+    def test_move_mask_gathers_real_sign_bits(self):
+        code = self.code("movmskps", [Operand(type="reg", reg="eax"), _xmm("xmm1")])
+        for lane in range(4):
+            self.assertIn(f"xmm1.u[{lane}] >> 31", code)
+        self.assertIn("eax = ", code)
 
     def test_no_packed_mnemonic_falls_through_to_a_bare_comment(self):
-        packed = [
-            ("movaps", [_xmm("xmm0"), _mem("eax")]),
-            ("movups", [_xmm("xmm0"), _mem("eax")]),
-            ("movlps", [_xmm("xmm0"), _mem("eax", 0, size=8)]),
-            ("movhps", [_xmm("xmm0"), _mem("eax", 0, size=8)]),
-            ("movlhps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("movhlps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("addps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("subps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("mulps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("divps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("minps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("maxps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("andps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("andnps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("orps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("xorps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("unpcklps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("unpckhps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("cmpeqps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("cmpneqps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("cmpltps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("cmpleps", [_xmm("xmm0"), _xmm("xmm1")]),
-            ("shufps", [_xmm("xmm0"), _xmm("xmm1"),
-                        Operand(type="imm", imm=0x55)]),
-            ("movmskps", [Operand(type="reg", reg="eax"), _xmm("xmm0")]),
-        ]
-        for mnemonic, operands in packed:
-            lifted = Lifter().lift_instruction(_insn(mnemonic, "", operands))
-            self.assertEqual(len(lifted), 1, mnemonic)
-            statement = lifted[0]
-            self.assertIn(";", statement, (mnemonic, statement))
-            self.assertFalse(
-                statement.lstrip().startswith("/*"), (mnemonic, statement))
+        names = "addps subps mulps divps minps maxps andps andnps orps xorps unpcklps unpckhps cmpeqps cmpneqps cmpltps cmpleps sqrtps rsqrtps rcpps"
+        for name in names.split():
+            code = self.code(name, [_xmm("xmm0"), _xmm("xmm1")])
+            self.assertIn("xmm0 = _simd_result;", code)
+            self.assertIn("_simd_result.", code)
 
 
 class CvtPi2PsTest(unittest.TestCase):

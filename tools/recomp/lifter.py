@@ -29,6 +29,7 @@ import translation_exchange as _project_exchange
 import translation_compare as _project_compare
 import translation_strings as _project_strings
 import translation_conditions as _project_conditions
+import translation_sse as _project_sse
 
 # Function export names of the Windows libraries the host exe links
 # (kernel32/user32/gdi32/advapi32/winmm/ws2_32/ole32/dbghelp/...). A guest
@@ -862,24 +863,7 @@ class Lifter:
                    "emms", "femms", "cvtpi2ps"):
             return self._lift_mmx(insn, m, ops)
 
-        if m in ("movss", "movsd", "movaps", "movups", "movlps", "movhps",
-                 "movlhps", "movhlps", "movapd", "movupd",
-                 "addss", "subss", "mulss", "divss", "sqrtss",
-                 "addsd", "subsd", "mulsd", "divsd", "sqrtsd",
-                 "minss", "maxss", "minsd", "maxsd",
-                 "comiss", "comisd", "ucomiss", "ucomisd",
-                 "cvtsi2ss", "cvtss2si", "cvttss2si",
-                 "cvtsi2sd", "cvtsd2si", "cvttsd2si",
-                 "cvtss2sd", "cvtsd2ss",
-                 "xorps", "xorpd", "andps", "orps", "andnps",
-                 "movd", "movq",
-                 "shufps", "unpcklps", "unpckhps",
-                 "addps", "subps", "mulps", "divps",
-                 "minps", "maxps", "rsqrtss", "rcpss",
-                 "sqrtps", "rsqrtps", "rcpps",
-                 "cmpneqps", "cmpeqps", "cmpltps", "cmpleps",
-                 "movmskps",
-                 "pand", "pandn", "por", "pxor", "pcmpgtd"):
+        if m in _project_sse.MNEMONICS:
             return self._lift_sse(insn, m, ops)
 
         # ── FPU ──
@@ -1817,333 +1801,7 @@ class Lifter:
         return [f'RECOMP_UNIMPL("{text}", 0x{insn.address:08X}u);'
                 f" /* TODO: {text}{note} */"]
 
-    def _lift_sse(self, insn, m, ops):
-        """Translate SSE instructions to C float operations."""
-        nops = len(ops)
-        if nops < 1:
-            return [f"/* {m}: no operands */"]
-
-        def _is_xmm(op):
-            return op.type == "reg" and op.reg and op.reg.startswith("xmm")
-
-        def _is_mmx(op):
-            return (op.type == "reg" and op.reg and op.reg.startswith("mm")
-                    and not op.reg.startswith("xmm"))
-
-        # ── Scalar (lane 0) access ──
-        # movss/addss/... genuinely operate on one 32-bit value, so they read
-        # and write lane 0 explicitly rather than the whole register.
-        def _sse_read(op):
-            if _is_xmm(op):
-                return f"{op.reg}.f[0]"
-            elif op.type == "reg":
-                return op.reg
-            elif op.type == "mem":
-                if op.mem_size == 8:
-                    return f"MEMD({_fmt_mem(op)})"
-                return f"MEMF({_fmt_mem(op)})"
-            elif op.type == "imm":
-                return _fmt_imm(op.imm)
-            return f"/* sse_read? */"
-
-        def _sse_write(op, val):
-            if _is_xmm(op):
-                return f"{op.reg}.f[0] = {val};"
-            elif op.type == "reg":
-                return f"{op.reg} = {val};"
-            elif op.type == "mem":
-                if op.mem_size == 8:
-                    return f"MEMD({_fmt_mem(op)}) = {val};"
-                return f"MEMF({_fmt_mem(op)}) = {val};"
-            return f"/* sse_write? */;"
-
-        # ── Packed (128-bit) access ──
-        # A whole-register read yields a RecompXmm value; a whole-register
-        # write is a statement. Memory goes through the guest translation.
-        def _packed_read(op):
-            if _is_xmm(op):
-                return op.reg
-            if op.type == "mem":
-                return f"XMM_MEM({_fmt_mem(op)})"
-            return None
-
-        def _packed_write(op, val):
-            if _is_xmm(op):
-                return f"{op.reg} = {val};"
-            if op.type == "mem":
-                return f"XMM_STORE({_fmt_mem(op)}, {val});"
-            return None
-
-        def _packed_binary(helper):
-            """dst = helper(dst, src) for a two-operand packed op."""
-            if nops < 2:
-                return None
-            a = _packed_read(ops[0])
-            b = _packed_read(ops[1])
-            if a is None or b is None:
-                return None
-            written = _packed_write(ops[0], f"{helper}({a}, {b})")
-            if written is None:
-                return None
-            return [written + f" /* {m} */"]
-
-        # ── Moves ──
-        # movaps/movups move all 16 bytes. Treating them like movss was the
-        # defect that left every packed value 4 bytes wide.
-        if m in ("movaps", "movups", "movapd", "movupd"):
-            if nops >= 2:
-                src = _packed_read(ops[1])
-                if src is not None:
-                    written = _packed_write(ops[0], src)
-                    if written is not None:
-                        return [written + f" /* {m} */"]
-            return [f"/* {m} {insn.op_str} */"]
-
-        # movlps/movhps transfer 8 bytes into or out of one half.
-        if m in ("movlps", "movhps"):
-            half = "LOW" if m == "movlps" else "HIGH"
-            if nops >= 2:
-                if _is_xmm(ops[0]) and ops[1].type == "mem":
-                    return [f"XMM_LOAD_{half}({ops[0].reg}, "
-                            f"{_fmt_mem(ops[1])}); /* {m} */"]
-                if ops[0].type == "mem" and _is_xmm(ops[1]):
-                    return [f"XMM_STORE_{half}({_fmt_mem(ops[0])}, "
-                            f"{ops[1].reg}); /* {m} */"]
-            return [f"/* {m} {insn.op_str} */"]
-
-        if m in ("movlhps", "movhlps"):
-            helper = ("XMM_MOVE_LOW_TO_HIGH" if m == "movlhps"
-                      else "XMM_MOVE_HIGH_TO_LOW")
-            lifted = _packed_binary(helper)
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-
-        # movss/movsd are scalar. Loading from memory zeroes the upper lanes;
-        # a register-to-register move leaves them untouched.
-        if m in ("movss", "movsd"):
-            if nops >= 2:
-                scalar = ("XMM_SCALAR" if m == "movss"
-                          else "XMM_SCALAR_DOUBLE")
-                if _is_xmm(ops[0]) and ops[1].type == "mem":
-                    return [f"{ops[0].reg} = "
-                            f"{scalar}({_sse_read(ops[1])}); /* {m} */"]
-                src = _sse_read(ops[1])
-                return [_sse_write(ops[0], src) + f" /* {m} */"]
-            return [f"/* {m} {insn.op_str} */"]
-
-        # movd moves 32 bits without converting. Into an XMM register it also
-        # zeroes the upper lanes. The generated code redefines memcpy as a
-        # guest-to-guest copy, so the bits are moved through the union instead
-        # of taking the address of a host local.
-        if m == "movd":
-            if nops >= 2:
-                if _is_xmm(ops[0]):
-                    if _is_xmm(ops[1]):
-                        src = f"{ops[1].reg}.u[0]"
-                    elif _is_mmx(ops[1]):
-                        src = f"(uint32_t){ops[1].reg}"
-                    else:
-                        src = _fmt_operand_read(ops[1])
-                    return [f"{ops[0].reg} = XMM_SCALAR_BITS({src});"
-                            " /* movd to xmm */"]
-                if _is_xmm(ops[1]):
-                    return [f"{_fmt_operand_write(ops[0], ops[1].reg + '.u[0]')}"
-                            " /* movd */"]
-                src = _fmt_operand_read(ops[1])
-                return [f"{_fmt_operand_write(ops[0], src)} /* movd */"]
-            return [f"/* movd {insn.op_str} */"]
-
-        # ── Arithmetic ──
-        if m in ("addss", "addsd"):
-            if nops >= 2:
-                a, b = _sse_read(ops[0]), _sse_read(ops[1])
-                value = (f"RECOMP_F32_ADD_AT(0x{insn.address:X}, {a}, {b})"
-                         if m == "addss" else f"{a} + {b}")
-                return [_sse_write(ops[0], value) + f" /* {m} */"]
-        if m in ("subss", "subsd"):
-            if nops >= 2:
-                a, b = _sse_read(ops[0]), _sse_read(ops[1])
-                value = (f"RECOMP_F32_SUB_AT(0x{insn.address:X}, {a}, {b})"
-                         if m == "subss" else f"{a} - {b}")
-                return [_sse_write(ops[0], value) + f" /* {m} */"]
-        if m in ("mulss", "mulsd"):
-            if nops >= 2:
-                a, b = _sse_read(ops[0]), _sse_read(ops[1])
-                value = (f"RECOMP_F32_MUL_AT(0x{insn.address:X}, {a}, {b})"
-                         if m == "mulss" else f"{a} * {b}")
-                return [_sse_write(ops[0], value) + f" /* {m} */"]
-        if m in ("divss", "divsd"):
-            if nops >= 2:
-                a, b = _sse_read(ops[0]), _sse_read(ops[1])
-                value = (f"RECOMP_F32_DIV_AT(0x{insn.address:X}, {a}, {b})"
-                         if m == "divss" else f"{a} / {b}")
-                return [_sse_write(ops[0], value) + f" /* {m} */"]
-        if m in ("sqrtss", "sqrtsd"):
-            if nops >= 2:
-                return [_sse_write(ops[0], f"sqrtf({_sse_read(ops[1])})") + f" /* {m} */"]
-        if m in ("minss", "minsd"):
-            if nops >= 2:
-                a, b = _sse_read(ops[0]), _sse_read(ops[1])
-                return [_sse_write(ops[0], f"({a} < {b} ? {a} : {b})") + f" /* {m} */"]
-        if m in ("maxss", "maxsd"):
-            if nops >= 2:
-                a, b = _sse_read(ops[0]), _sse_read(ops[1])
-                return [_sse_write(ops[0], f"({a} > {b} ? {a} : {b})") + f" /* {m} */"]
-
-        # ── Packed arithmetic ──
-        # These used to emit a bare comment, so a matrix concatenation built
-        # from shufps + mulps + addps executed as nothing at all.
-        if m in ("addps", "subps", "mulps", "divps"):
-            helper = {"addps": "XMM_ADD", "subps": "XMM_SUB",
-                      "mulps": "XMM_MUL", "divps": "XMM_DIV"}[m]
-            lifted = _packed_binary(helper)
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-
-        # ── Conversions ──
-        if m == "cvtsi2ss":
-            if nops >= 2:
-                src = _fmt_operand_read(ops[1])
-                value = f"(float)(int32_t){src}"
-                if ops[1].type == "mem" and ops[1].mem_size == 4:
-                    value = f"RECOMP_I32_TO_F32_AT(0x{insn.address:X}, {_fmt_mem(ops[1])}, {src})"
-                return [_sse_write(ops[0], value) + " /* cvtsi2ss */"]
-        if m in ("cvtss2si", "cvttss2si"):
-            if nops >= 2:
-                return [_fmt_operand_write(ops[0], f"(int32_t){_sse_read(ops[1])}") + f" /* {m} */"]
-        if m == "cvtsi2sd":
-            if nops >= 2:
-                src = _fmt_operand_read(ops[1])
-                value = f"(double)(int32_t){src}"
-                if ops[1].type == "mem" and ops[1].mem_size == 4:
-                    value = f"RECOMP_I32_TO_F64({_fmt_mem(ops[1])}, {src})"
-                return [_sse_write(ops[0], value) + " /* cvtsi2sd */"]
-        if m in ("cvtsd2si", "cvttsd2si"):
-            if nops >= 2:
-                return [_fmt_operand_write(ops[0], f"(int32_t){_sse_read(ops[1])}") + f" /* {m} */"]
-        if m == "cvtss2sd":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"(double){_sse_read(ops[1])}") + " /* cvtss2sd */"]
-        if m == "cvtsd2ss":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"(float){_sse_read(ops[1])}") + " /* cvtsd2ss */"]
-
-        # ── Comparison ──
-        if m in ("comiss", "comisd", "ucomiss", "ucomisd"):
-            if nops >= 2:
-                # Snapshot, not a comment. The consuming jcc can be several
-                # instructions away, and what sits between it and here is
-                # frequently a write to a register the operand address was
-                # built from -- so the operands have to be read now, while
-                # they still mean what the compare meant.
-                return [f"_fca = {_sse_read(ops[0])}; _fcb = {_sse_read(ops[1])};"
-                        f" /* {m} */"]
-
-        # ── Bitwise ──
-        # Done on the integer lanes: these carry sign-mask and select idioms
-        # (fabs, negate, blend) that are meaningless as float arithmetic.
-        if m in ("xorps", "xorpd"):
-            if (nops >= 2 and _is_xmm(ops[0]) and _is_xmm(ops[1])
-                    and ops[0].reg == ops[1].reg):
-                return [f"{ops[0].reg} = XMM_ZERO(); /* {m} self = zero */"]
-            lifted = _packed_binary("XMM_XOR")
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-        if m in ("andps", "orps", "andnps"):
-            helper = {"andps": "XMM_AND", "orps": "XMM_OR",
-                      "andnps": "XMM_ANDN"}[m]
-            lifted = _packed_binary(helper)
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-
-        # ── Packed min/max ──
-        if m in ("minps", "maxps"):
-            helper = "XMM_MIN" if m == "minps" else "XMM_MAX"
-            lifted = _packed_binary(helper)
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-
-        # ── Reciprocal / rsqrt ──
-        if m == "rsqrtss":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"1.0f / sqrtf({_sse_read(ops[1])})") + " /* rsqrtss */"]
-        if m == "rcpss":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"1.0f / {_sse_read(ops[1])}") + " /* rcpss */"]
-
-        # ── Packed sqrt / reciprocal / rsqrt ──
-        # The SSE model here tracks only the low lane as a single float, so
-        # these compute the low lane like their scalar ...ss forms rather than
-        # all four. That is the same low-lane approximation the packed
-        # arithmetic ops (addps/mulps) already use -- but computing the low lane
-        # is strictly better than the TODO no-op these used to hit, which left
-        # the destination stale and fed garbage into vector normalisation.
-        # rsqrtps/sqrtps are the workhorse of 3D vector normalize; some titles
-        # use them heavily, which is why this surfaced on those binaries.
-        if m == "sqrtps":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"sqrtf({_sse_read(ops[1])})")
-                        + " /* sqrtps (low lane; 4-lane model TODO) */"]
-        if m == "rsqrtps":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"1.0f / sqrtf({_sse_read(ops[1])})")
-                        + " /* rsqrtps (low lane; 4-lane model TODO) */"]
-        if m == "rcpps":
-            if nops >= 2:
-                return [_sse_write(ops[0], f"1.0f / {_sse_read(ops[1])}")
-                        + " /* rcpps (low lane; 4-lane model TODO) */"]
-
-        # ── Packed comparison ──
-        if m in ("cmpneqps", "cmpeqps", "cmpltps", "cmpleps"):
-            helper = {"cmpeqps": "XMM_CMP_EQ", "cmpltps": "XMM_CMP_LT",
-                      "cmpleps": "XMM_CMP_LE", "cmpneqps": "XMM_CMP_NEQ"}[m]
-            lifted = _packed_binary(helper)
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-
-        # ── Move mask ──
-        # This feeds branches, so a hardcoded 0 silently picked one side.
-        if m == "movmskps":
-            if nops >= 2:
-                src = _packed_read(ops[1])
-                if src is not None:
-                    return [_fmt_operand_write(ops[0], f"XMM_MOVEMASK({src})")
-                            + f" /* {m} */"]
-            return [f"/* {m} {insn.op_str} */"]
-
-        # ── MMX / integer SIMD ──
-        if m in ("pand", "pandn", "por", "pxor", "pcmpgtd"):
-            if nops >= 2:
-                return [f"/* {m} {insn.op_str} (MMX/SIMD integer) */"]
-
-        # ── Shuffle/unpack ──
-        # shufps is the broadcast in every matrix concatenation.
-        if m == "shufps":
-            if nops >= 3 and ops[2].type == "imm":
-                a = _packed_read(ops[0])
-                b = _packed_read(ops[1])
-                if a is not None and b is not None:
-                    written = _packed_write(
-                        ops[0],
-                        f"XMM_SHUFFLE({a}, {b}, {_fmt_imm(ops[2].imm)})")
-                    if written is not None:
-                        return [written + f" /* {m} */"]
-            return [f"/* {m} {insn.op_str} */"]
-        if m in ("unpcklps", "unpckhps"):
-            helper = ("XMM_UNPACK_LOW" if m == "unpcklps"
-                      else "XMM_UNPACK_HIGH")
-            lifted = _packed_binary(helper)
-            if lifted is not None:
-                return lifted
-            return [f"/* {m} {insn.op_str} */"]
-
-        return [f"/* SSE: {m} {insn.op_str} */"]
+    _lift_sse = _project_sse.emit
 
     # ── FPU (x87) ──
 
@@ -2647,7 +2305,8 @@ def lift_basic_block(lifter, bb, flag_state=None):
                     # popfd is no longer in _EFLAGS_PRESERVE, so the set
                     # carries this now; it used to need naming here, which is
                     # how the inconsistency was visible in the first place.
-                    and insns[j].mnemonic in _EFLAGS_PRESERVE
+                    and (insns[j].mnemonic in _EFLAGS_PRESERVE
+                         or _project_sse.preserves_flags(insns[j]))
                     and not insns[j].is_branch
                     and not insns[j].is_call
                     and not insns[j].is_ret):
@@ -2700,7 +2359,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
             # Additional flag-setting instructions
             last_flag_setter, last_flag_ops = normalise_zero_test(
                 flag_mnem, list(curr.operands))
-        elif curr.mnemonic in _EFLAGS_PRESERVE:
+        elif curr.mnemonic in _EFLAGS_PRESERVE or _project_sse.preserves_flags(curr):
             pass  # These don't affect EFLAGS
         elif curr.mnemonic in ("fcompi", "fcomip", "fucomi", "fucompi",
                                 "fucomip", "fcomi"):
