@@ -122,6 +122,10 @@ extern void sub_003544B0_gen(void);
 void sub_003544B0(void)
 { pc_network_guest_tick(sub_003544B0_gen); }
 
+extern void sub_003588D0_gen(void);
+void sub_003588D0(void)
+{ pc_network_guest_sample(sub_003588D0_gen); }
+
 extern void sub_00431BB1_gen(void);
 void sub_00431BB1(void) { pc_network_guest(0x00431BB1u,sub_00431BB1_gen); }
 extern void sub_00431BC8_gen(void);
