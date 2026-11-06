@@ -276,6 +276,9 @@ static void two_d_tag_frame(void);
 
 static void present_resolve(void)
 {
+#ifdef TSFP_TEXTURE_PACK
+    tsfp_texture_frame_complete();
+#endif
     follow_vrr();
     two_d_tag_frame();
     present_scene();
@@ -1582,9 +1585,11 @@ static void rebind_stage_srvs(RhiImage *target)
 void tsfp_texture_sync_bindings(void)
 {
     static int previous=-1;
+    static unsigned previous_revision;
     int mode=tsfp_texture_is_4k();
-    if(mode==previous) return;
-    previous=mode;
+    unsigned revision=tsfp_texture_binding_revision();
+    if(mode==previous && revision==previous_revision) return;
+    previous=mode;previous_revision=revision;
     rebind_stage_srvs(g_cur_rt ? g_cur_rt->image : NULL);
 }
 #endif
