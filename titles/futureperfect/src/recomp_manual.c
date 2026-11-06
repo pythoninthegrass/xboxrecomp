@@ -404,6 +404,10 @@ void sub_0001EFB0(void)
 {
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
     uint32_t frame = g_esp, caller = FP_MEM32(frame);
+    if (caller == 0x002D90EBu) {
+        pc_display_footer_background(sub_0001EFB0_gen);
+        return;
+    }
     int top = caller == 0x0006F322u || caller == 0x0013972Eu;
     int story = caller == 0x0006F322u || caller == 0x0006F34Bu;
     if (story || caller == 0x0013970Eu || caller == 0x0013972Eu) {
@@ -445,6 +449,17 @@ void sub_0001EFB0(void)
     }
 #endif
     sub_0001EFB0_gen();
+}
+
+/* Shared frontend footer gradient helper; preserve all other callers. */
+extern void sub_002D8100_gen(void);
+void sub_002D8100(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_footer_background(sub_002D8100_gen);
+#else
+    sub_002D8100_gen();
+#endif
 }
 
 void sub_000245C0(void)
