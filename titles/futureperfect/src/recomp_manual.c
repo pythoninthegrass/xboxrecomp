@@ -1231,6 +1231,17 @@ void recomp_icall_fail_log(uint32_t va)
     RECOMP_DIAG_UNLOCK();
     fflush(stderr);
 }
+/* Texture cameras share their guest-pixel layout with their copied mask. */
+extern void sub_000C8120_gen(void);
+void sub_000C8120(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_camera_feed(sub_000C8120_gen);
+#else
+    sub_000C8120_gen();
+#endif
+}
+
 /* An indirect call whose target is not code: a null or wild function pointer.
  *
  * Skipping these is right -- calling a data address is worse -- but skipping
