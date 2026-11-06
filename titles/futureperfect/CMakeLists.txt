@@ -118,6 +118,19 @@ endif()
 # Link against the xboxrecomp umbrella target (all 6 runtime libraries)
 target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp)
 
+# Windows crash capture is separate from the native Mac adapter.
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_crash.c")
+    set_source_files_properties("${TSFP_PC_CONTROLS_DIR}/pc_crash.c" PROPERTIES COMPILE_OPTIONS "/Zi")
+    add_executable(tsfp_crash_helper "${TSFP_PC_CONTROLS_DIR}/../tools/crash_helper.c")
+    target_include_directories(tsfp_crash_helper PRIVATE "${TSFP_PC_CONTROLS_DIR}")
+    target_link_libraries(tsfp_crash_helper PRIVATE dbghelp bcrypt)
+    target_compile_options(tsfp_crash_helper PRIVATE /W4 /Zi)
+    target_link_options(tsfp_crash_helper PRIVATE /DEBUG)
+    add_dependencies(${PROJECT_NAME} tsfp_crash_helper)
+endif()
+
+
 if(TSFP_LOCAL_PATH_TEST_SOURCE)
     add_executable(tsfp_save_paths_test "${TSFP_LOCAL_PATH_TEST_SOURCE}")
     target_link_libraries(tsfp_save_paths_test PRIVATE xboxrecomp)

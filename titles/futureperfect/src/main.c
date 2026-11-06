@@ -38,6 +38,7 @@
 #include <math.h>
 #ifdef TSFP_PC_CONTROLS
 #include "pc_debug_output.h"
+#include "pc_crash.h"
 #endif
 
 /* xboxrecomp runtime headers */
@@ -310,6 +311,9 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
     if (code == EXCEPTION_BREAKPOINT || code == 0x406D1388)
         return EXCEPTION_CONTINUE_SEARCH;
     if (code != EXCEPTION_ACCESS_VIOLATION) {
+#ifdef TSFP_PC_CONTROLS
+        return EXCEPTION_CONTINUE_SEARCH; /* SEH may still handle this exception. */
+#endif
         fprintf(stderr, "[EXCEPTION] code 0x%08lX at RIP=0x%llX (first chance)\n",
                 (unsigned long)code,
                 (unsigned long long)ep->ContextRecord->Rip);
@@ -332,6 +336,12 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
         if (g_xbox_mem_offset &&
             route_device_fault(ep, fault_addr, is_write) == EXCEPTION_CONTINUE_EXECUTION)
             return EXCEPTION_CONTINUE_EXECUTION;
+
+#ifdef TSFP_PC_CONTROLS
+        /* Only the unhandled filter can confirm a crash. Avoid unsafe symbol,
+         * instruction and stack reads inside this first-chance handler. */
+        return EXCEPTION_CONTINUE_SEARCH;
+#endif
 
         fprintf(stderr, "[CRASH] Access violation at RIP=0x%llX, fault addr=0x%llX (%s)\n",
             (unsigned long long)ep->ContextRecord->Rip,
@@ -504,6 +514,16 @@ static void log_hint(char *buf, size_t bytes)
         snprintf(buf + n, bytes - n, "\n\nThere is more in:\n%s", g_log_path);
 }
 
+#ifdef TSFP_PC_CONTROLS
+static void capture_crash_guest(PcCrashGuest *out)
+{
+    out->valid = g_xbox_mem_offset != 0;
+    out->eax = g_eax; out->ebx = g_ebx; out->ecx = g_ecx; out->edx = g_edx;
+    out->esi = g_esi; out->edi = g_edi; out->esp = g_esp; out->ebp = g_seh_ebp;
+    out->memory_base = (uint64_t)(uintptr_t)g_xbox_mem_offset;
+}
+#endif
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow)
 {
@@ -515,9 +535,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     (void)lpCmdLine;
     (void)nCmdShow;
 
+#ifdef TSFP_PC_CONTROLS
+    int crash_ready = pc_crash_init(capture_crash_guest);
+    if (crash_ready) atexit(pc_crash_shutdown);
+    /* Exact test commands run before game files, settings or saves are opened. */
+    int crash_test = pc_crash_test_command(lpCmdLine);
+    if (crash_test >= 0) return crash_ready ? crash_test : 4;
+#endif
+
     /* Before anything prints: a windowed program has nowhere to print
      * unless this says where. */
     setup_output();
+#ifdef TSFP_PC_CONTROLS
+    if (!crash_ready) fprintf(stderr, "[CRASH-LOGGER] Helper unavailable; crash dump capture disabled.\n");
+#endif
 
     /* Unbuffered output for immediate visibility during debugging, and so a
      * crash keeps the tail of the log rather than losing it in a buffer. */
