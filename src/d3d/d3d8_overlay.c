@@ -17,11 +17,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#define OVERLAY_W    512
+#define OVERLAY_W   1024
 #define OVERLAY_H     28
 #define OVERLAY_PAD    8      /* from the top-left corner of the back buffer */
 
-static struct {
+typedef struct {
     int             tried;     /* creation attempted */
     int             failed;    /* and gave up: never try again */
     RhiImage       *texture;
@@ -38,7 +38,12 @@ static struct {
     void           *bits;      /* the DIB's pixels, BGRA top-down */
     int             text_w;    /* what the last render measured */
     char            text[128];
-} g;
+} OverlayState;
+/* Each line has its own cached texture, avoiding repeated GDI uploads. */
+static OverlayState overlays[2];
+static OverlayState *active = &overlays[0];
+#define g (*active)
+static void overlay_shutdown_current(void);
 
 /* b7 in both stages: the four texture stages a title can use are b0..b3 and
  * the vertex layers take the low slots. x,y,w,h are in clip space. */
@@ -76,7 +81,7 @@ static void overlay_fail(const char *what)
     fprintf(stderr, "D3D8 overlay: %s failed; the overlay is off for "
             "this run\n", what);
     fflush(stderr);
-    d3d8_overlay_shutdown();
+    overlay_shutdown_current();
 }
 
 static RhiShader *compile_one(uint32_t stage, const char *entry, const char *target)
@@ -219,7 +224,7 @@ static int overlay_set_text(const char *text)
     return g.text_w > 0;
 }
 
-void d3d8_overlay_draw(const char *text)
+static void overlay_draw(const char *text, int lower_right)
 {
     RhiOutputState saved;
     RhiView *rtv = d3d8_GetDefaultTargetView();
@@ -238,8 +243,8 @@ void d3d8_overlay_draw(const char *text)
 
     if (!(mapped = rhi_buffer_map(g.cb, RHI_MAP_WRITE_DISCARD)))
         goto restore;
-    c.x = -1.0f + 2.0f * (float)OVERLAY_PAD / (float)width;
-    c.y =  1.0f - 2.0f * (float)OVERLAY_PAD / (float)height;
+    c.x = -1.0f + 2.0f * (float)(lower_right ? (int)width-g.text_w-OVERLAY_PAD : OVERLAY_PAD) / (float)width;
+    c.y =  1.0f - 2.0f * (float)(lower_right ? (int)height-OVERLAY_H-OVERLAY_PAD : OVERLAY_PAD) / (float)height;
     c.w =  2.0f * (float)g.text_w / (float)width;
     c.h =  2.0f * (float)OVERLAY_H / (float)height;
     c.tex_w = (float)g.text_w;
@@ -271,7 +276,7 @@ restore:
     rhi_output_restore(&saved);
 }
 
-void d3d8_overlay_shutdown(void)
+static void overlay_shutdown_current(void)
 {
     rhi_view_destroy(g.srv);             g.srv = NULL;
     rhi_image_destroy(g.texture);        g.texture = NULL;
@@ -288,4 +293,24 @@ void d3d8_overlay_shutdown(void)
     g.text[0] = '\0';
     g.text_w = 0;
     g.tried = 0;
+}
+
+void d3d8_overlay_draw(const char *text)
+{
+    active = &overlays[0];
+    overlay_draw(text, 0);
+}
+
+void d3d8_overlay_draw_watermark(const char *text)
+{
+    active = &overlays[1];
+    overlay_draw(text, 1);
+    active = &overlays[0];
+}
+
+void d3d8_overlay_shutdown(void)
+{
+    unsigned i;
+    for(i=0;i<2;i++) { active=&overlays[i]; overlay_shutdown_current(); }
+    active=&overlays[0];
 }

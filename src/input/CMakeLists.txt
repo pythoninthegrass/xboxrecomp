@@ -47,6 +47,9 @@ target_link_libraries(recomp_pad_probe PRIVATE xbox_input)
 # PC diagnostics use the same host-input library as the settings dialog.
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
     target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_debug.c")
+    target_include_directories(xbox_input PRIVATE "${CMAKE_BINARY_DIR}/generated")
+    file(STRINGS "${TSFP_PC_CONTROLS_DIR}/../VERSION" TSFP_PC_VERSION LIMIT_COUNT 1)
+    target_compile_definitions(xbox_input PRIVATE TSFP_PC_VERSION="${TSFP_PC_VERSION}")
     target_link_libraries(xbox_input PUBLIC shell32)
 endif()
 

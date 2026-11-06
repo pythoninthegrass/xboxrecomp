@@ -2013,12 +2013,16 @@ static void swap_timing_report(void)
  * frame (hle_d3d8_interp.c) carries the same line as the frames around it. */
 #ifdef _WIN32
 static int  g_overlay_shown;
-static char g_overlay_line[96];
+static char g_overlay_line[192];
+extern void d3d8_overlay_draw_watermark(const char *text);
 
 void hle_d3d8_overlay_redraw(void)
 {
     if (g_overlay_shown)
         d3d8_overlay_draw(g_overlay_line);
+#ifdef TSFP_PC_CONTROLS
+    d3d8_overlay_draw_watermark(pc_debug_watermark());
+#endif
 }
 
 static void overlay_frame(void)
@@ -2118,6 +2122,9 @@ static void overlay_frame(void)
     g_overlay_shown = enabled;
     if (enabled)
         d3d8_overlay_draw(line);
+#ifdef TSFP_PC_CONTROLS
+    d3d8_overlay_draw_watermark(pc_debug_watermark());
+#endif
 }
 
 #endif /* Windows overlay and hotkeys */
