@@ -238,6 +238,16 @@ void sub_002CBAF0(void)
 #endif
 }
 
+extern void sub_00079860_gen(void);
+void sub_00079860(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_rewards_menu(sub_00079860_gen);
+#else
+    sub_00079860_gen();
+#endif
+}
+
 extern void sub_001922D0_gen(void);
 void sub_001922D0(void)
 {
