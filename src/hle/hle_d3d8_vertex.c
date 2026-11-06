@@ -472,18 +472,23 @@ HLE_EXPORT(D3DDevice_DrawIndexedVertices)
              * rewriting its own offsets, which it has not done. Only the
              * range the indices use is gathered, rebased to zero. */
             uint32_t lo = 0xFFFFu, stride;
-            uint16_t *rebased = malloc((size_t)count * sizeof *rebased);
+            uint16_t *rebased = NULL;
             uint8_t *gathered = NULL;
 
             for (i = 0; i < count; i++)
                 if (idx[i] < lo)
                     lo = idx[i];
-            if (rebased)
+            /* Zero-based indices already have the host representation.
+             * Keep the guest input fresh; no retained index cache. */
+            if (lo) rebased = malloc((size_t)count * sizeof *rebased);
+            if (!lo || rebased)
                 gathered = push_gather(lo, vertices - lo, &stride);
             if (gathered) {
-                for (i = 0; i < count; i++)
-                    rebased[i] = (uint16_t)(idx[i] - lo);
-                hle_d3d8_shadow_draw_indexed(xpt, count, rebased, gathered, stride, 0);
+                if (rebased) {
+                    for (i = 0; i < count; i++)
+                        rebased[i] = (uint16_t)(idx[i] - lo);
+                }
+                hle_d3d8_shadow_draw_indexed(xpt, count, rebased ? rebased : idx, gathered, stride, 0);
                 g_push_draws++;
             } else {
                 g_push_failed++;
