@@ -269,7 +269,7 @@ static void note(const char *fmt, ...)
 
 /* ------------------------------------------------------------------ window */
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(TSFP_RHI_RENDERER)
 #include "replay_host_sdl.h"
 #else
 static LRESULT CALLBACK replay_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -1531,7 +1531,7 @@ int main(int argc, char **argv)
 
     hwnd = replay_window(r.width, r.height);
     if (!hwnd) {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(TSFP_RHI_RENDERER)
         fprintf(stderr, "[replay] CreateWindow failed: %s\n", SDL_GetError());
 #else
         fprintf(stderr, "[replay] CreateWindow failed (%lu)\n", GetLastError());
@@ -1551,7 +1551,7 @@ int main(int argc, char **argv)
     pp.EnableAutoDepthStencil = TRUE;
 
     if (backend) {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(TSFP_RHI_RENDERER)
         setenv("RECOMP_D3D8_BACKEND", backend, 1);
 #else
         _putenv_s("RECOMP_D3D8_BACKEND", backend);
@@ -1608,7 +1608,7 @@ int main(int argc, char **argv)
     }
 
     if (hold) {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(TSFP_RHI_RENDERER)
         replay_hold();
 #else
         MSG msg;

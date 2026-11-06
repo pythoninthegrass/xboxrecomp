@@ -30,7 +30,7 @@ target_include_directories(d3d8_replay PRIVATE
 target_link_libraries(d3d8_replay PRIVATE xbox_d3d8)
 if(WIN32)
     target_link_libraries(d3d8_replay PRIVATE user32)
-elseif(APPLE AND TSFP_NATIVE_RHI)
+elseif(UNIX AND TSFP_NATIVE_RHI)
     target_include_directories(d3d8_replay PRIVATE "${TSFP_NATIVE_DIR}")
     target_sources(d3d8_replay PRIVATE "${TSFP_NATIVE_DIR}/config_files.c")
 endif()

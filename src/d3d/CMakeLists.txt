@@ -2,8 +2,8 @@
 #   _WIN32 -> backed by Direct3D 11 (d3d8_*.c, d3d8_combiners.c, d3d8_vsh.c)
 #   POSIX  -> backed by OpenGL 3.3 core via SDL3 + libepoxy (d3d8_gl.c)
 
-option(TSFP_NATIVE_RHI "Use the common Xbox renderer on native Mac (experimental)" OFF)
-if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
+option(TSFP_NATIVE_RHI "Use the common Xbox renderer on native macOS/Linux (experimental)" OFF)
+if(WIN32 OR (UNIX AND TSFP_NATIVE_RHI))
     add_library(xbox_d3d8 STATIC
         d3d8_device.c
         d3d8_resources.c
@@ -142,11 +142,11 @@ if(APPLE AND TSFP_NATIVE_DIR AND NOT TSFP_NATIVE_RHI)
     target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}")
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(UNIX AND TSFP_NATIVE_DIR)
     target_sources(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/../interface/pc_display.c")
     target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/..")
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(UNIX AND TSFP_NATIVE_DIR)
     include("${TSFP_NATIVE_DIR}/vulkan_probe.cmake")
 endif()
