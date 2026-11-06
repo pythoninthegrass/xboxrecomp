@@ -89,7 +89,7 @@ def test_second_table_arms_are_live():
     arm = BASE + 0x1F
     assert f"goto loc_{arm:08X};" in c, c
     assert f"loc_{arm:08X}:" in c, c
-    assert "dead code, label not in function" not in c, c
+    assert "unavailable local label" not in c, c
     print("ok  second_table_arms_are_live")
 
 
