@@ -11,6 +11,9 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================================
 
 project(futureperfect_recomp C)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    enable_language(CXX)
+endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

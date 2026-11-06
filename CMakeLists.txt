@@ -149,3 +149,10 @@ target_link_libraries(xboxrecomp INTERFACE
     xbox_hle
 )
 
+
+# ELF static archives have cyclic kernel/video/HLE references. Rescan the common
+# libraries as a group; their sources and Windows/Darwin link paths stay shared.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_property(TARGET xboxrecomp PROPERTY INTERFACE_LINK_LIBRARIES
+        "$<LINK_GROUP:RESCAN,xbox_kernel,xbox_d3d8,xbox_dsound,xbox_input,xbox_usb,xbox_apu,xbox_nv2a,xbox_video,xbox_hle>")
+endif()
