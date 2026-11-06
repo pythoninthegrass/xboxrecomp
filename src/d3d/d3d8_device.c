@@ -345,6 +345,9 @@ static uint32_t g_2d_tag;
 /* The edge a squeezed draw is anchored to: LEFT, RIGHT or CENTRE. The
  * title's placement for LEFT and RIGHT; chosen per draw for SIDE. */
 static int      g_2d_anchor = XBOX_D3D8_2D_CENTRE;
+#ifdef TSFP_PC_DISPLAY
+static PcUiWorldAnchor g_2d_world_anchor;
+#endif
 
 /* The widescreen 2D squeeze (see apply_host_viewport) as a horizontal
  * factor about an anchor, both in host pixels of the scene. FALSE when no
@@ -372,6 +375,11 @@ static BOOL two_d_squeeze(float *k_out, float *cx_out)
     if (!(k > 0.0f) || k == 1.0f)
         return FALSE;
     *k_out = k < 1.f ? k : 1.f;
+#ifdef TSFP_PC_DISPLAY
+    if(g_2d_world_anchor.active && g_2d_world_anchor.ready)
+        *cx_out=(float)g_device_state.width*g_2d_world_anchor.x;
+    else
+#endif
     if (g_2d_anchor == XBOX_D3D8_2D_LEFT)
         *cx_out = 0.0f;
     else if (g_2d_anchor == XBOX_D3D8_2D_RIGHT)
@@ -2086,6 +2094,11 @@ static void two_d_tag_frame(void)
 void xbox_D3D8SetTwoDPlacement(int placement, uint32_t tag)
 {
     int anchor;
+#ifdef TSFP_PC_DISPLAY
+    int previous_world=g_2d_world_anchor.active;
+    pc_ui_world_begin(&g_2d_world_anchor,placement,tag);
+    if(previous_world && g_2d_squeeze)apply_host_viewport();
+#endif
 
     if (placement < XBOX_D3D8_2D_AUTO || placement > XBOX_D3D8_2D_SIDE)
         placement = XBOX_D3D8_2D_AUTO;
@@ -2145,6 +2158,10 @@ void d3d8_place_2d_draw(const void *vertices, UINT stride, UINT count)
         two_d_tag_note(vertices, stride, count);
     if (!g_2d_squeeze)
         return;
+#ifdef TSFP_PC_DISPLAY
+    if(pc_ui_world_draw(&g_2d_world_anchor,vertices,stride,count,0,640.f))
+        apply_host_viewport();
+#endif
     /* World-projected health bars and enemy shields use transformed 16- or
      * 24-byte vertices. Their XY already follows the widened camera; the 4:3
      * HUD squeeze shifts them toward the center. Ordinary HUD depth is .001. */
