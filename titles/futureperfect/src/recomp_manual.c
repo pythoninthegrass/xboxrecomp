@@ -1371,6 +1371,17 @@ void sub_0001EFB0(void)
     sub_0001EFB0_gen();
 }
 
+/* Rounded focus bar on the consolidated Display settings page. */
+extern void sub_00072B70_gen(void);
+void sub_00072B70(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_highlight(sub_00072B70_gen);
+#else
+    sub_00072B70_gen();
+#endif
+}
+
 /* Shared frontend footer gradient helper; preserve all other callers. */
 extern void sub_002D8100_gen(void);
 void sub_002D8100(void)
