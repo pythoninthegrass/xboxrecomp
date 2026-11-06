@@ -178,6 +178,12 @@ static const IDirect3DDevice8Vtbl g_device_vtbl;
 static void up_ring_shutdown(void);
 static void present_resolve(void);
 static void interp_target_destroy(void);
+static void apply_host_viewport(void);
+static void rebind_stage_srvs(RhiImage *target);
+static int g_native_hud_active;
+static void native_hud_restore(void);
+static void native_hud_shutdown(void);
+static void native_hud_fallback(void);
 #include "d3d8_overlay.h"
 #include "d3d8_movie.h"
 
@@ -315,6 +321,7 @@ static void present_resolve(void)
     follow_vrr();
     two_d_tag_frame();
     present_scene();
+    native_hud_restore();
     d3d8_display_frame_done();
 }
 
@@ -450,7 +457,9 @@ static void present_scene(void)
     }
     RhiView *scene=d3d8_GetSceneView();
     if(!scene)return;
-    d3d8_display_resolve(scene, s->width, s->height, rhi_swapchain_view(), fit);
+    if(g_native_hud_active)
+        d3d8_display_copy(scene,s->width,s->height,rhi_swapchain_view(),fit);
+    else d3d8_display_resolve(scene, s->width, s->height, rhi_swapchain_view(), fit);
     keep_presented();
 }
 
@@ -588,9 +597,8 @@ static HRESULT create_device_and_swap_chain(
     return S_OK;
 }
 
-static HRESULT create_render_targets(D3D8DeviceState *state)
+static HRESULT create_render_targets_samples(D3D8DeviceState *state,unsigned requested)
 {
-    unsigned requested=pc_graphics_get().msaa;
     /* These are the title's common color render formats. Shared depth must
      * remain compatible when a floating-point feedback target is selected. */
     const RhiFormat formats[]={RHI_FORMAT_R8G8B8A8_UNORM,RHI_FORMAT_B8G8R8A8_UNORM,
@@ -627,6 +635,11 @@ static HRESULT create_render_targets(D3D8DeviceState *state)
         requested=samples/2;
     }
 }
+
+static HRESULT create_render_targets(D3D8DeviceState *state)
+{ return create_render_targets_samples(state,pc_graphics_get().msaa); }
+
+#include "graphics/native_hud_device.inc"
 
 static void d3d8_init_default_states(D3D8DeviceState *state)
 {
@@ -718,6 +731,7 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
 #ifdef TSFP_PC_DISPLAY
         pc_clear_shutdown();
 #endif
+        native_hud_shutdown();
         d3d8_overlay_shutdown();
         d3d8_movie_shutdown();
         if (g_feedback_copy) {
@@ -923,6 +937,7 @@ static HRESULT __stdcall dev_SetRenderState(IDirect3DDevice8 *self, D3DRENDERSTA
 {
     (void)self;
     g_d3d_setrs_count++;
+    if(State==D3DRS_STENCILENABLE && Value && g_native_hud_active)native_hud_fallback();
     if ((DWORD)State < MAX_RENDER_STATES) {
         g_device_state.render_states[(DWORD)State] = Value;
     }
@@ -2101,6 +2116,10 @@ static void two_d_tag_frame(void)
 
 void xbox_D3D8SetTwoDPlacement(int placement, uint32_t tag)
 {
+    if(tsfp_native_hud_hint(placement,tag)) {
+        if(placement==TSFP_NATIVE_HUD_BEGIN)native_hud_begin();
+        return;
+    }
     int anchor;
 #ifdef TSFP_PC_DISPLAY
     int previous_world=g_2d_world_anchor.active;

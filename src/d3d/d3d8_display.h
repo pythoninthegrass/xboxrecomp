@@ -86,6 +86,8 @@ void d3d8_display_output_shape(UINT scene_w, UINT scene_h,
  * into. */
 HRESULT d3d8_display_resolve(RhiView *scene, UINT scene_w, UINT scene_h,
                              RhiView *out, D3D8DisplayFit fit);
+/* Copy/scale a completed HUD without running the world's FXAA a second time. */
+HRESULT d3d8_display_copy(RhiView *scene,UINT width,UINT height,RhiView *out,D3D8DisplayFit fit);
 
 void d3d8_display_shutdown(void);
 
