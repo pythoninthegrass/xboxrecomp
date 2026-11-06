@@ -223,6 +223,7 @@ void sub_000A5AF0(void)
 { pc_native_rocking_reset_guest(sub_000A5AF0_gen); }
 
 /* Preserve authored random light decisions between native subframes. */
+#include "pc_native_visual_time_guest.inc"
 #include "pc_native_light_guest.h"
 extern void sub_00116130_gen(void);
 void sub_00116130(void)

@@ -1758,6 +1758,12 @@ class Lifter:
                 ops[1].mem_size == 4 and not ops[1].mem_base and
                 not ops[1].mem_index and not ops[1].mem_seg):
             src = f"RECOMP_LOAD_GLOBAL_U32(0x{insn.address:X}, {_fmt_mem(ops[1])}, {src})"
+        # Title-owned observation of direct 32-bit global stores. The
+        # policy returns the value to write; default semantics are unchanged.
+        if (ops[0].type == "mem" and ops[0].mem_size == 4 and
+                not ops[0].mem_base and not ops[0].mem_index and
+                not ops[0].mem_seg):
+            src = f"RECOMP_STORE_GLOBAL_U32(0x{insn.address:X}, {_fmt_mem(ops[0])}, {src})"
         out = [_fmt_operand_write(ops[0], src)]
         # `mov ebp, esp` establishes this function's frame. Publish it, because
         # ebp is a per-function local and a callee with no prologue of its own
@@ -3424,7 +3430,7 @@ class Lifter:
                 src = _fmt_operand_read(ops[1])
                 value = f"(float)(int32_t){src}"
                 if ops[1].type == "mem" and ops[1].mem_size == 4:
-                    value = f"RECOMP_I32_TO_F32({_fmt_mem(ops[1])}, {src})"
+                    value = f"RECOMP_I32_TO_F32_AT(0x{insn.address:X}, {_fmt_mem(ops[1])}, {src})"
                 return [_sse_write(ops[0], value) + " /* cvtsi2ss */"]
         if m in ("cvtss2si", "cvttss2si"):
             if nops >= 2:

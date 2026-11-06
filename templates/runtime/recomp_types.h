@@ -57,6 +57,12 @@
 #define RECOMP_I32_TO_F32(address, value) ((float)(int32_t)(value))
 #define RECOMP_I32_TO_F64(address, value) ((double)(int32_t)(value))
 #endif
+#ifndef RECOMP_I32_TO_F32_AT
+#define RECOMP_I32_TO_F32_AT(site, address, value) RECOMP_I32_TO_F32(address, value)
+#endif
+#ifndef RECOMP_STORE_GLOBAL_U32
+#define RECOMP_STORE_GLOBAL_U32(site, address, value) (value)
+#endif
 #ifndef RECOMP_LOAD_GLOBAL_U32
 #define RECOMP_LOAD_GLOBAL_U32(site, address, value) (value)
 #endif
