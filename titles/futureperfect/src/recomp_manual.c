@@ -175,6 +175,9 @@ void pc_native_physics_random(void)
 extern void sub_0018FF70_gen(void);
 void sub_0018FF70(void) { pc_native_input_guest(sub_0018FF70_gen); }
 #include "pc_native_weapon_guest.h"
+extern void sub_001C2AF0_gen(void);
+void sub_001C2AF0(void)
+{ pc_native_player_trigger_guest(sub_001C2AF0_gen,g_esp); }
 #include "pc_native_minigun_guest.h"
 extern void sub_001C74D0_gen(void);
 void sub_001C74D0(void)
