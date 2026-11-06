@@ -39,6 +39,10 @@
 #include <windows.h>
 #endif
 #include "volk.h"
+#if defined(RHI_VULKAN_SDL)
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#endif
 #include "vk_mem_alloc.h"
 
 #include <ctype.h>
@@ -46,6 +50,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "rhi_backend.h"
 #include "rhi_vulkan_bindings.h"
@@ -959,6 +966,18 @@ static int has_instance_layer(const char *name)
     return found;
 }
 
+static int has_instance_ext(const char *name)
+{
+    uint32_t n=0;
+    if(vkEnumerateInstanceExtensionProperties(NULL,&n,NULL)!=VK_SUCCESS)return 0;
+    VkExtensionProperties *p=calloc(n?n:1,sizeof *p);
+    if(!p)return 0;
+    int found=0;
+    if(vkEnumerateInstanceExtensionProperties(NULL,&n,p)==VK_SUCCESS)
+        for(uint32_t i=0;i<n;i++)if(!strcmp(p[i].extensionName,name))found=1;
+    free(p);return found;
+}
+
 static int has_device_ext(const char *name)
 {
     uint32_t n = 0, i;
@@ -999,7 +1018,7 @@ static int trace_on(void)
 static int create_instance(int want_validation)
 {
     const char *layer = "VK_LAYER_KHRONOS_validation";
-    const char *exts[4];
+    const char *exts[16];
     uint32_t next = 0;
     VkApplicationInfo app = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     VkInstanceCreateInfo ici = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
@@ -1008,10 +1027,26 @@ static int create_instance(int want_validation)
     V.validation = want_validation && has_instance_layer(layer);
     if (want_validation && !V.validation)
         fprintf(stderr, "[RHI] vulkan: validation asked for, but the layer is not installed\n");
+#if defined(RHI_VULKAN_SDL)
+    Uint32 count=0;
+    const char *const *required=SDL_Vulkan_GetInstanceExtensions(&count);
+    if(!required || count>12) {
+        fprintf(stderr,"[RHI] vulkan: SDL surface extensions unavailable: %s\n",SDL_GetError());
+        return -1;
+    }
+    for(Uint32 i=0;i<count;i++)exts[next++]=required[i];
+#else
     exts[next++] = VK_KHR_SURFACE_EXTENSION_NAME;
 #if defined(_WIN32)
     exts[next++] = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
 #endif
+#endif
+    /* Enable portability only when advertised; native Vulkan drivers need not
+     * expose it, even on Apple hosts. */
+    if(has_instance_ext(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+        exts[next++]=VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+        ici.flags|=VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    }
     if (V.validation)
         exts[next++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     app.pApplicationName = "xboxrecomp";
@@ -1086,7 +1121,7 @@ static int create_device(void)
     VkPhysicalDeviceVulkan13Features f13 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
     VkPhysicalDeviceCustomBorderColorFeaturesEXT fcb = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT };
     VkDeviceCreateInfo dci = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-    const char *exts[3];
+    const char *exts[4];
     uint32_t next = 0;
     int border_ext = has_device_ext(VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
 
@@ -1136,6 +1171,8 @@ static int create_device(void)
     f13.maintenance4 = VK_TRUE;
     f2.pNext = &f12;
     f12.pNext = &f13;
+    if(has_device_ext("VK_KHR_portability_subset"))
+        exts[next++]="VK_KHR_portability_subset";
     exts[next++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     exts[next++] = VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
     if (border_ext && have_cb.customBorderColors && have_cb.customBorderColorWithoutFormat) {
@@ -1271,13 +1308,24 @@ static void pcache_save(void)
         free(data);
         return;
     }
+#if defined(_WIN32)
     snprintf(tmp, sizeof tmp, "%s.%lu.tmp", path, (unsigned long)GetCurrentThreadId());
     f = fopen(tmp, "wb");
+#else
+    snprintf(tmp,sizeof tmp,"%s.XXXXXX",path);
+    int fd=mkstemp(tmp);
+    f=fd<0?NULL:fdopen(fd,"wb");
+    if(fd>=0 && !f){close(fd);unlink(tmp);}
+#endif
     if (f) {
         ok = fwrite(data, 1, n, f) == n;
         ok = (fclose(f) == 0) && ok;
+#if defined(_WIN32)
         if (!ok || !MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING))
             DeleteFileA(tmp);
+#else
+        if(!ok || rename(tmp,path)!=0)unlink(tmp);
+#endif
     }
     free(data);
 }
@@ -1418,17 +1466,31 @@ static int v_device_create(const RhiDeviceDesc *dd)
     VkSurfaceFormatKHR formats[64];
     uint32_t nf = 64, i;
 
+#if defined(RHI_VULKAN_SDL)
+    /* The window surface and device must use the same loader. On macOS volk
+     * may otherwise choose direct MoltenVK while SDL chose the Vulkan loader;
+     * passing an instance between those dispatch tables is invalid. */
+    PFN_vkGetInstanceProcAddr loader=(PFN_vkGetInstanceProcAddr)SDL_Vulkan_GetVkGetInstanceProcAddr();
+    if(!loader){fprintf(stderr,"[RHI] vulkan: SDL loader unavailable\n");return -1;}
+    volkInitializeCustom(loader);
+#else
     if (volkInitialize() != VK_SUCCESS) {
         fprintf(stderr, "[RHI] vulkan: no Vulkan loader on this machine\n");
         return -1;
     }
+#endif
     memset(&V, 0, sizeof V);
     memset(&SC, 0, sizeof SC);
     V.sample_mask = 0xFFFFFFFFu;
     V.topology = RHI_TOPOLOGY_TRIANGLES;
     if (create_instance(dd->debug || env_on("RECOMP_VK_VALIDATION")) != 0)
         return -1;
-#if defined(_WIN32)
+#if defined(RHI_VULKAN_SDL)
+    if(!SDL_Vulkan_CreateSurface((SDL_Window *)dd->window,V.instance,NULL,&V.surface)) {
+        fprintf(stderr,"[RHI] vulkan: SDL surface failed: %s\n",SDL_GetError());
+        return -1;
+    }
+#elif defined(_WIN32)
     {
         VkWin32SurfaceCreateInfoKHR wci = { VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
         wci.hinstance = GetModuleHandleA(NULL);

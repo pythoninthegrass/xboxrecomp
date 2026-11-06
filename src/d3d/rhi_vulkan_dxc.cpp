@@ -56,7 +56,11 @@ static DxcCreateInstanceProc load_dxc(void)
 #endif
     return m ? (DxcCreateInstanceProc)(void *)GetProcAddress(m, "DxcCreateInstance") : NULL;
 #else
+#if defined(__APPLE__)
+    void *m = dlopen("libdxcompiler.dylib", RTLD_NOW);
+#else
     void *m = dlopen("libdxcompiler.so", RTLD_NOW);
+#endif
 #ifdef RHI_DXC_LIBRARY
     if (!m)
         m = dlopen(RHI_DXC_LIBRARY, RTLD_NOW);

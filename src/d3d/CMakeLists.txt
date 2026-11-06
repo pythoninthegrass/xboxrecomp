@@ -129,3 +129,7 @@ if(APPLE AND TSFP_NATIVE_DIR)
     target_sources(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/../pc_display.c")
     target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/..")
 endif()
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    include("${TSFP_NATIVE_DIR}/vulkan_probe.cmake")
+endif()

@@ -300,7 +300,7 @@ enum { RHI_CLEAR_DEPTH = 1, RHI_CLEAR_STENCIL = 2 };
 
 /* The device and its swap chain */
 typedef struct {
-    void    *window;            /* the native window: an HWND on Windows */
+    void    *window;            /* HWND for Win32; SDL_Window* for the SDL surface adapter */
     uint32_t width, height;     /* the swap chain's size */
     uint32_t buffer_count;
     uint32_t windowed;
