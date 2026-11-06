@@ -104,6 +104,11 @@ add_executable(${PROJECT_NAME} WIN32
 # Link against the xboxrecomp umbrella target (all 6 runtime libraries)
 target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp)
 
+if(TSFP_LOCAL_PATH_TEST_SOURCE)
+    add_executable(tsfp_save_paths_test "${TSFP_LOCAL_PATH_TEST_SOURCE}")
+    target_link_libraries(tsfp_save_paths_test PRIVATE xboxrecomp)
+endif()
+
 # Include paths for generated recomp headers
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

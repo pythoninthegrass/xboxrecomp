@@ -62,6 +62,16 @@ static int match_prefix(const char* path, const char* prefix)
     return i;
 }
 
+/* Device roots without a trailing slash must end at a path component. */
+static int match_path_rule(const char* path, const char* prefix)
+{
+    int n = match_prefix(path, prefix);
+    if (n && prefix[n - 1] != '\\' && path[n] &&
+        path[n] != '\\' && path[n] != '/')
+        return 0;
+    return n;
+}
+
 /* A device-path translation rule, shared by both backends. */
 typedef struct {
     const char* prefix;     /* Xbox path prefix (backslash form)         */
@@ -82,6 +92,12 @@ static const path_rule s_rules[] = {
      * empty remainder makes it the game directory, which NtCreateFile opens
      * as a directory handle. */
     { "\\Device\\CdRom0",                     0, NULL,         NULL          },
+    /* XAPI mounts T: and U: through these device paths. Keep them in the
+     * save directory even after resolve_symlink expands the drive letter. */
+    { "\\Device\\Harddisk0\\Partition1\\TDATA\\", 1, "\\TitleData", "/TitleData" },
+    { "\\Device\\Harddisk0\\Partition1\\TDATA", 1, "\\TitleData", "/TitleData" },
+    { "\\Device\\Harddisk0\\Partition1\\UDATA\\", 1, "\\UserData",  "/UserData"  },
+    { "\\Device\\Harddisk0\\Partition1\\UDATA", 1, "\\UserData",  "/UserData"  },
     { "\\Device\\Harddisk0\\Partition1\\",    0, NULL,         NULL          },
     /* The rest of the disk. Partition 0 is the whole raw device, 2 holds
      * system data, and 3-5 are the per-title caches behind X:, Y: and Z:.
@@ -185,7 +201,7 @@ static int resolve_symlink(const char* xbox_path, char* out, size_t out_size)
     out[tlen + rlen] = '\0';
 
     for (i = 0; i < PATH_RULE_COUNT; i++) {
-        if (match_prefix(out, s_rules[i].prefix))
+        if (match_path_rule(out, s_rules[i].prefix))
             return 1;           /* the target is somewhere we can place */
     }
     return 0;
@@ -455,7 +471,7 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
     }
 
     for (int i = 0; i < PATH_RULE_COUNT; i++) {
-        skip = match_prefix(xbox_path, s_rules[i].prefix);
+        skip = match_path_rule(xbox_path, s_rules[i].prefix);
         if (skip) {
             remainder = xbox_path + skip;
             base_dir  = s_rules[i].to_save ? s_save_dir : s_game_dir;
@@ -625,7 +641,7 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
     }
 
     for (int i = 0; i < PATH_RULE_COUNT; i++) {
-        skip = match_prefix(xbox_path, s_rules[i].prefix);
+        skip = match_path_rule(xbox_path, s_rules[i].prefix);
         if (skip) {
             remainder = xbox_path + skip;
             base_dir  = s_rules[i].to_save ? s_save_dir : s_game_dir;
