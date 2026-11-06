@@ -7,6 +7,7 @@
  */
 #include "audio_output.h"
 #include "gameplay/pc_spatial_audio.h"
+#include "gameplay/pc_acoustic_dsp.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -60,6 +61,7 @@ EngineCallback callback;
 IXAudio2 *engine;
 IXAudio2MasteringVoice *master;
 OutputVoice voices[kVoiceCount];
+PcAcousticDsp acoustics[kVoiceCount];
 struct Spatial { float pan; int enabled; } spatial[kVoiceCount];
 void routeVoice(uint32_t slot)
 {
@@ -228,7 +230,7 @@ extern "C" void recomp_audio_output_shutdown(void)
 extern "C" void recomp_audio_output_reset_voice(uint32_t slot)
 {
     checkCriticalError();
-    if (slot < kVoiceCount) { destroyVoice(voices[slot]);spatial[slot]={}; }
+    if (slot < kVoiceCount) { destroyVoice(voices[slot]);spatial[slot]={};acoustics[slot]={}; }
 }
 
 extern "C" void recomp_audio_output_set_spatial(uint32_t slot,float pan,int enabled)
@@ -237,6 +239,16 @@ extern "C" void recomp_audio_output_set_spatial(uint32_t slot,float pan,int enab
     pan=std::isfinite(pan)?std::fmax(-1.f,std::fmin(1.f,pan)):0.f;
     if(spatial[slot].pan==pan && spatial[slot].enabled==!!enabled)return;
     spatial[slot]={pan,!!enabled};routeVoice(slot);
+}
+
+extern "C" void recomp_audio_output_set_acoustics(uint32_t slot,float obstruction,float room)
+{
+    if(slot<kVoiceCount)pc_acoustic_target(&acoustics[slot],obstruction,room);
+}
+
+extern "C" void recomp_audio_output_set_ambience(uint32_t slot,int enabled)
+{
+    if(slot<kVoiceCount)pc_acoustic_ambience_target(&acoustics[slot],enabled);
 }
 
 extern "C" int recomp_audio_output_position(uint32_t slot, uint64_t *played_bytes,
@@ -385,6 +397,7 @@ extern "C" int recomp_audio_output_submit(
         owned.capacity = bytes;
     }
     std::memcpy(owned.data, pcm, bytes);
+    pc_acoustic_pcm(&acoustics[slot],owned.data,bytes,sample_rate,channels,bits_per_sample);
     XAUDIO2_BUFFER buffer{};
     buffer.AudioBytes = bytes;
     buffer.pAudioData = owned.data;

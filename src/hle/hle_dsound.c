@@ -51,6 +51,9 @@
 #include "xbox_adpcm.h"
 #include "audio_output.h"
 #include "gameplay/pc_spatial_audio.h"
+#define PC_AUDIO_SETTINGS_IMPLEMENTATION
+#include "interface/pc_audio_settings.h"
+#undef PC_AUDIO_SETTINGS_IMPLEMENTATION
 
 void hle_dsound_stream_tick(uint64_t now);   /* hle_dsound_stream.c */
 
@@ -93,6 +96,7 @@ typedef struct Buffer {
     int32_t  level;              /* the volume last sent, hundredths of a dB */
     float pan;
     int spatial;
+    float obstruction,room;
 } Buffer;
 
 static Buffer g_buffers[SLOTS];
@@ -489,6 +493,7 @@ static void pump(Buffer *b, uint64_t now)
         g_stat.underruns++;
     b->level = buffer_level(b, &is3d);
     recomp_audio_output_set_spatial(slot_of(b),b->pan,b->spatial);
+    recomp_audio_output_set_acoustics(slot_of(b),b->obstruction,b->room);
     if (!recomp_audio_output_submit(slot_of(b), pcm, bytes, out->sample_rate,
                                     channels, bits, b->level))
         return;
@@ -1288,6 +1293,7 @@ static void report(uint64_t now)
 /* void DirectSoundDoWork(void) -- the title's regular audio tick. The game's
  * own version services the emulated chip's deferred commands, which the
  * replaced buffers no longer need; here it feeds the host output. */
+static void pc_acoustic_ambient_tick(uint64_t now);
 HLE_EXPORT(DirectSoundDoWork)
 {
     g_ds_calls[DS_CALL_DIRECTSOUNDDOWORK]++;
@@ -1332,6 +1338,7 @@ HLE_EXPORT(DirectSoundDoWork)
     unlock();
     /* Streams: feed the host, complete packets -- on their own clock (the
      * tick count every other stream entry point reads), not this file's. */
+    pc_acoustic_ambient_tick(now);
     hle_dsound_stream_tick(GetTickCount64());
     HLE_RETURN(0);
 }
@@ -1430,6 +1437,8 @@ static void commit_note(uint32_t client, uint32_t settings, uint32_t params,
     fflush(stderr);
 }
 
+#include "gameplay/pc_acoustic_guest.inc"
+
 HLE_ORIGINAL(CMcpxVoiceClient_Commit3dSettings_0);
 HLE_EXPORT(CMcpxVoiceClient_Commit3dSettings_0)
 {
@@ -1475,28 +1484,36 @@ HLE_EXPORT(CMcpxVoiceClient_Commit3dSettings_0)
        helper only writes X/Z of its cached relative vector at params+5C.
        Distance/cone attenuation still comes from the original calculator. */
     {
-        float relative[3],front[3],up[3];
+        float relative[3],front[3],up[3],obstruction=0,room=0;
         unsigned mode=HLE_MEM32(params+0x40u);
+        int enhanced=pc_audio_enhanced_enabled();
         memcpy(relative,HLE_PTR(params+8u),sizeof relative);
         if(mode!=1) {
             float listener[3];memcpy(listener,HLE_PTR(ds+0x38u),sizeof listener);
-            for(unsigned axis=0;axis<3;axis++)relative[axis]-=listener[axis];
+            if(mode==0 && enhanced) {
+                PcAcousticResult acoustic=pc_acoustic_guest(settings,listener,relative);
+                obstruction=acoustic.obstruction;room=acoustic.room;
+                memcpy(relative,acoustic.direction,sizeof relative);
+            } else for(unsigned axis=0;axis<3;axis++)relative[axis]-=listener[axis];
         }
         memcpy(front,HLE_PTR(ds+0x50u),sizeof front);
         memcpy(up,HLE_PTR(ds+0x5Cu),sizeof up);
-        float pan=recomp_spatial_pan(relative,front,up,mode);
+        float pan=enhanced?recomp_spatial_pan(relative,front,up,mode):0;
         lock();
         for(unsigned i=0;i<SLOTS;i++) {
             Buffer *b=&g_buffers[i];
             if(b->iface && guest_readable(b->iface-0xCu,4u) &&
                HLE_MEM32(b->iface-0xCu)==settings) {
-                b->pan=pan;b->spatial=mode<2;
+                b->pan=pan;b->spatial=mode<2 && enhanced;b->obstruction=obstruction;b->room=room;
                 recomp_audio_output_set_spatial(i,pan,b->spatial);
+                recomp_audio_output_set_acoustics(i,obstruction,room);
             }
         }
         unlock();
         extern void hle_dsound_stream_spatial(uint32_t,float,int);
-        hle_dsound_stream_spatial(settings,pan,mode<2);
+        hle_dsound_stream_spatial(settings,pan,mode<2 && enhanced);
+        extern void hle_dsound_stream_acoustics(uint32_t,float,float,int);
+        hle_dsound_stream_acoustics(settings,obstruction,room,0);
     }
     commit_note(client, settings, params, vdata);
     g_stat.commits_3d++;

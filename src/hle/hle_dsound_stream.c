@@ -107,6 +107,8 @@ typedef struct Stream {
     int32_t  volume;
     float pan;
     int spatial;
+    float obstruction,room;
+    int ambience;
     int      paused;
     Packet   packets[MAX_PACKETS];
     int      head, count;
@@ -500,6 +502,8 @@ static void pump(Stream *s, uint64_t now)
           * and leave everything after it late by its length. */
         s->level = stream_level(s);
         recomp_audio_output_set_spatial(slot_of(s),s->pan,s->spatial);
+        recomp_audio_output_set_acoustics(slot_of(s),s->obstruction,s->room);
+        recomp_audio_output_set_ambience(slot_of(s),s->ambience);
         if (!recomp_audio_output_submit(slot_of(s), pcm, bytes, play_rate(s), s->channels,
                                         out_bits(s), s->level))
             break;
@@ -543,6 +547,20 @@ void hle_dsound_stream_spatial(uint32_t settings,float pan,int enabled)
         if(s->object && guest_readable(s->object+0x14u,4u) && HLE_MEM32(s->object+0x14u)==settings) {
             s->pan=pan;s->spatial=enabled;
             recomp_audio_output_set_spatial(slot_of(s),pan,enabled);
+        }
+    }
+    unlock();
+}
+
+void hle_dsound_stream_acoustics(uint32_t settings,float obstruction,float room,int ambience)
+{
+    lock();
+    for(unsigned i=0;i<MAX_STREAMS;i++) {
+        Stream *s=&g_streams[i];
+        if(s->object && guest_readable(s->object+0x14u,4u) && HLE_MEM32(s->object+0x14u)==settings) {
+            s->obstruction=obstruction;s->room=room;s->ambience=ambience;
+            recomp_audio_output_set_acoustics(slot_of(s),obstruction,room);
+            recomp_audio_output_set_ambience(slot_of(s),ambience);
         }
     }
     unlock();

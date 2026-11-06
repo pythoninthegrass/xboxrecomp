@@ -29,6 +29,9 @@ void recomp_audio_output_reset_voice(uint32_t slot);
 /* Only 3D voices enable this. It changes routing, never source PCM/cursor units.
  * pan is -1 left, +1 right; disabled restores ordinary mono/stereo output. */
 void recomp_audio_output_set_spatial(uint32_t slot, float pan, int enabled);
+/* Environmental obstruction (0..1) and bounded early-reflection send. */
+void recomp_audio_output_set_acoustics(uint32_t slot,float obstruction,float room);
+void recomp_audio_output_set_ambience(uint32_t slot,int enabled);
 
 /* Copies PCM before returning; never retains a guest-memory pointer.
    Slots: 0..255 for buffers, 256..271 for streams, 272
