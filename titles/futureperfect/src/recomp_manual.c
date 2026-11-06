@@ -281,7 +281,7 @@ extern void sub_00151CF0_gen(void);
 void sub_00151CF0(void)
 {
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
-    pc_display_decal_projection(sub_00151CF0_gen);
+    pc_display_perspective_projection(sub_00151CF0_gen);
 #else
     sub_00151CF0_gen();
 #endif
