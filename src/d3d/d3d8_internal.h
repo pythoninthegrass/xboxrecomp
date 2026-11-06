@@ -329,6 +329,7 @@ HRESULT d3d8_CreateImageSurfaceImpl(UINT Width, UINT Height, D3DFORMAT Format,
 /* Fetch the sampled view of any bound base texture (2D, cube or
  * volume). All three implementations keep it at the same offset as
  * D3D8Texture, and the image likewise. */
+HRESULT d3d8_CopyTextureView(IDirect3DTexture8 *dst, RhiView *source);
 RhiView  *d3d8_base_srv(IDirect3DBaseTexture8 *texture);
 RhiImage *d3d8_base_resource(IDirect3DBaseTexture8 *texture);
 

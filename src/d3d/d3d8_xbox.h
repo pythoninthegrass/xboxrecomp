@@ -1262,6 +1262,10 @@ int  xbox_D3D8GetTwoDPlacement(uint32_t *tag);
    The host's own back buffer is the source, because the guest's is empty --
    nothing renders on that side. Scales if the texture is not screen-sized.
    The destination must be a render-target texture. */
+#ifdef _WIN32
+HRESULT xbox_D3D8PrepareSharedDepthTarget(IDirect3DTexture8 *texture,
+                                         IDirect3DSurface8 *depth);
+#endif
 HRESULT       xbox_D3D8CopyBackBufferToTexture(IDirect3DTexture8 *dst);
 /* The same for one of CopyRects' rectangles: `src` in the title's own
    pixels, copied to the same size at `at` in the texture (NULL: its

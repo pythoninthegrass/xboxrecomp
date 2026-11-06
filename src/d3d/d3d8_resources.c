@@ -1746,6 +1746,45 @@ BOOL d3d8_base_size(IDirect3DBaseTexture8 *texture, UINT *width, UINT *height)
     return TRUE;
 }
 
+/* A full-frame offscreen pass can share the title's automatic depth buffer.
+ * Keep its logical texture coordinates, but give its host colour image the
+ * depth buffer's physical dimensions. This preserves depth/stencil exactly
+ * at widescreen resolutions and with supersampling, without a depth copy. */
+HRESULT xbox_D3D8PrepareSharedDepthTarget(IDirect3DTexture8 *texture,
+                                         IDirect3DSurface8 *depth)
+{
+    D3D8Texture *tex = (D3D8Texture *)texture;
+    D3D8Surface *ds = (D3D8Surface *)depth;
+    D3D8Texture replacement;
+    RhiImageDesc desc;
+    RhiViewDesc view;
+    if (!tex || !ds || tex->levels != 1 || !(tex->usage & D3DUSAGE_RENDERTARGET))
+        return E_INVALIDARG;
+    rhi_image_get_desc(tex->image, &desc);
+    if (desc.width == ds->width && desc.height == ds->height) return S_OK;
+    if (desc.samples != ds->sample_count) return E_INVALIDARG;
+    replacement = *tex;
+    desc.width = ds->width;
+    desc.height = ds->height;
+    replacement.image = rhi_image_create(&desc, NULL);
+    if (!replacement.image) return E_OUTOFMEMORY;
+    memset(&view, 0, sizeof view);
+    view.format = tex->host_format;
+    view.dim = RHI_VIEW_DIM_2D;
+    view.mip_count = 1;
+    replacement.srv = rhi_view_create(replacement.image, RHI_VIEW_SAMPLED, &view);
+    if (!replacement.srv || FAILED(d3d8_CopyTextureView(&replacement.iface, tex->srv))) {
+        rhi_view_destroy(replacement.srv);
+        rhi_image_destroy(replacement.image);
+        return E_FAIL;
+    }
+    rhi_view_destroy(tex->srv);
+    rhi_image_destroy(tex->image);
+    tex->image = replacement.image;
+    tex->srv = replacement.srv;
+    return S_OK;
+}
+
 D3DFORMAT d3d8_base_format(IDirect3DBaseTexture8 *texture)
 {
     if (!texture) return D3DFMT_UNKNOWN;

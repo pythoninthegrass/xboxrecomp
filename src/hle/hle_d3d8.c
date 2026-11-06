@@ -4039,7 +4039,21 @@ static void shadow_set_render_target(uint32_t rt, uint32_t zs)
                     HLE_MEM32(zs + SURFACE_PARENT), zw, zh, zfmt);
         g_z_scale = xbox_depth_z_scale(zfmt);
         own = g_autodepth_va ? zs == g_autodepth_va : (zw == w && zh == h);
-        depth = (kind == 0 && own && g_device_depth) ? g_device_depth : NULL;
+        /* The same guest depth surface stays the same image across colour
+         * targets. Full-frame textures are scaled by the host to share it. */
+        depth = (own && kind == 0) ? g_device_depth : NULL;
+        if (!depth && own && g_device_depth && kind == 1 && zw == w && zh == h) {
+#ifdef _WIN32
+            depth = g_device_depth;
+#else
+            /* Native GL does not yet promote colour targets to match a
+             * resized scene. Preserve its existing fallback when sizes differ. */
+            D3DSURFACE_DESC desc;
+            if (SUCCEEDED(g_device_depth->lpVtbl->GetDesc(g_device_depth, &desc)) &&
+                desc.Width == w && desc.Height == h)
+                depth = g_device_depth;
+#endif
+        }
         /* A depth texture the title will sample: render into its host copy
          * (RECOMP_HLE_D3D8_SHADOW_MAPS=0 for the old scratch depth). */
         if (!depth && zw == w && zh == h && depth_texture_of(zs) && shadow_maps_on()) {

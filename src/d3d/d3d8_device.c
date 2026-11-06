@@ -121,6 +121,9 @@ static D3D8Surface *g_cur_ds = NULL;
 /* The device's own depth buffer as a surface object, so SetRenderTarget can
  * name it: a NULL depth surface means no depth, as in D3D8. */
 static D3D8Surface *g_auto_ds = NULL;
+static IDirect3DTexture8 *g_feedback_copy;
+static void prepare_feedback(void);
+
 
 /* Palettized texture palettes (256 ARGB entries per stage) */
 #define D3D8_PALETTE_ENTRIES 256
@@ -220,21 +223,28 @@ RhiView  *d3d8_GetDefaultTargetView(void) { return g_device_state.rhi_default_rt
  * scissor rectangle -- the two pieces of state a title hands us measured
  * in pixels rather than normalised.
  *
- * Only the scene target is scaled today. A title's own offscreen target is
- * still created at the size it asked for, so anything bound there keeps a
- * factor of one; that is what lets render-target scaling be a later step
- * rather than a precondition. */
+ * Full-frame colour targets sharing scene depth can have a larger host
+ * image than their logical size. Viewports and scissors must scale with it,
+ * just as they do on the scene target. */
 static float rt_scale_x(void)
 {
-    if (g_cur_rt || !g_device_state.present_width)
-        return 1.0f;
+    if (g_cur_rt) {
+        RhiImageDesc desc;
+        rhi_image_get_desc(g_cur_rt->image, &desc);
+        return (float)(desc.width >> (g_cur_rt->subresource % desc.mip_levels)) / g_cur_rt->width;
+    }
+    if (!g_device_state.present_width) return 1.0f;
     return (float)g_device_state.width / (float)g_device_state.present_width;
 }
 
 static float rt_scale_y(void)
 {
-    if (g_cur_rt || !g_device_state.present_height)
-        return 1.0f;
+    if (g_cur_rt) {
+        RhiImageDesc desc;
+        rhi_image_get_desc(g_cur_rt->image, &desc);
+        return (float)(desc.height >> (g_cur_rt->subresource % desc.mip_levels)) / g_cur_rt->height;
+    }
+    if (!g_device_state.present_height) return 1.0f;
     return (float)g_device_state.height / (float)g_device_state.present_height;
 }
 
@@ -705,6 +715,10 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
 #endif
         d3d8_overlay_shutdown();
         d3d8_movie_shutdown();
+        if (g_feedback_copy) {
+            g_feedback_copy->lpVtbl->Release(g_feedback_copy);
+            g_feedback_copy = NULL;
+        }
         xbox_D3D8ScreenCopyShutdown();
         d3d8_display_shutdown();
         d3d8_vsh_shutdown();
@@ -869,8 +883,8 @@ static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3
             rhi_clear_color(rtv, clear_color);
         } else {
 #ifdef TSFP_PC_DISPLAY
-            unsigned width=g_cur_rt ? g_cur_rt->width : g_device_state.width;
-            unsigned height=g_cur_rt ? g_cur_rt->height : g_device_state.height;
+            unsigned width=g_cur_rt ? (unsigned)(g_cur_rt->width * rt_scale_x()) : g_device_state.width;
+            unsigned height=g_cur_rt ? (unsigned)(g_cur_rt->height * rt_scale_y()) : g_device_state.height;
             if(!pc_clear_masked(rtv,width,height,clear_color,
                                 (Flags & D3DCLEAR_CHANNEL_MASK)>>4))return E_FAIL;
 #endif
@@ -957,13 +971,13 @@ static HRESULT __stdcall dev_SetTexture(IDirect3DDevice8 *self, DWORD Stage, IDi
 
     /* Bind SRV to pixel shader */
     if (pTexture) {
-        RhiView *srv = d3d8_base_srv(pTexture);
+        RhiView *srv = (g_cur_rt && d3d8_base_resource(pTexture) == g_cur_rt->image)
+                       ? NULL : d3d8_base_srv(pTexture);
         /* P8 textures bake a palette; record which stage palette they use
          * so SetPalette can re-bake them later. */
         if (d3d8_format_is_palettized(d3d8_base_format(pTexture)))
             d3d8_base_set_palette(pTexture, Stage);
-        if (srv)
-            rhi_set_textures(Stage, 1, &srv);
+        rhi_set_textures(Stage, 1, &srv);
         /* Mark texture stage as active */
         if (g_device_state.tss[Stage][D3DTSS_COLOROP] == D3DTOP_DISABLE)
             g_device_state.tss[Stage][D3DTSS_COLOROP] = D3DTOP_MODULATE;
@@ -1253,6 +1267,7 @@ static HRESULT __stdcall dev_DrawPrimitive(IDirect3DDevice8 *self, D3DPRIMITIVET
     if (vertex_count == 0) return E_INVALIDARG;
 
     /* Prepare pipeline: shaders, input layout, constant buffers, render states */
+    prepare_feedback();
     d3d8_shaders_prepare_draw(g_device_state.vertex_shader);  /* VS, then the combiner PS or the fixed-function one */
     d3d8_states_apply();
 
@@ -1273,6 +1288,7 @@ static HRESULT __stdcall dev_DrawIndexedPrimitive(IDirect3DDevice8 *self, D3DPRI
     if (index_count == 0) return E_INVALIDARG;
 
     /* Vertex shader: try programmable VS first, fall back to FVF fixed-function */
+    prepare_feedback();
     d3d8_shaders_prepare_draw(g_device_state.vertex_shader);  /* VS, then the combiner PS or the fixed-function one */
     d3d8_states_apply();
 
@@ -1344,6 +1360,7 @@ static HRESULT __stdcall dev_DrawPrimitiveUP(IDirect3DDevice8 *self, D3DPRIMITIV
     rhi_set_vertex_buffer(0, g_up_vertex_ring.buffer, VertexStreamZeroStride, ring_offset);
 
     /* Vertex shader: try programmable VS first, fall back to FVF fixed-function */
+    prepare_feedback();
     d3d8_shaders_prepare_draw(g_device_state.vertex_shader);  /* VS, then the combiner PS or the fixed-function one */
 
     /* Where a screen-space draw goes in widescreen: squeezed to 4:3 with
@@ -1398,6 +1415,7 @@ static HRESULT __stdcall dev_DrawIndexedPrimitiveUP(IDirect3DDevice8 *self, D3DP
     rhi_set_index_buffer(g_up_index_ring.buffer, idx_bytes * 8, ib_offset);
 
     /* Vertex shader: try programmable VS first, fall back to FVF fixed-function */
+    prepare_feedback();
     d3d8_shaders_prepare_draw(g_device_state.vertex_shader);  /* VS, then the combiner PS or the fixed-function one */
 
     /* Where a screen-space draw goes in widescreen: squeezed to 4:3 with
@@ -1628,6 +1646,13 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
     RhiView *dsv = NULL;
     D3D8Surface *rt = (D3D8Surface *)pRenderTarget;
     D3D8Surface *ds = (D3D8Surface *)pZStencilSurface;
+    UINT target_width = g_device_state.width, target_height = g_device_state.height;
+    if (rt) {
+        RhiImageDesc desc;
+        rhi_image_get_desc(rt->image, &desc);
+        target_width = desc.width >> (rt->subresource % desc.mip_levels);
+        target_height = desc.height >> (rt->subresource % desc.mip_levels);
+    }
 
     /* Refused before anything changes, so a bad call leaves the old targets
      * bound on both sides. NULL is the back buffer (not D3D8, which refuses
@@ -1652,12 +1677,11 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
     }
     /* D3D11 ignores a binding whose depth is not the target's size, which
      * would leave draws going to the previous target. */
-    if (ds && (ds->width  != (rt ? rt->width  : g_device_state.width) ||
-               ds->height != (rt ? rt->height : g_device_state.height))) {
+    if (ds && (ds->width  != target_width ||
+               ds->height != target_height)) {
         fprintf(stderr, "D3D8: SetRenderTarget with depth %ux%u for a %ux%u target\n",
                 ds->width, ds->height,
-                rt ? rt->width : g_device_state.width,
-                rt ? rt->height : g_device_state.height);
+                target_width, target_height);
         return E_INVALIDARG;
     }
     if (rt) IDirect3DSurface8_AddRef(pRenderTarget);
@@ -1672,6 +1696,46 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
     rhi_set_render_target(rtv, dsv);
     rebind_stage_srvs(rt ? rt->image : NULL);
     return S_OK;
+}
+
+/* Xbox permits reading the colour buffer while rendering into it. Host APIs
+ * forbid that alias: sample a snapshot taken immediately before this draw.
+ * All stages use the same snapshot, including multi-tap blur draws. */
+static void prepare_feedback(void)
+{
+    UINT stage, mask = 0, w, h;
+    D3DFORMAT fmt;
+    RhiView *source = NULL, *sample = NULL;
+    if (!g_cur_rt) return;
+    for (stage = 0; stage < MAX_TEXTURE_STAGES; ++stage) {
+        IDirect3DBaseTexture8 *t = g_cur_textures[stage];
+        if (t && d3d8_base_resource(t) == g_cur_rt->image &&
+            d3d8_base_size(t, &w, &h)) {
+            mask |= 1u << stage;
+            source = d3d8_base_srv(t);
+            fmt = d3d8_base_format(t);
+        }
+    }
+    if (!mask) return;
+    if (g_feedback_copy) {
+        D3D8Texture *copy = (D3D8Texture *)g_feedback_copy;
+        if (copy->width != w || copy->height != h || copy->d3d8_format != fmt) {
+            /* Unbind before releasing a snapshot still used by another stage. */
+            rebind_stage_srvs(g_cur_rt->image);
+            g_feedback_copy->lpVtbl->Release(g_feedback_copy);
+            g_feedback_copy = NULL;
+        }
+    }
+    if (!g_feedback_copy)
+        dev_CreateTexture(&g_device, w, h, 1, D3DUSAGE_RENDERTARGET, fmt,
+                          D3DPOOL_DEFAULT, &g_feedback_copy);
+    if (g_feedback_copy) {
+        rebind_stage_srvs(g_cur_rt->image);
+        if (SUCCEEDED(d3d8_CopyTextureView(g_feedback_copy, source)))
+            sample = d3d8_base_srv((IDirect3DBaseTexture8 *)g_feedback_copy);
+    }
+    for (stage = 0; stage < MAX_TEXTURE_STAGES; ++stage)
+        if (mask & (1u << stage)) rhi_set_textures(stage, 1, &sample);
 }
 
 static HRESULT __stdcall dev_GetRenderTarget(IDirect3DDevice8 *self, IDirect3DSurface8 **ppRenderTarget)

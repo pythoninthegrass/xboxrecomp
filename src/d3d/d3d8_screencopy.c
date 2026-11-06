@@ -189,20 +189,28 @@ static void probe_source(const RhiOutputState *saved, const D3D8Texture *tex,
  * texture. With src: that rectangle of the frame, in the title's own
  * pixels, to the same size at `at` in the texture -- CopyRects does not
  * scale. */
-static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at);
+static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at, RhiView *source);
 
 HRESULT xbox_D3D8CopyBackBufferToTexture(IDirect3DTexture8 *dst)
 {
-    return copy_to_texture(dst, NULL, NULL);
+    return copy_to_texture(dst, NULL, NULL, NULL);
 }
 
 HRESULT xbox_D3D8CopyBackBufferRectToTexture(IDirect3DTexture8 *dst, const RECT *src,
                                              const POINT *at)
 {
-    return copy_to_texture(dst, src, at);
+    return copy_to_texture(dst, src, at, NULL);
 }
 
-static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at)
+/* Snapshot an offscreen colour image before a draw samples its own target.
+ * The copy pass restores output state; the caller prepares draw state next. */
+HRESULT d3d8_CopyTextureView(IDirect3DTexture8 *dst, RhiView *source)
+{
+    if (!source) return E_INVALIDARG;
+    return copy_to_texture(dst, NULL, NULL, source);
+}
+
+static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at, RhiView *source)
 {
     D3D8Texture *tex = (D3D8Texture *)dst;
     RhiImage *dst_image;
@@ -214,13 +222,24 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     float blend_factor[4] = { 1, 1, 1, 1 };
     UINT back_w = d3d8_GetBackBufferWidth(), back_h = d3d8_GetBackBufferHeight();
     void *mapped;
+    RhiImageDesc destination;
+    UINT dst_w, dst_h;
 
+    if (source) {
+        RhiImageDesc desc;
+        rhi_image_get_desc(rhi_view_image(source), &desc);
+        back_w = desc.width;
+        back_h = desc.height;
+    }
     if (!rhi_device_ready() || !tex || !tex->image || !back_w || !back_h)
         return E_INVALIDARG;
     if (!create())
         return E_FAIL;
 
     dst_image = tex->image;
+    rhi_image_get_desc(dst_image, &destination);
+    dst_w = destination.width;
+    dst_h = destination.height;
     memset(&rtvd, 0, sizeof rtvd);
     rtvd.format = tex->host_format;
     rtvd.dim = RHI_VIEW_DIM_2D;
@@ -234,13 +253,13 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     }
 
     rhi_output_save(&saved);
-    probe_source(&saved, tex, back_w, back_h);
+    if (!source) probe_source(&saved, tex, back_w, back_h);
 
     vp.x = vp.y = 0.0f;
-    vp.width = (float)tex->width;
-    vp.height = (float)tex->height;
-    c.scale_x = tex->width ? (float)back_w / (float)tex->width : 1.0f;
-    c.scale_y = tex->height ? (float)back_h / (float)tex->height : 1.0f;
+    vp.width = (float)dst_w;
+    vp.height = (float)dst_h;
+    c.scale_x = dst_w ? (float)back_w / (float)dst_w : 1.0f;
+    c.scale_y = dst_h ? (float)back_h / (float)dst_h : 1.0f;
     c.off_x = c.off_y = 0.0f;
     if (src) {
         /* The rectangle is in the title's pixels and the frame may be
@@ -263,12 +282,13 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
         if (ay < 0) { h += ay; ay = 0; }
         if (ax + w > (LONG)tex->width)  w = (LONG)tex->width - ax;
         if (ay + h > (LONG)tex->height) h = (LONG)tex->height - ay;
-        vp.x = (float)ax;
-        vp.y = (float)ay;
-        vp.width = (float)w;
-        vp.height = (float)h;
-        c.scale_x = kx;
-        c.scale_y = ky;
+        float dx = (float)dst_w / tex->width, dy = (float)dst_h / tex->height;
+        vp.x = (float)ax * dx;
+        vp.y = (float)ay * dy;
+        vp.width = (float)w * dx;
+        vp.height = (float)h * dy;
+        c.scale_x = kx / dx;
+        c.scale_y = ky / dy;
         c.off_x = (float)src->left * kx - (float)ax * kx;
         c.off_y = (float)src->top * ky - (float)ay * ky;
     }
@@ -288,7 +308,7 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     /* Asked for every time: while frame interpolation draws an in-between
      * frame, the scene is a second image (xbox_D3D8InterpBegin). */
     g.back_srv = d3d8_GetSceneView();
-    rhi_set_textures(9, 1, &g.back_srv);
+    { RhiView *view = source ? source : g.back_srv; rhi_set_textures(9, 1, &view); }
     rhi_set_blend_state(g.blend, blend_factor, 0xFFFFFFFF);
     rhi_set_depth_state(g.depth, 0);
     rhi_set_raster_state(g.raster);
@@ -305,7 +325,7 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     g.copies++;
     /* A draw sampling this is re-presenting the frame, and has to cover
      * the whole of it; see d3d8_draw_escapes_squeeze. */
-    tex->screen_copy = TRUE;
+    tex->screen_copy = source == NULL;
     return S_OK;
 }
 
