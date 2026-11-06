@@ -1304,6 +1304,7 @@ IDirect3DTexture8 *hle_d3d8_render_texture(IDirect3DDevice8 *dev, uint32_t va)
 }
 
 #include "pc_surface_capture_hle.inc"
+#include "pc_surface_native_hle.inc"
 
 /* 1x1 opaque white, created once, never evicted. */
 static IDirect3DTexture8 *white_texture(IDirect3DDevice8 *dev)

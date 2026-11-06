@@ -339,6 +339,10 @@ HRESULT d3d8_CopyTextureView(IDirect3DTexture8 *dst, RhiView *source);
 /* Initialize a new feedback target from live GPU content, including capture bytes. */
 HRESULT d3d8_PreserveFeedbackTexture(IDirect3DTexture8 *dst, IDirect3DTexture8 *src);
 RhiView  *d3d8_base_srv(IDirect3DBaseTexture8 *texture);
+/* Scoped borrowed water view; cleanup executes before device destruction. */
+void d3d8_surface_field(IDirect3DBaseTexture8 *texture,RhiView *view);
+void d3d8_surface_cleanup(void (*cleanup)(void));
+void d3d8_surface_shutdown(void);
 RhiImage *d3d8_base_resource(IDirect3DBaseTexture8 *texture);
 
 /* Read the D3DFORMAT of any base texture. */

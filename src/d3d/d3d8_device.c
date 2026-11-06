@@ -728,6 +728,7 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
     LONG ref = InterlockedDecrement(&g_device_state.ref_count);
     if (ref <= 0) {
         /* Cleanup subsystems first */
+        d3d8_surface_shutdown();
         up_ring_shutdown();
 #ifdef TSFP_PC_DISPLAY
         pc_clear_shutdown();

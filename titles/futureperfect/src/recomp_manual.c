@@ -164,9 +164,11 @@ void sub_00244F30(void) { pc_native_weapon_fire_guest(sub_00244F30_gen); }
 extern void sub_001956A0_gen(void);
 extern void sub_00195280_gen(void);
 extern RECOMP_MANUAL_TLS uint32_t g_esi;
+#include "pc_surface_native_guest.h"
 #include "pc_native_surface_guest.h"
 static void pc_surface_simulation_call(void) { pc_surface_simulation_guest(sub_001956A0_gen); }
-void sub_001956A0(void) { pc_surface_dispatch_guest(pc_surface_simulation_call); }
+static void pc_surface_native_call(void) { pc_surface_native_simulation(pc_surface_simulation_call); }
+void sub_001956A0(void) { pc_surface_dispatch_guest(pc_surface_native_call); }
 extern void sub_001953B0_gen(void);
 extern void sub_001952D0_gen(void);
 extern void sub_00195110_gen(void);
@@ -176,10 +178,12 @@ void sub_001952D0(void) { pc_surface_disturbance_guest(sub_001952D0_gen); }
 #include "pc_surface_capture_guest.h"
 void sub_00195110(void) { pc_surface_capture_feedback_guest(sub_00195110_gen); }
 void sub_001950B0(void) { pc_surface_smoothing_guest(sub_001950B0_gen); }
-void sub_00195280(void) { pc_surface_final_guest(sub_00195280_gen); }
+static void pc_surface_final_call(void) { pc_surface_final_guest(sub_00195280_gen); }
+void sub_00195280(void) { pc_surface_native_final(pc_surface_final_call); }
 #include "pc_surface_precision_guest.h"
 extern void sub_00194A10_gen(void);
-void sub_00194A10(void) { pc_surface_precision_guest(sub_00194A10_gen); }
+static void pc_surface_constructor_call(void) { pc_surface_precision_guest(sub_00194A10_gen); }
+void sub_00194A10(void) { pc_surface_native_constructor(pc_surface_constructor_call); }
 
 
 /* Fractional kind-35 projectile motion, scoped to the original updater. */

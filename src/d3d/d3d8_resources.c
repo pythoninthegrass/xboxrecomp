@@ -1738,9 +1738,23 @@ static void d3d8_check_overlay(void)
         fprintf(stderr, "D3D8: internal base-texture layout mismatch\n");
 }
 
+static IDirect3DBaseTexture8 *g_surface_texture;
+static RhiView *g_surface_view;
+static void (*g_surface_cleanup)(void);
+void d3d8_surface_field(IDirect3DBaseTexture8 *texture,RhiView *view)
+{ g_surface_texture=texture;g_surface_view=view; }
+void d3d8_surface_cleanup(void (*cleanup)(void)) { g_surface_cleanup=cleanup; }
+void d3d8_surface_shutdown(void)
+{
+    d3d8_surface_field(NULL,NULL);
+    if(g_surface_cleanup)g_surface_cleanup();
+    g_surface_cleanup=NULL;
+}
+
 RhiView *d3d8_base_srv(IDirect3DBaseTexture8 *texture)
 {
     if (!texture) return NULL;
+    if(texture==g_surface_texture && g_surface_view)return g_surface_view;
     d3d8_check_overlay();
 #ifdef TSFP_TEXTURE_PACK
     if(texture->lpVtbl == (const IDirect3DBaseTexture8Vtbl *)&g_tex_vtbl)
