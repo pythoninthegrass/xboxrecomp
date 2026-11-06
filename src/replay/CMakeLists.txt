@@ -16,6 +16,13 @@ add_executable(d3d8_replay
     ${CMAKE_CURRENT_SOURCE_DIR}/../hle/d3d8_capture.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../kernel/nv2a_vsh.c
 )
+
+# Windows normally gets the shared texture mode from xbox_input. Replay
+# deliberately omits that library; native Mac's renderer already owns it.
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(d3d8_replay PRIVATE "${TSFP_PC_CONTROLS_DIR}/texture_mode.c")
+    target_include_directories(d3d8_replay PRIVATE "${TSFP_PC_CONTROLS_DIR}")
+endif()
 target_include_directories(d3d8_replay PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../hle
     ${CMAKE_CURRENT_SOURCE_DIR}/../kernel
