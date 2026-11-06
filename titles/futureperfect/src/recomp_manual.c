@@ -121,6 +121,16 @@ extern RECOMP_MANUAL_TLS uint32_t g_ecx;
 extern RECOMP_MANUAL_TLS uint32_t g_ebx, g_edi;
 extern RECOMP_MANUAL_TLS uint32_t g_esi;
 #include "pc_network_bots_guest.inc"
+extern void sub_0015BCC0_gen(void);
+void sub_0015BCC0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_character_remove(sub_0015BCC0_gen);
+#else
+    sub_0015BCC0_gen();
+#endif
+}
+
 extern void sub_000D50E0_gen(void);
 void sub_000D50E0(void)
 {
