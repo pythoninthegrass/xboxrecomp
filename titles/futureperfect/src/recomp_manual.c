@@ -228,6 +228,101 @@ void sub_00040FA0(void)
 #define FP_GUEST(va) ((uint8_t *)((uintptr_t)(uint32_t)(va) + g_xbox_mem_offset))
 #define FP_MEM32(va) (*(volatile uint32_t *)FP_GUEST(va))
 
+/* US 45410066: the Back/Tab quick status menu sets 0x100, which the
+ * original menu renderer uses to omit health/shield. Let Story draw its
+ * existing indicators, including their animations and split-screen layout.
+ * Mask the flag only during rendering: it also controls menu input and pause
+ * behavior elsewhere. Preserve 0x80 too, since the renderer normally clears
+ * that flag only on the full pause menu path. */
+extern void sub_002E5750_gen(void);
+void sub_002E5750(void)
+{
+    uint32_t player = FP_MEM32(0x007B0C7Cu);
+    uint32_t menu = 0, saved = 0;
+    if (player && ((FP_MEM32(0x007DE454u) >> 8) & 0xFFu) == 10u) {
+        uint32_t index = FP_MEM32(player + 4u);
+        if (index < 4u) {
+            uint32_t candidate = FP_MEM32(0x00761C48u + index * 4u);
+            if (candidate && (FP_MEM32(candidate) & 0x101u) == 0x101u) {
+                menu = candidate;
+                saved = FP_MEM32(menu) & 0x180u;
+                FP_MEM32(menu) &= ~0x100u;
+            }
+        }
+    }
+    sub_002E5750_gen();
+    if (menu) FP_MEM32(menu) = (FP_MEM32(menu) & ~0x180u) | saved;
+}
+
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+#include "pc_objectives.h"
+#endif
+/* Build the Story Objectives panel in the same fitted horizontal space as
+ * its gauges. These are the US builder's percentage widths, used both by
+ * container creation and text measurement. Keep the original font size and
+ * let the existing layout wrap/scroll long objectives. Restore the shared
+ * constants immediately; other menus must retain their own widths. */
+extern void sub_002F5E60_gen(void);
+void sub_002F5E60(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    uint32_t player = FP_MEM32(0x007B0C7Cu);
+    uint32_t view = player ? FP_MEM32(player + 8u) : 0;
+    /* player+8 is the camera; its HUD viewport starts at +0x224. */
+    if (view) view += 0x224u;
+    if (view && ((FP_MEM32(0x007DE454u) >> 8) & 0xFFu) == 10u) {
+        uint32_t saved[2] = {FP_MEM32(0x0047D1F4u),FP_MEM32(0x00478628u)};
+        float left = (float)(int32_t)FP_MEM32(view);
+        float top = (float)(int32_t)FP_MEM32(view + 0x14u);
+        float right = (float)(int32_t)FP_MEM32(view + 4u) + 1.f;
+        float bottom = (float)(int32_t)FP_MEM32(view + 0x18u) + 1.f;
+        float ratio = pc_objectives_scale(1.2f,left,top,right,bottom,
+                      (left+right)*.5f,(top+bottom)*.5f,
+                      FP_MEM32(0x00790950u),FP_MEM32(player + 4u))/1.2f;
+        float width;
+        memcpy(&width, &saved[0], sizeof width); width *= ratio;
+        memcpy(FP_GUEST(0x0047D1F4u), &width, sizeof width);
+        memcpy(&width, &saved[1], sizeof width); width *= ratio;
+        memcpy(FP_GUEST(0x00478628u), &width, sizeof width);
+        sub_002F5E60_gen();
+        FP_MEM32(0x0047D1F4u) = saved[0];
+        FP_MEM32(0x00478628u) = saved[1];
+        return;
+    }
+#endif
+    sub_002F5E60_gen();
+}
+
+extern void sub_0013AB60_gen(void);
+void sub_0013AB60(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    uint32_t frame = g_esp;
+    uint32_t view = FP_MEM32(0x007E71C8u), player = FP_MEM32(0x007B0C7Cu);
+    if (FP_MEM32(frame) == 0x002E58C9u && view && player &&
+        ((FP_MEM32(0x007DE454u) >> 8) & 0xFFu) == 10u) {
+        uint32_t saved = FP_MEM32(frame + 16u);
+        float scale, x, y, adjusted;
+        float left = (float)(int32_t)FP_MEM32(view);
+        float top = (float)(int32_t)FP_MEM32(view + 0x14u);
+        float right = (float)(int32_t)FP_MEM32(view + 4u) + 1.f;
+        float bottom = (float)(int32_t)FP_MEM32(view + 0x18u) + 1.f;
+        memcpy(&scale, &saved, sizeof scale);
+        memcpy(&x, FP_GUEST(frame + 8u), sizeof x);
+        memcpy(&y, FP_GUEST(frame + 12u), sizeof y);
+        x += (float)(int32_t)FP_MEM32(view + 8u) - left;
+        y += (float)(int32_t)FP_MEM32(view + 0x1Cu) - top;
+        adjusted = pc_objectives_scale(scale,left,top,right,bottom,x,y,
+                        FP_MEM32(0x00790950u),FP_MEM32(player + 4u));
+        memcpy(FP_GUEST(frame + 16u), &adjusted, sizeof adjusted);
+        sub_0013AB60_gen();
+        FP_MEM32(frame + 16u) = saved;
+        return;
+    }
+#endif
+    sub_0013AB60_gen();
+}
+
 /* US 45410066: adapt only the two cinematic matte pairs to the display.
  * The return PCs identify story and scripted in-game bars; all other solid
  * rectangles (including fades, menus and scope borders) remain untouched. */
