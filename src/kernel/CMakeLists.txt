@@ -33,6 +33,11 @@ set(KERNEL_SOURCES
 
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
+target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_objects.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_object_scope.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_object_services.c")
+
 # The complete project stack supplies this root before add_subdirectory.
 if(NOT TSFP_SHARED_SOURCE OR NOT EXISTS "${TSFP_SHARED_SOURCE}/runtime/guest_nonlocal_jump.c")
     message(FATAL_ERROR "Project continuation provider missing; use the project build entry point")

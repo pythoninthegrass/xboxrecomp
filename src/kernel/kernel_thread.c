@@ -409,12 +409,4 @@ NTSTATUS __stdcall xbox_NtResumeThread(
  * xbox_memory_layout.h.
  */
 
-/* The game's own thread, kept so a wedged boot can be inspected from the host
- * watchdog. Set when a title's game thread is spawned; NULL under the default
- * inline model, where there is no separate thread to sample. */
-static HANDLE g_game_thread = NULL;
-
-void  xbox_set_game_thread(void *h) { g_game_thread = (HANDLE)h; }
-void *xbox_thread_debug_handle(void) { return (void *)g_game_thread; }
-
 /* Worker stack ownership lives in project guest_thread_memory.c. */

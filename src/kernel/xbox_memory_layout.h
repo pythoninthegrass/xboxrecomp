@@ -579,8 +579,8 @@ uint32_t xbox_AllocThreadTib(void);
 /* Shared fixed slices used by timer, USB and host-driven callbacks. */
 int xbox_worker_stack_alloc(void);
 void xbox_worker_stack_free(int slot);
-void   xbox_set_game_thread(void *h);  /* HANDLE, recorded for the host watchdog */
-void  *xbox_thread_debug_handle(void); /* the game thread, or NULL under inline model */
+/* Release operation scopes/current-object ownership before a guest-capable host worker exits. */
+void xbox_bridge_thread_objects_exit(void);
 
 /* PsCreateSystemThreadEx behaviour. Default INLINE runs the first call as the
  * game (Halo, Crimson Skies). SPAWN makes every call a real thread so a

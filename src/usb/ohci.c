@@ -44,6 +44,7 @@ extern OHCI_TLS uint32_t g_eax, g_ecx, g_edx, g_esp;
 extern OHCI_TLS uint32_t g_ebx, g_esi, g_edi;
 extern OHCI_TLS uint32_t g_fs_base;
 extern uint32_t xbox_AllocThreadTib(void);
+extern void xbox_bridge_thread_objects_exit(void);
 
 /* The vector XPP takes for USB0. HalGetInterruptVector(1) returns 1 here, and
  * the bus interrupt level is what the XDK passes. */
@@ -708,6 +709,7 @@ static DWORD WINAPI ohci_thread(LPVOID unused)
         }
         ohci_raise(hc, status);
     }
+    xbox_bridge_thread_objects_exit();
     return 0;
 }
 

@@ -58,7 +58,7 @@ typedef void (*recomp_func_t)(void);
 recomp_func_t recomp_lookup(uint32_t xbox_va);
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
 long __stdcall xbox_NtSetEvent(void *EventHandle, long *PreviousState);   /* NTSTATUS */
-void *xbox_bridge_resolve_handle(uint32_t token);                          /* kernel_bridge.c */
+int xbox_bridge_signal_event(uint32_t token);                          /* kernel_bridge.c */
 
 enum {
     MAX_STREAMS = 16,
@@ -391,9 +391,7 @@ static void complete(Stream *s, const Packet *p, uint32_t status, uint32_t size)
          * every SetEvent failed (ERROR_INVALID_HANDLE, one kernel-log line per
          * packet in Hunter: The Reckoning) and the title only saw packets
          * complete when its own wait timed out. */
-        void *event = xbox_bridge_resolve_handle(p->context);
-        if (event)
-            xbox_NtSetEvent(event, NULL);
+        xbox_bridge_signal_event(p->context);
     }
 }
 
