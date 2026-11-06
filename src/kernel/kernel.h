@@ -506,14 +506,10 @@ void xbox_kernel_set_thunk_address(uint32_t xbox_va, uint32_t count);
  */
 void xbox_kernel_get_thunk_address(uint32_t *xbox_va, uint32_t *count);
 
-extern ULONG_PTR xbox_kernel_thunk_table[XBOX_KERNEL_THUNK_TABLE_SIZE];
-
-/* Initialize the thunk table - must be called before game code runs */
+/* Start project kernel services before entering guest code. Import resolution
+ * is owned by xbox_kernel_bridge_init, not a native function-pointer table. */
 void xbox_kernel_init(void);
 void xbox_kernel_shutdown(void);
-
-/* Resolve a kernel ordinal to a function/data pointer */
-ULONG_PTR xbox_resolve_ordinal(ULONG ordinal);
 
 /* Kernel bridge (kernel_bridge.c) - resolve kernel thunks in Xbox memory */
 void xbox_kernel_bridge_init(void);

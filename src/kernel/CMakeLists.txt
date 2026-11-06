@@ -17,7 +17,6 @@ set(KERNEL_SOURCES
     kernel_ob.c
     kernel_io.c
     kernel_crypto.c
-    kernel_thunks.c
     kernel_bridge.c
     xbox_memory_layout.c
     xbox_watchpoint.c
@@ -34,6 +33,7 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_kernel_boot.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_objects.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_object_scope.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_object_services.c")
