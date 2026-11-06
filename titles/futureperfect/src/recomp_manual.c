@@ -219,6 +219,61 @@ void sub_00040FA0(void)
 #define FP_GUEST(va) ((uint8_t *)((uintptr_t)(uint32_t)(va) + g_xbox_mem_offset))
 #define FP_MEM32(va) (*(volatile uint32_t *)FP_GUEST(va))
 
+/* US 45410066: adapt only the two cinematic matte pairs to the display.
+ * The return PCs identify story and scripted in-game bars; all other solid
+ * rectangles (including fades, menus and scope borders) remain untouched. */
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+#include "pc_display.h"
+#include "pc_cutscene.h"
+#endif
+extern void sub_0001EFB0_gen(void);
+void sub_0001EFB0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    uint32_t frame = g_esp, caller = FP_MEM32(frame);
+    int top = caller == 0x0006F322u || caller == 0x0013972Eu;
+    int story = caller == 0x0006F322u || caller == 0x0006F34Bu;
+    if (story || caller == 0x0013970Eu || caller == 0x0013972Eu) {
+        PcDisplayMode mode = pc_display_current();
+        int y1 = (int32_t)FP_MEM32(frame + 8u);
+        int y2 = (int32_t)FP_MEM32(frame + 16u);
+        int height, full, adjusted, side, view_top;
+        int x1 = (int32_t)FP_MEM32(frame + 4u);
+        int x2 = (int32_t)FP_MEM32(frame + 12u);
+        if (story) {
+            height = (int32_t)FP_MEM32(0x004E8CF4u);
+            view_top = 0;
+            full = (int)(height * .145f);
+        } else {
+            uint32_t viewport = FP_MEM32(0x007E71C8u);
+            height = (int32_t)FP_MEM32(viewport + 0x18u) -
+                     (int32_t)FP_MEM32(viewport + 0x14u) + 1;
+            view_top = (int32_t)FP_MEM32(viewport + 0x14u);
+            full = 71; /* Original maximum: trunc(70 * animation) + 1. */
+        }
+        adjusted = pc_cutscene_bar_height(mode.width, mode.height, height, full, y2-y1);
+        side = pc_cutscene_bar_width(mode.width,mode.height,x2-x1,height,full,y2-y1);
+        if (!side && adjusted == y2-y1) { sub_0001EFB0_gen(); return; }
+        if (side) {
+            FP_MEM32(frame + 4u) = (uint32_t)(top ? x1 : x2-side);
+            FP_MEM32(frame + 12u) = (uint32_t)(top ? x1+side : x2);
+            FP_MEM32(frame + 8u) = (uint32_t)view_top;
+            FP_MEM32(frame + 16u) = (uint32_t)(view_top+height);
+        }
+        else if (top) FP_MEM32(frame + 16u) = (uint32_t)(y1 + adjusted);
+        else FP_MEM32(frame + 8u) = (uint32_t)(y2 - adjusted);
+        if (adjusted > 0 || side > 0) sub_0001EFB0_gen();
+        else g_esp += 4u; /* cdecl: caller retains the five arguments. */
+        FP_MEM32(frame + 4u) = (uint32_t)x1;
+        FP_MEM32(frame + 12u) = (uint32_t)x2;
+        FP_MEM32(frame + 8u) = (uint32_t)y1;
+        FP_MEM32(frame + 16u) = (uint32_t)y2;
+        return;
+    }
+#endif
+    sub_0001EFB0_gen();
+}
+
 void sub_000245C0(void)
 {
     uint32_t dst = FP_MEM32(g_esp + 4u);
