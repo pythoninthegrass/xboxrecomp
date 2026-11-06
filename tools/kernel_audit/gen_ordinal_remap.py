@@ -34,13 +34,9 @@ PARSER_PY = os.path.join(ROOT, "tools", "xbe_parser", "xbe_parser.py")
 
 def canonical_name_to_ordinal():
     """The kernel's own ordinal ABI, name -> ordinal (from KERNEL_EXPORTS)."""
-    src = open(PARSER_PY, encoding="utf-8", errors="replace").read()
-    m = re.search(r"KERNEL_EXPORTS\s*[:=][^{]*\{(.*?)\n\}", src, re.S)
-    assert m, "could not locate KERNEL_EXPORTS in tools/xbe_parser"
-    out = {}
-    for o, n in re.findall(r"(\d+)\s*:\s*[\"']([A-Za-z_][A-Za-z0-9_]*)", m.group(1)):
-        out.setdefault(n, int(o))   # first wins; ordinals are unique anyway
-    return out
+    sys.path.insert(0, ROOT)
+    from tools.xbe_parser.xbe_parser import kernel_names
+    return {name: ordinal for ordinal, name in kernel_names().items()}
 
 
 def build_remap(analysis_path):

@@ -27,9 +27,9 @@ DOCS = os.path.join(ROOT, 'docs/formats/kernel-exports.md')
 
 
 def canonical():
-    src = open(PARSER, encoding='utf-8').read()
-    return {int(o): n for o, n in
-            re.findall(r'^\s*(\d+)\s*:\s*"(\w+)"\s*,', src, re.M)}
+    sys.path.insert(0, ROOT)
+    from tools.xbe_parser.xbe_parser import kernel_names
+    return kernel_names()
 
 
 def thunk_cases():
