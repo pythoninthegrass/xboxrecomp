@@ -619,6 +619,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     {
         extern void xbox_path_init(const char *game_dir, const char *save_dir);
         xbox_path_init(g_game_dir, NULL);
+#ifdef TSFP_PC_CONTROLS
+        extern int xbox_save_root_utf8(char *, unsigned);
+        extern void pc_storage_set_path(const char *);
+        extern int pc_storage_resolve_root(const char *,char *,size_t);
+        char save_root[4096],selected[4096];
+        if(xbox_save_root_utf8(save_root,sizeof save_root)) {
+            int result=pc_storage_resolve_root(save_root,selected,sizeof selected);
+            if(result<0) {
+                MessageBoxA(NULL,"Selected save drive unavailable. Reconnect it or remove save-location.txt beside the controls file.","Save storage",MB_OK|MB_ICONERROR);
+                return 1;
+            }
+            if(result>0){xbox_path_init(g_game_dir,selected);xbox_save_root_utf8(save_root,sizeof save_root);}
+            pc_storage_set_path(save_root);
+        }
+#endif
     }
 
     /* Step 5: Initialize kernel bridge (thunk table in Xbox memory) */

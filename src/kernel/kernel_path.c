@@ -745,3 +745,18 @@ translate:
 }
 
 #endif /* _WIN32 */
+
+/* Read-only host metadata for the save-device UI. Never exposes console paths
+ * or changes the guest's synthetic disk capacity. Call after path init. */
+int xbox_save_root_utf8(char *out, unsigned capacity)
+{
+    if(!out || !capacity || !s_initialized)return 0;
+#ifdef _WIN32
+    return WideCharToMultiByte(CP_UTF8,0,s_save_dir,-1,out,(int)capacity,NULL,NULL)>0;
+#else
+    size_t length=strlen(s_save_dir);
+    if(length>=capacity)return 0;
+    memcpy(out,s_save_dir,length+1);
+    return 1;
+#endif
+}
