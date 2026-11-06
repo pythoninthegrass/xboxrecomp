@@ -878,6 +878,17 @@ void sub_00077140(void)
 #endif
 }
 
+/* Gameplay white wash follows the output rather than proportional HUD bounds. */
+extern void sub_000F90D0_gen(void);
+void sub_000F90D0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_flash_overlay(sub_000F90D0_gen);
+#else
+    sub_000F90D0_gen();
+#endif
+}
+
 /* Keep the title reveal's outer black panels outside a widened camera. */
 extern void sub_002BD810_gen(void);
 void sub_002BD810(void)
