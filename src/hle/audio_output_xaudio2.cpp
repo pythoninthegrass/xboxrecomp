@@ -96,6 +96,7 @@ struct ComApartment {
 };
 unsigned long long submitted_buffers, submitted_bytes, nonzero_buffers;
 unsigned long long dropped_buffers;
+RecompAudioEngineStats health; /* protected by output_lock; survives recovery */
 /* What creating and destroying source voices costs the calling thread. */
 unsigned long long voices_created, voices_destroyed;
 double create_ms_total, create_ms_max, destroy_ms_total, destroy_ms_max;
@@ -140,6 +141,7 @@ void releaseOutput()
 
 void disableOutput(const char *operation, HRESULT error)
 {
+    ++health.device_failed;
     std::fprintf(stderr,
         "[audio-output] retrying operation=%s error=0x%08lx\n",
         operation, static_cast<unsigned long>(error));
@@ -163,6 +165,7 @@ void failVoice(uint32_t slot, const char *operation, HRESULT error)
         disableOutput(operation, error);
         return;
     }
+    ++health.voice_failed;
     discontinuity[slot] = true;
     destroyVoice(voices[slot]);
     voices[slot].retry_ms = nowMs() + RECOMP_AUDIO_RETRY_MS;
@@ -171,6 +174,9 @@ void failVoice(uint32_t slot, const char *operation, HRESULT error)
 void dropBuffer(uint32_t slot, const char *reason)
 {
     ++dropped_buffers;
+    if (!std::strcmp(reason, "queue-full")) ++health.queue_full;
+    else if (!std::strcmp(reason, "invalid-pcm") || !std::strcmp(reason, "partial-frame")) ++health.invalid_pcm;
+    else if (!std::strcmp(reason, "allocation")) ++health.allocation_failed;
     if (dropped_buffers <= 4 ||
         (dropped_buffers & (dropped_buffers - 1)) == 0) {
         std::fprintf(stderr,
@@ -204,6 +210,7 @@ extern "C" void recomp_audio_output_initialize(void)
         std::fprintf(stderr, "[audio-output] muted RECOMP_AUDIO_GAIN=0\n");
         return;
     }
+    ++health.open_attempts;
     static thread_local ComApartment apartment;
     HRESULT error = apartment.initialize();
     if (FAILED(error) && error != RPC_E_CHANGED_MODE) {
@@ -242,6 +249,7 @@ extern "C" void recomp_audio_output_initialize(void)
         disableOutput("MasterSetVolume", error);
         return;
     }
+    ++health.opens;
     std::fprintf(stderr,
         "[audio-output] initialized backend=xaudio2_9 master_gain=%.6f\n", gain);
 }
@@ -331,7 +339,7 @@ extern "C" int recomp_audio_output_engine_stats(RecompAudioEngineStats *stats)
     std::lock_guard<std::recursive_mutex> guard(output_lock);
     checkCriticalError();
     if (!stats) return 0;
-    *stats = {};
+    *stats = health;
     stats->voices_created = voices_created;
     stats->voices_destroyed = voices_destroyed;
     stats->create_ms_total = create_ms_total;
@@ -359,6 +367,7 @@ extern "C" int recomp_audio_output_submit(
     std::lock_guard<std::recursive_mutex> guard(output_lock);
     recomp_audio_output_initialize();
     if (!engine || bytes == 0) {
+        if (bytes) ++health.unavailable;
         if (slot < kVoiceCount && bytes) discontinuity[slot] = true;
         return 0;
     }
@@ -382,7 +391,7 @@ extern "C" int recomp_audio_output_submit(
         destroyVoice(voice);
     }
     if (!voice.source) {
-        if (nowMs() < voice.retry_ms) return 0;
+        if (nowMs() < voice.retry_ms) { ++health.retry_wait; return 0; }
         WAVEFORMATEX format{};
         format.wFormatTag = WAVE_FORMAT_PCM;
         format.nChannels = static_cast<WORD>(channels);

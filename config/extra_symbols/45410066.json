@@ -103,6 +103,15 @@
       "call": "stdcall",
       "stack_bytes": 16,
       "_note": "0x0044525D. Four arguments, matching Black's."
+    },
+    {
+      "library": "DSOUND",
+      "kind": "function",
+      "address": 4222960,
+      "name": "CDirectSoundBuffer_Release",
+      "call": "stdcall",
+      "stack_bytes": 4,
+      "_note": "Supported US XBE: constructor 00408028 installs vtable 004A1CE0; slot +8 is 00406FF0. IDirectSoundBuffer_Release 00406AA0 subtracts 1C and calls that slot. Method calls 0040688A, which decrements object+4, invokes destructor on zero, and returns the remaining count; ret 4. Descriptive method name recovered from this call chain."
     }
   ]
 }

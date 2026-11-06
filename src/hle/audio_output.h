@@ -80,6 +80,11 @@ typedef struct RecompAudioEngineStats {
     uint32_t latency_samples, sample_rate, glitches;
     uint32_t active_voices, total_voices;
     uint64_t voices_created, voices_destroyed;
+    /* Lifetime counters, even when no device is available. Refused submissions
+       are retryable, not necessarily lost sound. Device/voice failures count
+       operations; unavailable/retry_wait count refused submission attempts. */
+    uint64_t queue_full, invalid_pcm, unavailable, retry_wait, allocation_failed;
+    uint64_t voice_failed, device_failed, open_attempts, opens;
     double   create_ms_total, create_ms_max, destroy_ms_total, destroy_ms_max;
 } RecompAudioEngineStats;
 int recomp_audio_output_engine_stats(RecompAudioEngineStats *stats);
