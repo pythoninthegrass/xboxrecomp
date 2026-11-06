@@ -48,6 +48,16 @@ def _merge_flag_states(states):
             if (_operand_width(ops[0]) or _operand_width(ops[1])) != width:
                 return None
         return first
+    # SSE compares already save their runtime operands in _fca/_fcb. Just
+    # as for CMP/TEST above, different source registers at a join do not
+    # make that snapshot ambiguous. All four forms set the same CF/ZF/PF
+    # conditions; float values are exactly representable in the double
+    # snapshots. Reject mixed integer/x87/unknown states as before.
+    # Future Perfect's pickup tick joins COMISS xmm3,xmm0 and xmm0,xmm1
+    # at 0x000C17D9. Losing this state made its radius rejection constant 0.
+    sse_compares = {"comiss", "ucomiss", "comisd", "ucomisd"}
+    if all(kind in sse_compares and len(ops) == 2 for kind, ops in states):
+        return first
     return _merge_zero_flag(states)
 
 
