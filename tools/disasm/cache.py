@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from . import config
+from .loader import source_fingerprint
 
 
 class AnalysisCache:
@@ -79,6 +80,7 @@ class AnalysisCache:
         for src in sorted(Path(__file__).parent.glob("*.py")):
             h.update(src.name.encode())
             h.update(src.read_bytes())
+        h.update(source_fingerprint().encode('ascii'))
         return h.hexdigest()
 
     def is_valid(self, xbe_path: str, analysis_json_path: str,

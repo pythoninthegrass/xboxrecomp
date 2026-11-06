@@ -14,62 +14,8 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CsInsn
 from capstone import CS_OP_IMM, CS_OP_MEM, CS_OP_REG
 
 from . import config
-from .loader import BinaryImage, SectionInfo
-
-
-@dataclass
-class Instruction:
-    """A decoded instruction with metadata."""
-    address: int
-    size: int
-    mnemonic: str
-    op_str: str
-    bytes_hex: str
-
-    # Classification
-    is_call: bool = False
-    is_ret: bool = False
-    is_jump: bool = False
-    is_cond_jump: bool = False
-    is_nop: bool = False
-
-    # Resolved targets
-    call_target: Optional[int] = None     # For direct calls
-    jump_target: Optional[int] = None     # For direct jumps
-    memory_ref: Optional[int] = None      # For [addr] references
-    jump_table: Optional[int] = None      # For `jmp [reg*4 + table]`
-    call_table: Optional[int] = None      # For `call [reg*4 + table]`
-    imm_ref: Optional[int] = None         # For `push offset x` / `mov reg, offset x`
-
-    @property
-    def is_branch(self) -> bool:
-        return self.is_jump or self.is_cond_jump
-
-    @property
-    def is_terminator(self) -> bool:
-        return self.is_ret or self.is_jump  # Unconditional terminator
-
-    @property
-    def end_address(self) -> int:
-        return self.address + self.size
-
-    def to_dict(self) -> dict:
-        d = {
-            "address": f"0x{self.address:08X}",
-            "size": self.size,
-            "mnemonic": self.mnemonic,
-            "op_str": self.op_str,
-            "bytes": self.bytes_hex,
-        }
-        if self.call_target is not None:
-            d["call_target"] = f"0x{self.call_target:08X}"
-        if self.jump_target is not None:
-            d["jump_target"] = f"0x{self.jump_target:08X}"
-        if self.memory_ref is not None:
-            d["memory_ref"] = f"0x{self.memory_ref:08X}"
-        if self.imm_ref is not None:
-            d["imm_ref"] = f"0x{self.imm_ref:08X}"
-        return d
+from .loader import (BinaryImage, SectionInfo, Instruction, classify_instruction,
+                     make_decoder, read_code_window)
 
 
 class DisasmEngine:
@@ -82,8 +28,7 @@ class DisasmEngine:
 
     def __init__(self, image: BinaryImage):
         self.image = image
-        self._cs = Cs(CS_ARCH_X86, CS_MODE_32)
-        self._cs.detail = True
+        self._cs = make_decoder()
 
         # Instruction cache: address -> Instruction
         self.instructions: Dict[int, Instruction] = {}
@@ -109,94 +54,11 @@ class DisasmEngine:
         self._jt_done: Set[int] = set()
 
     def _classify_instruction(self, cs_insn: CsInsn) -> Instruction:
-        """Convert a Capstone instruction to our Instruction type."""
-        mnemonic = cs_insn.mnemonic
-        insn = Instruction(
-            address=cs_insn.address,
-            size=cs_insn.size,
-            mnemonic=mnemonic,
-            op_str=cs_insn.op_str,
-            bytes_hex=cs_insn.bytes.hex(),
-        )
-
-        # Classify by mnemonic
-        insn.is_call = mnemonic in config.CALL_MNEMONICS
-        insn.is_ret = mnemonic in config.RET_MNEMONICS
-        insn.is_jump = mnemonic in config.JMP_MNEMONICS
-        insn.is_cond_jump = mnemonic in config.COND_JMP_MNEMONICS
-        insn.is_nop = mnemonic in config.NOP_MNEMONICS
-
-        # Resolve operand targets using Capstone detail
-        try:
-            operands = cs_insn.operands
-        except Exception:
-            operands = []
-
-        if operands:
-            op = operands[0]
-
-            if insn.is_call:
-                if op.type == CS_OP_IMM:
-                    insn.call_target = op.imm & 0xFFFFFFFF
-                elif op.type == CS_OP_MEM and op.mem.base == 0 and op.mem.index == 0:
-                    insn.memory_ref = op.mem.disp & 0xFFFFFFFF
-                elif (op.type == CS_OP_MEM and op.mem.base == 0
-                      and op.mem.index != 0 and op.mem.scale == 4):
-                    # `call dword ptr [reg*4 + disp]` -- a dispatch through a
-                    # table of function pointers. disp is where index 0 would
-                    # be, which need not be where the entries start: D3D8's
-                    # SetRenderState calls [state*4 + disp] only for states
-                    # >= 0x88, so its first real entry is 0x220 bytes in and
-                    # disp itself lands in the middle of another function.
-                    # See FunctionDetector._pass_data_ptr_targets.
-                    disp = op.mem.disp & 0xFFFFFFFF
-                    if self.image.base_address <= disp < (
-                            self.image.base_address + self.image.image_size):
-                        insn.call_table = disp
-                        self.call_tables.add(disp)
-
-            elif insn.is_jump or insn.is_cond_jump:
-                if op.type == CS_OP_IMM:
-                    insn.jump_target = op.imm & 0xFFFFFFFF
-                elif op.type == CS_OP_MEM and op.mem.base == 0 and op.mem.index == 0:
-                    insn.memory_ref = op.mem.disp & 0xFFFFFFFF
-                elif op.type == CS_OP_MEM and op.mem.index != 0:
-                    # `jmp dword ptr [reg*4 + disp]` -- a switch dispatch. disp
-                    # is the address of a table of code pointers, and MSVC
-                    # parks that table inside the function body, right after
-                    # this instruction. See resync_jump_tables().
-                    disp = op.mem.disp & 0xFFFFFFFF
-                    if self.image.base_address <= disp < (
-                            self.image.base_address + self.image.image_size):
-                        insn.jump_table = disp
-                        self._jt_candidates.add(disp)
-
-            # Check for memory references in non-branch instructions
-            if not (insn.is_call or insn.is_branch) and insn.memory_ref is None:
-                for operand in operands:
-                    if (operand.type == CS_OP_MEM and
-                            operand.mem.base == 0 and operand.mem.index == 0):
-                        addr = operand.mem.disp & 0xFFFFFFFF
-                        if self.image.base_address <= addr < (
-                                self.image.base_address + self.image.image_size):
-                            insn.memory_ref = addr
-                            break
-
-            # Immediate operands that are addresses, e.g. `push offset str` or
-            # `mov reg, offset table`. These are how string literals and static
-            # data are almost always referenced, and they are NOT memory
-            # operands, so the memory_ref scan above never sees them. On calls
-            # and branches the immediate is the target, handled above.
-            if not (insn.is_call or insn.is_branch):
-                for operand in operands:
-                    if operand.type != CS_OP_IMM:
-                        continue
-                    addr = operand.imm & 0xFFFFFFFF
-                    if self.image.base_address <= addr < (
-                            self.image.base_address + self.image.image_size):
-                        insn.imm_ref = addr
-                        break
-
+        insn = classify_instruction(cs_insn, self.image.base_address, self.image.image_size)
+        if insn.call_table is not None:
+            self.call_tables.add(insn.call_table)
+        if insn.jump_table is not None:
+            self._jt_candidates.add(insn.jump_table)
         return insn
 
     def linear_sweep(self, section: SectionInfo,
@@ -559,7 +421,7 @@ class DisasmEngine:
         section = self.image.get_section_at_va(addr)
         if section is None or not section.executable:
             return None
-        data = self.image.read_bytes_at_va(addr, max_insns * 8)
+        data = read_code_window(self.image, addr, max_insns * 8)
         if not data:
             return None
 
@@ -618,7 +480,7 @@ class DisasmEngine:
         section = self.image.get_section_at_va(addr)
         if section is None or not section.executable:
             return []
-        data = self.image.read_bytes_at_va(addr, max_insns * 8)
+        data = read_code_window(self.image, addr, max_insns * 8)
         if not data:
             return []
 
@@ -656,7 +518,7 @@ class DisasmEngine:
         section = self.image.get_section_at_va(addr)
         if section is None or not section.executable:
             return None
-        data = self.image.read_bytes_at_va(addr, max_insns * 8)
+        data = read_code_window(self.image, addr, max_insns * 8)
         if not data:
             return None
 
@@ -724,7 +586,7 @@ class DisasmEngine:
         # exactly that dispatch was otherwise refused, and the switch tables
         # it owns were translated nowhere.
         while resume is not None and count < max_insns:
-            data = self.image.read_bytes_at_va(resume, (max_insns - count) * 8)
+            data = read_code_window(self.image, resume, (max_insns - count) * 8)
             if not data:
                 return False
             limit = resume + len(data)
@@ -800,7 +662,7 @@ class DisasmEngine:
         section = self.image.get_section_at_va(addr)
         if section is None or not section.executable:
             return False
-        data = self.image.read_bytes_at_va(addr, 16)
+        data = read_code_window(self.image, addr, 16)
         if not data:
             return False
 
