@@ -4784,8 +4784,9 @@ static void bridge_IoSetIoCompletion(void)
 
 static void bridge_IoStartNextPacket(void)
 {
-    xbox_IoStartNextPacket(XBOX_TO_NATIVE(STACK_ARG(0)),
-        (BOOLEAN)STACK_ARG(1));
+    /* Xbox ordinal81 takes only DeviceObject. The transitional host stub
+     * retains a desktop-style second parameter; never read it from the guest. */
+    xbox_IoStartNextPacket(XBOX_TO_NATIVE(STACK_ARG(0)), (BOOLEAN)0);
     g_eax = 0;
 }
 
@@ -8166,7 +8167,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     case  73: return 12;  /* IoInitializeIrp (3) */
     case  74: return  8;  /* IoInvalidDeviceRequest (2) */
     case  79: return 20;  /* IoSetIoCompletion (5) */
-    case  81: return  8;  /* IoStartNextPacket (2) */
+    case  81: return  4;  /* IoStartNextPacket (1) */
     case  82: return 12;  /* IoStartNextPacketByKey (3) */
     case  83: return 16;  /* IoStartPacket (4) */
     case  84: return 32;  /* IoSynchronousDeviceIoControlRequest (8) */
