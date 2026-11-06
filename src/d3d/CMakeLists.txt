@@ -83,6 +83,7 @@ if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
     else()
         target_sources(xbox_d3d8 PRIVATE
             "${TSFP_NATIVE_DIR}/renderer_rhi_sdl.c" "${TSFP_NATIVE_DIR}/renderer_host_sdl.c"
+            "${TSFP_NATIVE_DIR}/../texture_mode.c"
             "${TSFP_NATIVE_DIR}/../texture_pack.c")
         target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}" "${TSFP_NATIVE_DIR}/..")
         target_compile_definitions(xbox_d3d8 PUBLIC TSFP_RHI_RENDERER TSFP_PC_DISPLAY TSFP_TEXTURE_PACK)
