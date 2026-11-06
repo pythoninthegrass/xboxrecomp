@@ -10,7 +10,7 @@ All 371 ordinals are routed: every export now has either a per-ordinal `bridge_*
 |------|-----|---------|
 | `kernel.h` | 829 | Master public header — all types, constants, and function prototypes |
 | `xbox_memory_layout.h` | 204 | Memory layout constants and API |
-| `xbox_memory_layout.c` | 534 | Memory mapping (CreateFileMapping + 28 mirror views) |
+| `xbox_memory_layout.c` | 534 | Project guest mapping integration |
 | `kernel_bridge.c` | 8,390 | Core dispatcher — thunk table, ICALL resolution, all 371 per-ordinal bridges, kernel data exports |
 | `kernel_file.c` | 834 | File I/O — NtCreateFile, NtReadFile, path translation |
 | `kernel_thread.c` | 344 | Threading — PsCreateSystemThreadEx, thread priorities |
@@ -26,83 +26,40 @@ All 371 ordinals are routed: every export now has either a per-ordinal `bridge_*
 | `kernel_pool.c` | 49 | Pool memory allocator |
 | `kernel_xbox.c` | 121 | Misc Xbox APIs (XeLoadSection, etc.) |
 
-## Memory Layout
+## Memory layout integration
 
-The Xbox has 64 MB of unified RAM. We reproduce the exact address layout using `CreateFileMapping` + `MapViewOfFileEx`:
+The runtime delegates construction to project `guest_map_layout`, shared backing
+ownership to `shared_views`, and native arena/MMIO placement to `owned_arena` and
+`guest_arena_service`. These providers live in the project's `src/runtime/`,
+with OS adapters in `src/native/`. Windows uses real host sections; native Mac
+uses a reserved arena and shared backing views. Generic POSIX emulation of the
+Windows file-mapping API is no longer part of this runtime.
 
-```
-Xbox VA Range          Purpose                  Size
-─────────────────────────────────────────────────────
-0x00010000-0x00010BCC  XBE header               ~3 KB
-0x00011000-0x002BBFFF  .text (code)             2.73 MB
-0x0036B7C0-0x003B2363  .rdata (constants)       283 KB
-0x003B2360-0x0076FFFF  .data (globals + BSS)    3.8 MB
-0x00700000-0x0073FFFF  RW data copy             256 KB
-0x00740000-0x0077FFFF  Kernel data exports      256 KB
-0x00760000-0x0076FFFF  TLS area                 64 KB
-0x00780000-0x00F7FFFF  Stack (8 MB, grows down) 8 MB
-0x00F80000-0x03FFFFFF  Heap (bump allocator)    ~49 MB
-```
+The supported title uses 64 MiB RAM by default. Optional map-size configuration
+does not redefine reported RAM. Up to 28 RAM mirrors alias the main RAM backing;
+physical storage has a separate backing with tiled/high aliases when available.
+The tiled extent reports only the mapped portion. Image sections are validated
+from the supported XBE before loading; callers do not hard-code section layouts
+or change headers to admit another title. Broader title compatibility is not
+established by these interfaces.
 
-### Why CreateFileMapping?
+Initialization publishes the layout before workers can use it. Unpublished
+failure cleanup withdraws public pointers and retains any ownership whose
+release failed. Published maps remain through process exit until whole-runtime
+worker quiescence can be established. Bounded ack-worker waits do not establish
+that broader condition. Guest allocation and thread-storage providers retain
+their separate ownership and ABI contracts.
 
-The Xbox has **mirror regions** — the same physical memory appears at multiple virtual addresses (26-bit address bus wrapping). `CreateFileMapping` gives us true aliases where writes through one address are instantly visible at all mirrors. `VirtualAlloc` would give separate copies.
+Use `xbox_GetMemoryBase` / `xbox_GetMemoryOffset` for host translation,
+`xbox_GetMappedSize` for the primary map, and `xbox_TiledApertureSize` for the
+actual tiled extent. Guest heap/free, reservations, Mm/Nt calls and thread
+construction route to project services. An arbitrary host pointer or an address
+in a different alias is not an allocation ownership token.
 
-We create 28 mirror views covering 1.75 GB of address space:
-
-```c
-// The core mapping
-HANDLE h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 64*1024*1024, NULL);
-
-// Primary view at Xbox base (0x10000000 on host)
-MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, XBOX_TOTAL_RAM, target_base);
-
-// Mirror views every 64 MB
-for (int i = 1; i < 28; i++)
-    MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, XBOX_TOTAL_RAM, target_base + i * 64MB);
-```
-
-### Global State
-
-```c
-// Defined in xbox_memory_layout.c, used everywhere
-extern ptrdiff_t g_xbox_mem_offset;  // Add to Xbox VA → get native pointer
-
-// Simulated x86 registers (the register model)
-extern uint32_t g_eax, g_ecx, g_edx, g_esp;  // Volatile
-extern uint32_t g_ebx, g_esi, g_edi;          // Callee-saved
-extern uint32_t g_seh_ebp;                     // SEH frame pointer
-```
-
-### API
-
-```c
-// Initialize — call FIRST before anything else
-BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size);
-void xbox_MemoryLayoutShutdown(void);
-
-// Query
-void     *xbox_GetMemoryBase(void);    // Native pointer to Xbox VA 0
-ptrdiff_t xbox_GetMemoryOffset(void);  // g_xbox_mem_offset value
-BOOL      xbox_IsXboxAddress(uintptr_t address);
-
-// Heap (bump allocator, no free)
-uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
-void     xbox_HeapFree(uint32_t xbox_va);  // No-op currently
-```
-
-### Customizing for Your Game
-
-Edit `xbox_memory_layout.h` to match your XBE's section layout:
-
-```c
-#define XBOX_TEXT_VA       0x00011000   // From XBE section headers
-#define XBOX_TEXT_SIZE     2863616      // .text section size
-#define XBOX_RDATA_VA      0x0036B7C0   // .rdata section
-// ... etc
-```
-
-The `xbe_parser` tool outputs these values for any XBE.
+The maintained project guide is `docs/agent-context/guest-host-mappings.md`.
+Measured build/game results belong in `docs/project/STATUS.md`; Windows gameplay
+does not establish native Mac title support. The original toolkit snapshot is
+still part of preparation until the broader independence work is complete.
 
 ## Kernel Thunk Table
 

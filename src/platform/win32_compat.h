@@ -471,7 +471,7 @@ ULONG RemoveVectoredExceptionHandler(PVOID Handle);
 #define EXCEPTION_FLT_INEXACT_RESULT     0xC000008Fu
 #define EXCEPTION_FLT_DENORMAL_OPERAND   0xC000008Du
 
-/* ---- Memory query ----------------------------------------------------- */
+/* Native memory record ABI used by project Nt adapters. */
 typedef struct _MEMORY_BASIC_INFORMATION {
     PVOID  BaseAddress;
     PVOID  AllocationBase;
@@ -481,37 +481,6 @@ typedef struct _MEMORY_BASIC_INFORMATION {
     DWORD  Protect;
     DWORD  Type;
 } MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
-SIZE_T VirtualQuery(LPCVOID address, PMEMORY_BASIC_INFORMATION buffer, SIZE_T length);
-
-typedef struct _MEMORYSTATUSEX {
-    DWORD     dwLength;
-    DWORD     dwMemoryLoad;
-    ULONGLONG ullTotalPhys;
-    ULONGLONG ullAvailPhys;
-    ULONGLONG ullTotalPageFile;
-    ULONGLONG ullAvailPageFile;
-    ULONGLONG ullTotalVirtual;
-    ULONGLONG ullAvailVirtual;
-    ULONGLONG ullAvailExtendedVirtual;
-} MEMORYSTATUSEX, *LPMEMORYSTATUSEX;
-BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX buffer);
-
-/* ---- File mapping (memfd-backed; gives true aliased mirror views) ----- */
-#define FILE_MAP_COPY        0x00000001u
-#define FILE_MAP_WRITE       0x00000002u
-#define FILE_MAP_READ        0x00000004u
-#define FILE_MAP_ALL_ACCESS  0x000F001Fu
-HANDLE CreateFileMappingA(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
-                          DWORD maxSizeHigh, DWORD maxSizeLow, LPCSTR name);
-HANDLE CreateFileMappingW(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
-                          DWORD maxSizeHigh, DWORD maxSizeLow, LPCWSTR name);
-LPVOID MapViewOfFile(HANDLE mapping, DWORD access,
-                     DWORD offHigh, DWORD offLow, SIZE_T count);
-LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access,
-                       DWORD offHigh, DWORD offLow, SIZE_T count, LPVOID baseAddr);
-BOOL   UnmapViewOfFile(LPCVOID baseAddr);
-#define CreateFileMapping CreateFileMappingA
-
 #ifdef __APPLE__
 /* Own one address-space reservation; fixed maps may replace only unused pages
  * within it. This never overwrites unrelated host allocations. */

@@ -1,22 +1,11 @@
-/**
- * Xbox Memory Layout Compatibility
- *
- * The Xbox has 64MB of unified memory shared between CPU and GPU.
- * Memory is identity-mapped (physical == virtual for most of it).
- * Game code and data are linked to specific address ranges which vary
- * per game. Section addresses are parsed dynamically from the XBE header
- * at runtime, so this module works with ANY Xbox game.
- *
- * On Windows, we:
- * 1. Create a 64MB file mapping (CreateFileMapping)
- * 2. Map the base view + 28 mirror views at 64MB intervals
- * 3. Parse the XBE section table and copy sections to their Xbox VAs
- * 4. Set up simulated stack, heap, TIB, and kernel data area
- *
- * The mirror views ensure Xbox RAM wrapping works correctly: the Xbox
- * memory controller uses a 26-bit address bus, so ALL addresses wrap
- * modulo 64MB. File mapping views backed by the same section give us
- * true aliases where writes at one address are visible at all mirrors.
+/* Guest memory integration for the supported title.
+ * Project providers own layout construction, image validation/loading, guest
+ * allocation and thread storage. This header retains the runtime-facing ABI.
+ * Guest addresses are offsets from g_xbox_mem_offset; RAM mirrors alias their
+ * backing, while physical storage and its tiled aliases use a separate store.
+ * Published storage survives until process exit: shutdown is not proof that
+ * every device/guest worker has stopped. See the project guest-host-mappings
+ * guide for ownership, rollback and platform validation contracts.
  */
 
 #ifndef XBOX_MEMORY_LAYOUT_H

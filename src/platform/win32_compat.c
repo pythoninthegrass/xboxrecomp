@@ -10,7 +10,7 @@
 
 #if !defined(_WIN32)
 
-/* Enable memfd_create, MAP_FIXED_NOREPLACE, timegm. Must precede all #includes. */
+/* Enable MAP_FIXED_NOREPLACE and timegm before system headers. */
 #define _GNU_SOURCE
 
 #include "win32_compat.h"
@@ -27,12 +27,9 @@
 #include <sched.h>
 #include <fenv.h>
 #include <sys/mman.h>
-#if defined(__APPLE__)
-#include <sys/sysctl.h>
 #include <sys/stat.h>
+#if defined(__APPLE__)
 #include <mach/mach.h>
-#else
-#include <sys/sysinfo.h>
 #endif
 
 /* ===================================================================== */
@@ -248,7 +245,7 @@ VOID WakeAllConditionVariable(PCONDITION_VARIABLE cv)
 /* ===================================================================== */
 
 typedef enum { K_EVENT, K_SEM, K_MUTEX, K_THREAD, K_TIMER, K_HEAP,
-               K_FILEMAP, K_FILE, K_WAITABLE_TIMER } w32_kind;
+               K_FILE, K_WAITABLE_TIMER } w32_kind;
 
 #define W32_MAX_APC 16
 
@@ -297,9 +294,8 @@ typedef struct w32_object {
     uint64_t        deadline_ns;
     uint64_t        period_ns;
 
-    /* file mapping / fd-backed file handle */
+    /* fd-backed file handle */
     int             fd;
-    SIZE_T          map_size;
     char           *file_path;
 } w32_object;
 
@@ -341,8 +337,6 @@ static void obj_release(w32_object *o)
     if (o->kind == K_FILE) {
         if (o->fd >= 0) close(o->fd);
         free(o->file_path);
-    } else if (o->kind == K_FILEMAP) {
-        if (o->fd >= 0) close(o->fd);
     }
     pthread_mutex_destroy(&o->lock);
     pthread_cond_destroy(&o->cond);
@@ -1562,151 +1556,6 @@ int WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
     return out;
 }
 
-/* ===================================================================== */
-/* File mapping (memfd-backed) -- true aliased mirror views              */
-/* ===================================================================== */
-
-/* Registry of active views: UnmapViewOfFile takes no length, so we must
- * recover the mapping length here for munmap. */
-typedef struct { void *addr; size_t len; } w32_view;
-static w32_view        s_views[512];
-static pthread_mutex_t s_views_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static void view_register(void *addr, size_t len)
-{
-    pthread_mutex_lock(&s_views_lock);
-    for (int i = 0; i < 512; i++)
-        if (!s_views[i].addr) { s_views[i].addr = addr; s_views[i].len = len; break; }
-    pthread_mutex_unlock(&s_views_lock);
-}
-
-static size_t view_take(const void *addr)
-{
-    size_t len = 0;
-    pthread_mutex_lock(&s_views_lock);
-    for (int i = 0; i < 512; i++)
-        if (s_views[i].addr == addr) { len = s_views[i].len; s_views[i].addr = NULL; break; }
-    pthread_mutex_unlock(&s_views_lock);
-    return len;
-}
-
-/* An unnamed file descriptor that ftruncate and mmap both accept. Linux has
- * memfd_create for this; elsewhere an immediately-unlinked temp file does. */
-static int anon_map_fd(const char *name)
-{
-#if defined(__APPLE__)
-    /* A real private backing file is required: descriptor 0 is stdin, not
-     * an anonymous mapping. Keep an owned descriptor after fclose unlinks
-     * the temporary file; all views then share these same backing pages. */
-    (void)name;
-    FILE *backing = tmpfile();
-    if (!backing) return -1;
-    int fd = dup(fileno(backing));
-    int saved_errno = errno;
-    fclose(backing);
-    if (fd < 0) errno = saved_errno;
-    return fd;
-#else
-    return memfd_create(name ? name : "xbox_map", 0);
-#endif
-}
-
-HANDLE CreateFileMappingA(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
-                          DWORD maxSizeHigh, DWORD maxSizeLow, LPCSTR name)
-{
-    (void)file; (void)sa; (void)protect;
-    SIZE_T size = ((SIZE_T)maxSizeHigh << 32) | maxSizeLow;
-    if (size == 0) { SetLastError(ERROR_INVALID_PARAMETER); return NULL; }
-
-    int fd = anon_map_fd(name);
-    if (fd < 0) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return NULL; }
-    if (ftruncate(fd, (off_t)size) != 0) {
-        close(fd);
-        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-        return NULL;
-    }
-
-    w32_object *o = obj_alloc(K_FILEMAP);
-    o->fd       = fd;
-    o->map_size = size;
-    return (HANDLE)o;
-}
-
-HANDLE CreateFileMappingW(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
-                          DWORD maxSizeHigh, DWORD maxSizeLow, LPCWSTR name)
-{
-    (void)name;
-    return CreateFileMappingA(file, sa, protect, maxSizeHigh, maxSizeLow, NULL);
-}
-
-LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow,
-                       SIZE_T count, LPVOID baseAddr)
-{
-    w32_object *o = (w32_object *)mapping;
-    if (!o || o->kind != K_FILEMAP) { SetLastError(ERROR_INVALID_HANDLE); return NULL; }
-
-    off_t  off = ((off_t)offHigh << 32) | offLow;
-    SIZE_T len = count ? count : (o->map_size - (SIZE_T)off);
-    int prot   = PROT_READ | ((access != FILE_MAP_READ) ? PROT_WRITE : 0);
-    int flags  = MAP_SHARED;
-
-    /* A requested address must either be honoured exactly or refused.
-     *
-     * This used to pass bare MAP_FIXED, which does the opposite of what the
-     * caller wants: it silently unmaps whatever already lives there and
-     * reports success. Windows fails instead, and the runtime depends on that
-     * failing -- xbox_memory_layout.c tries a list of preferred bases for the
-     * 64 MB view and checks which one it got, and maps up to 28 mirror views
-     * plus the contiguous, tiled, NV2A, MCPX and flash apertures at fixed
-     * offsets, printing "Mirror N: FAILED" when one cannot be placed. With
-     * MAP_FIXED those never fail; they quietly destroy a live mapping and
-     * carry on, and the damage surfaces later as memory that changed by
-     * itself.
-     *
-     * MAP_FIXED_NOREPLACE (Linux 4.17+) asks for exactly this. Without it,
-     * pass the address as a hint only and check what came back, which never
-     * destroys anything -- the cost is that a hint may be ignored, and the
-     * check below turns that into the same clean failure. */
-#if defined(MAP_FIXED_NOREPLACE)
-    if (baseAddr) flags |= MAP_FIXED_NOREPLACE;
-#endif
-
-#ifdef __APPLE__
-    if (arena_contains(baseAddr, len)) {
-        return arena_map(baseAddr, len, prot, MAP_SHARED, o->fd, off);
-    }
-#endif
-    void *p = mmap(baseAddr, len, prot, flags, o->fd, off);
-    if (p == MAP_FAILED) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return NULL; }
-    if (baseAddr && p != baseAddr) {
-        /* The range was taken. An older kernel ignores MAP_FIXED_NOREPLACE
-         * and places it elsewhere, so this check is what makes the behaviour
-         * the same on both. */
-        munmap(p, len);
-        SetLastError(ERROR_INVALID_ADDRESS);
-        return NULL;
-    }
-    view_register(p, len);
-    return p;
-}
-
-LPVOID MapViewOfFile(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow, SIZE_T count)
-{
-    return MapViewOfFileEx(mapping, access, offHigh, offLow, count, NULL);
-}
-
-BOOL UnmapViewOfFile(LPCVOID baseAddr)
-{
-#ifdef __APPLE__
-    /* The project owner retains lengths and failed cleanup. Do not consume an
-     * inherited registry entry before knowing whether restoration succeeded. */
-    if (arena_contains(baseAddr, 0)) return arena_unmap(baseAddr);
-#endif
-    size_t len = view_take(baseAddr);
-    if (len == 0) return FALSE;
-    return munmap((void *)baseAddr, len) == 0;
-}
-
 #ifdef __APPLE__
 /* Project MMIO forwarding. Lookup remains allocation/lock-free and immutable
  * between quiescent setup and teardown. Both backing views have owned lengths. */
@@ -1716,47 +1565,6 @@ LPVOID w32_guest_mmio_alias(LPCVOID address,SIZE_T size)
 { return tsfp_guest_mmio_alias(address,size); }
 /* End project MMIO forwarding. */
 #endif
-
-/* ===================================================================== */
-/* VirtualQuery                                                           */
-/* ===================================================================== */
-
-SIZE_T VirtualQuery(LPCVOID address, PMEMORY_BASIC_INFORMATION buffer, SIZE_T length)
-{
-    if (!buffer || length < sizeof(*buffer)) return 0;
-    memset(buffer, 0, sizeof(*buffer));
-    buffer->BaseAddress    = (PVOID)address;
-    buffer->AllocationBase = NULL;       /* != address -> freed via _aligned_free */
-    buffer->RegionSize     = 0x1000;
-    buffer->State          = MEM_COMMIT;
-    buffer->Protect        = PAGE_READWRITE;
-    buffer->Type           = 0x20000;    /* MEM_PRIVATE */
-    return sizeof(*buffer);
-}
-
-BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX b)
-{
-#if defined(__APPLE__)
-    /* TODO: Darwin has no sysinfo(2): physical memory comes from sysctl, the free
-     * page count from the Mach VM statistics, swap from vm.swapusage. */
-#else
-    struct sysinfo si;
-    if (!b) return FALSE;
-    if (sysinfo(&si) != 0) return FALSE;
-
-    ULONGLONG unit = si.mem_unit ? si.mem_unit : 1;
-    b->ullTotalPhys     = (ULONGLONG)si.totalram  * unit;
-    b->ullAvailPhys     = (ULONGLONG)si.freeram   * unit;
-    b->ullTotalPageFile = b->ullTotalPhys + (ULONGLONG)si.totalswap * unit;
-    b->ullAvailPageFile = b->ullAvailPhys + (ULONGLONG)si.freeswap  * unit;
-#endif
-    b->ullTotalVirtual  = b->ullTotalPhys;
-    b->ullAvailVirtual  = b->ullAvailPhys;
-    b->ullAvailExtendedVirtual = 0;
-    b->dwMemoryLoad = b->ullTotalPhys
-        ? (DWORD)(100 - (b->ullAvailPhys * 100 / b->ullTotalPhys)) : 0;
-    return TRUE;
-}
 
 /* ===================================================================== */
 /* Aligned allocation                                                     */

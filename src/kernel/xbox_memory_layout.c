@@ -119,18 +119,6 @@ static void *g_mcpx_memory = NULL;
 #define XBOX_FLASH_BASE 0xFF000000u
 #define XBOX_FLASH_SIZE (1u * 1024u * 1024u)
 static void *g_flash_memory = NULL;
-/* How much of the tiled aperture can exist.
- *
- * Two ceilings, both below the mapped RAM size once that is large:
- *
- *   - it starts at 0xF0000000 in a 32-bit guest address space, so it can
- *     never reach past 0x100000000; and
- *   - the NV2A register aperture sits at 0xFD000000, which is where the
- *     window really ends on hardware.
- *
- * Asking for the full RAM size overlapped both and MapViewOfFileEx failed
- * with ERROR_INVALID_ADDRESS -- a warning at startup and then a fault on the
- * title's first surface write, with nothing connecting the two. */
 /* How much guest address space is mapped.
  *
  * For anything that dereferences an address it read out of guest memory --
