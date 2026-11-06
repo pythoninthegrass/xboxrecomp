@@ -1177,6 +1177,11 @@ class FunctionTranslator:
             lines.append(
                 f'    RECOMP_TRACE_ENTER("{name}", 0x{start:08X});')
 
+        # Run title fast paths only after entry callbacks. Explicit diagnostic
+        # return tracing/overrides retain the complete generated body.
+        if start not in self.trace_functions and start not in self.force_returns:
+            lines.append(f"    if (RECOMP_FAST_ENTRY(0x{start:08X}u)) return;")
+
         # _CxxThrowException. This runtime cannot unwind, so the call inside
         # does nothing and control falls through the int3 the compiler put
         # after it: the throw returns, on a stack nobody cleaned up. Report it

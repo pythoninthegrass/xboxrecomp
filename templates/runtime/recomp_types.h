@@ -72,6 +72,11 @@
 #ifndef RECOMP_PUSH_IMM_U32_AT
 #define RECOMP_PUSH_IMM_U32_AT(site, value) (value)
 #endif
+/* A title may complete an audited leaf after its entry callback. Returning
+ * zero must leave guest state untouched so the generated body can run. */
+#ifndef RECOMP_FAST_ENTRY
+#define RECOMP_FAST_ENTRY(site) 0
+#endif
 #ifndef RECOMP_DIRECT_CALLEE_AT
 #define RECOMP_DIRECT_CALLEE_AT(site, function) (function)
 #endif
