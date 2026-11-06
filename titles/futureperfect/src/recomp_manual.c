@@ -916,7 +916,7 @@ void sub_003533F0(void)
 { pc_network_bots_guest_score_network(sub_003533F0_gen); }
 extern void sub_001BB5C0_gen(void);
 static void pc_native_npc_weapon_event(void)
-{ pc_native_weapon_fire_guest(sub_001BB5C0_gen); }
+{ pc_native_npc_weapon_fire_guest(sub_001BB5C0_gen, *(const uint32_t *)((uintptr_t)g_esp+g_xbox_mem_offset)); }
 void sub_001BB5C0(void)
 { pc_network_bots_guest_shot(pc_native_npc_weapon_event); }
 extern void sub_0009EAB0_gen(void);
