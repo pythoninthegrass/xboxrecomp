@@ -797,6 +797,56 @@ void sub_00136B40(void)
 #endif
 }
 
+extern void sub_0001B7B0_gen(void);
+void sub_0001B7B0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_aim_primitive(sub_0001B7B0_gen,0);
+#else
+    sub_0001B7B0_gen();
+#endif
+}
+
+extern void sub_0001C140_gen(void);
+void sub_0001C140(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_aim_primitive(sub_0001C140_gen,1);
+#else
+    sub_0001C140_gen();
+#endif
+}
+
+extern void sub_0001BA70_gen(void);
+void sub_0001BA70(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_aim_primitive(sub_0001BA70_gen,2);
+#else
+    sub_0001BA70_gen();
+#endif
+}
+
+extern void sub_00138F70_gen(void);
+void sub_00138F70(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_aim_panel(sub_00138F70_gen,0x00138F70u);
+#else
+    sub_00138F70_gen();
+#endif
+}
+
+extern void sub_0037A9D0_gen(void);
+void sub_0037A9D0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_aim_panel(sub_0037A9D0_gen,0x0037A9D0u);
+#else
+    sub_0037A9D0_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
