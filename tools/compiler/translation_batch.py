@@ -153,13 +153,13 @@ class BatchTranslator:
 
     def _types(self):
         source=getattr(self,'types_header',None)
-        if source is None:source=Path(__file__).resolve().parents[2]/'src/runtime/recomp_types.h'
+        if source is None:source=Path(__file__).resolve().parents[2]/'templates/runtime/recomp_types.h'
         return Path(source).read_text(encoding='utf-8')
 
     def _runtime_headers(self):
         headers={'recomp_types.h':self._types()}
         if getattr(self,'types_header',None) is None:
-            source=Path(__file__).resolve().parents[2]/'src/runtime/tsfp_branch_feedback.h'
+            source=Path(__file__).resolve().parents[2]/'templates/runtime/tsfp_branch_feedback.h'
             headers[source.name]=source.read_text(encoding='utf-8')
         return headers
 

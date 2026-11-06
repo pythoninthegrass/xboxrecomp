@@ -81,7 +81,7 @@ int tsfp_context_generated_step(uint32_t pc,uint32_t *next){(void)pc;(void)next;
         dispatch_name='recomp_context_dispatch.c'
         write_if_changed(staging/dispatch_name,dispatch)
         names=chunks+[dispatch_name]
-        shared=Path(__file__).resolve().parents[2]/'src/runtime'
+        shared=Path(__file__).resolve().parents[2]/'templates/runtime'
         for name in ('guest_context_execution.h','guest_x86_context.h'):
             write_if_changed(staging/name,(shared/name).read_text(encoding='utf-8'));names.append(name)
         # Validate every target, including stale cleanup, before first replacement.
