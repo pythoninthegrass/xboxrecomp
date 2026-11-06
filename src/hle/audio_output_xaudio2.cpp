@@ -3,7 +3,7 @@
  *
  * From doaxbv-re (https://github.com/NoRain211/doaxbv-re,
  * recomp-runtime/audio_output_xaudio2.cpp), GPL-3.0. Changed: an unset
- * RECOMP_AUDIO_GAIN means full gain here rather than muted.
+ * RECOMP_AUDIO_GAIN uses the shared output headroom here rather than muted.
  */
 #include "audio_output.h"
 
@@ -138,7 +138,7 @@ extern "C" void recomp_audio_output_initialize(void)
     checkCriticalError();
     if (attempted) return;
     attempted = true;
-    double gain = 1.0;
+    double gain = RECOMP_AUDIO_DEFAULT_GAIN;
     const char *setting = std::getenv("RECOMP_AUDIO_GAIN");
     if (setting) {
         char *end;
