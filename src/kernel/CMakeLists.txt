@@ -39,6 +39,11 @@ if(NOT TSFP_SHARED_SOURCE OR NOT EXISTS "${TSFP_SHARED_SOURCE}/runtime/guest_non
 endif()
 target_sources(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime/guest_nonlocal_jump.c")
 
+# Project architectural cells and optional ABI report hooks share the public ABI.
+target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_state.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_abi_diagnostics.c")
+
 # See src/platform/CMakeLists.txt: resolve src/ relative to this file, not via
 # CMAKE_SOURCE_DIR, which is the consuming project's root under add_subdirectory().
 get_filename_component(XBOXRECOMP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
