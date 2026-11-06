@@ -649,6 +649,17 @@ void sub_00073750(void)
 #endif
 }
 
+/* Keep the mouse Confirm source alive through original menu callbacks. */
+extern void sub_0007A7B0_gen(void);
+void sub_0007A7B0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_mouse_dispatch(sub_0007A7B0_gen);
+#else
+    sub_0007A7B0_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
