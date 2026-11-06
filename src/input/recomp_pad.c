@@ -57,6 +57,7 @@ void recomp_pad_set_api(int api)
 typedef struct {
     SDL_Gamepad   *pad;
     SDL_JoystickID id;
+    char path[512]; /* Reserve a disconnected device's seat until this session ends. */
     uint16_t       rumble_low, rumble_high;
     uint64_t       rumble_at;
 } SdlSlot;
@@ -104,23 +105,29 @@ static void sdl_scan(uint64_t now)
         if (g_sdl[s].pad && !SDL_GamepadConnected(g_sdl[s].pad)) {
             fprintf(stderr, "[INPUT] pad %d disconnected\n", s + 1);
             SDL_CloseGamepad(g_sdl[s].pad);
-            memset(&g_sdl[s], 0, sizeof g_sdl[s]);
+            g_sdl[s].pad=NULL;g_sdl[s].id=0;
+            g_sdl[s].rumble_low=g_sdl[s].rumble_high=0;g_sdl[s].rumble_at=0;
         }
     ids = SDL_GetGamepads(&n);
     for (i = 0; ids && i < n; i++) {
-        int seated = 0, free_slot = -1;
+        int seated = 0, free_slot = -1, returning_slot = -1;
+        const char *path=SDL_GetGamepadPathForID(ids[i]);
         for (s = 0; s < RECOMP_PAD_SLOTS; s++) {
             if (g_sdl[s].pad && g_sdl[s].id == ids[i])
                 seated = 1;
-            else if (!g_sdl[s].pad && free_slot < 0)
-                free_slot = s;
+            else if (!g_sdl[s].pad) {
+                if(path && *path && !strcmp(g_sdl[s].path,path))returning_slot=s;
+                else if(!g_sdl[s].path[0] && free_slot<0)free_slot=s;
+            }
         }
+        if(returning_slot>=0)free_slot=returning_slot;
         if (seated || free_slot < 0)
             continue;
         g_sdl[free_slot].pad = SDL_OpenGamepad(ids[i]);
         if (g_sdl[free_slot].pad) {
             const char *name = SDL_GetGamepadName(g_sdl[free_slot].pad);
             g_sdl[free_slot].id = ids[i];
+            snprintf(g_sdl[free_slot].path,sizeof g_sdl[free_slot].path,"%s",path && *path?path:"unidentified");
             fprintf(stderr, "[INPUT] pad %d: %s\n", free_slot + 1, name ? name : "(unnamed)");
         }
     }

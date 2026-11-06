@@ -476,7 +476,7 @@ static const char *parse_controller(const char *p, int index, int *bad)
 {
     Controller tmp;
     char key[48], value[64];
-    int port = index, seen_port = 0, has_pad = 0, i;
+    int port = index, seen_port = 0, seen_device = 0, has_pad = 0, i;
 
     defaults_for(&tmp, index < PORTS ? index : 0);
     p = ws(p);
@@ -500,6 +500,7 @@ static const char *parse_controller(const char *p, int index, int *bad)
             if (!p)
                 return NULL;
             set_device(&tmp, value);
+            seen_device = 1;
         } else if (strcmp(key, "deadzone") == 0) {
             tmp.deadzone = (int)strtol(p, NULL, 10);
             p = jskip(p);
@@ -523,7 +524,7 @@ static const char *parse_controller(const char *p, int index, int *bad)
     /* "port" may come after "bindings", so the defaults this started from
      * could be the wrong port's. Only the pad index differs, and only when
      * the file did not say. */
-    if (seen_port && tmp.device == DEV_PAD && tmp.pad == index && index != port)
+    if (seen_port && !seen_device && tmp.device == DEV_PAD && index != port)
         tmp.pad = port;
     tmp.has_key = 0;
     if (tmp.device == DEV_KEYBOARD)
@@ -1068,7 +1069,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     use_pad_defaults = have_pad && (auto_pad >= 0 || c->pad_fallback);
     if (use_pad_defaults) defaults_for(&pad_defaults, 1);
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
-    if(port==0) {
+    if(port==0 && c->device==DEV_KEYBOARD) {
         for(i=0;i<CONTROL_COUNT;i++) {
             int action=reload_action(i);
             if(action<0)continue;
@@ -1114,6 +1115,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
         if(port==0 && action>=0 && reload_keys[action]>mag)mag=reload_keys[action];
 #endif
         for (s = 0; s < c->bind[i].count; s++) {
+            if(c->device==DEV_PAD && c->bind[i].src[s].kind==SRC_KEY)continue;
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
             if(port==0 && action>=0 && c->bind[i].src[s].kind==SRC_KEY)continue;
 #endif
@@ -1159,7 +1161,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
         ReleaseSRWLockExclusive(&g_pc_weapon_lock);
     }
     pc_input_normalize_movement(&out->sThumbLX, &out->sThumbLY);
-    if(port==0 && (c->device==DEV_KEYBOARD || c->has_key) && pc_controls_terminal_click())
+    if(port==0 && c->device==DEV_KEYBOARD && pc_controls_terminal_click())
         out->bAnalogButtons[XBOX_BUTTON_A]=255;
     /* The left-button binding is suppressed only while used for selection. */
 #endif
@@ -1184,7 +1186,7 @@ unsigned recomp_bindings_present_mask(void)
     mask = 0;
     for (i = 0; i < PORTS; i++) {
         Controller *c = &g_ctl[i];
-        if (c->device == DEV_KEYBOARD || (c->device == DEV_PAD && c->has_key)) {
+        if (c->device == DEV_KEYBOARD) {
             mask |= 1u << i;
         } else if (c->device == DEV_PAD) {
             RecompPadState st;
