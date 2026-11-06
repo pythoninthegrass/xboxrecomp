@@ -59,6 +59,7 @@
 #endif
 
 #include "rhi_backend.h"
+#include "vulkan_interface.h"
 #include "rhi_vulkan_bindings.h"
 #include "rhi_shader_cache.h"
 
@@ -134,6 +135,7 @@ typedef struct {
     uint32_t index;
     uint32_t location;
     uint32_t loc_word;              /* where the Location literal sits, for patching */
+    uint32_t variable, components, scalar;
 } ReflIO;
 
 struct RhiShader {
@@ -182,6 +184,8 @@ typedef struct {
     VkSemaphore     acquire;
     uint64_t        last_serial;
     Ring            ring;
+    VkDescriptorPool *descriptor_pools;
+    uint32_t descriptor_count, descriptor_cap, descriptor_current;
 } Frame;
 
 enum { T_BUFFER, T_IMAGE, T_VIEW, T_SAMPLER, T_MODULE };
@@ -200,6 +204,10 @@ typedef struct {
     VkFormat    color, depth;
     uint32_t    samples;
     uint32_t    topo_class;
+    /* Only populated when extended dynamic state is unavailable. */
+    RhiDepthDesc fixed_depth;
+    RhiRasterDesc fixed_raster;
+    uint32_t fixed_topology, fixed_stride[MAX_VB];
 } PipeKey;
 
 typedef struct {
@@ -224,6 +232,7 @@ static struct {
     VkFormat                 depth24;       /* D24S8, or D32S8 where there is none */
     int feat_depth_clamp, feat_fill, feat_bias_clamp, feat_aniso, feat_border;
     int                      validation;
+    int compat12, feat_push;
 
     VkDescriptorSetLayout    set_layout;
     VkPipelineLayout         pipe_layout;
@@ -543,6 +552,10 @@ static void begin_recording(void)
 
     wait_serial(f->last_serial);
     vkResetCommandPool(V.dev, f->pool, 0);
+    /* The same submission serial protects command buffers and descriptor sets. */
+    for(uint32_t i=0;i<f->descriptor_count;i++)
+        vkResetDescriptorPool(V.dev,f->descriptor_pools[i],0);
+    f->descriptor_current=0;
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(f->cmd, &bi);
     V.recording = 1;
@@ -1104,8 +1117,9 @@ static int pick_physical_device(void)
     }
     V.pd = pds[pick];
     vkGetPhysicalDeviceProperties(V.pd, &V.props);
-    if (V.props.apiVersion < VK_API_VERSION_1_3) {
-        fprintf(stderr, "[RHI] vulkan: %s is Vulkan %u.%u; this backend needs 1.3\n",
+    V.compat12=V.props.apiVersion<VK_API_VERSION_1_3 || getenv("RECOMP_VK_COMPAT12")!=NULL;
+    if (V.props.apiVersion < VK_API_VERSION_1_2) {
+        fprintf(stderr, "[RHI] vulkan: %s is Vulkan %u.%u; this backend needs 1.2 with required extensions\n",
                 V.props.deviceName, VK_API_VERSION_MAJOR(V.props.apiVersion),
                 VK_API_VERSION_MINOR(V.props.apiVersion));
         return -1;
@@ -1130,14 +1144,19 @@ static int create_device(void)
     VkPhysicalDevicePortabilitySubsetFeaturesKHR have_port = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR };
     VkPhysicalDevicePortabilitySubsetFeaturesKHR port = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR };
     VkDeviceCreateInfo dci = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-    const char *exts[4];
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR have_dr={VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+    VkPhysicalDeviceSynchronization2FeaturesKHR have_sync={VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR};
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dr={VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+    VkPhysicalDeviceSynchronization2FeaturesKHR sync={VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR};
+    const char *exts[8];
     uint32_t next = 0;
     int border_ext = has_device_ext(VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
     int portability = has_device_ext(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 
-    if (!has_device_ext(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME)) {
-        fprintf(stderr, "[RHI] vulkan: %s has no push descriptors, which this backend needs\n",
-                V.props.deviceName);
+    V.feat_push=!V.compat12 && has_device_ext(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+    if(V.compat12 && (!has_device_ext(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) ||
+                      !has_device_ext(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))) {
+        fprintf(stderr,"[RHI] vulkan: 1.2 compatibility needs dynamic rendering and synchronization2 extensions\n");
         return -1;
     }
     vkGetPhysicalDeviceQueueFamilyProperties(V.pd, &nq, q);
@@ -1157,14 +1176,17 @@ static int create_device(void)
     qci.pQueuePriorities = &prio;
 
     have.pNext = &have12;
-    have12.pNext = &have13;
-    have13.pNext = portability ? &have_port : NULL;
+    have12.pNext = V.compat12 ? (void *)&have_dr : (void *)&have13;
+    have_dr.pNext=&have_sync;
+    void **have_tail=V.compat12?&have_sync.pNext:&have13.pNext;
+    *have_tail = portability ? &have_port : NULL;
     if (border_ext) {
-        have_cb.pNext = have13.pNext;
-        have13.pNext = &have_cb;
+        have_cb.pNext = *have_tail;
+        *have_tail = &have_cb;
     }
     vkGetPhysicalDeviceFeatures2(V.pd, &have);
-    if (!have13.dynamicRendering || !have13.synchronization2 || !have13.maintenance4 ||
+    if ((V.compat12 ? (!have_dr.dynamicRendering || !have_sync.synchronization2)
+                    : (!have13.dynamicRendering || !have13.synchronization2 || !have13.maintenance4)) ||
         !have12.timelineSemaphore) {
         fprintf(stderr, "[RHI] vulkan: %s lacks dynamic rendering, synchronization2, "
                         "maintenance4 or timeline semaphores\n", V.props.deviceName);
@@ -1187,7 +1209,9 @@ static int create_device(void)
      * maintenance4. */
     f13.maintenance4 = VK_TRUE;
     f2.pNext = &f12;
-    f12.pNext = &f13;
+    f12.pNext = V.compat12 ? (void *)&dr : (void *)&f13;
+    dr.dynamicRendering=VK_TRUE;dr.pNext=&sync;sync.synchronization2=VK_TRUE;
+    void **enable_tail=V.compat12?&sync.pNext:&f13.pNext;
     if (portability) {
         /* Enabling the extension alone leaves all optional features disabled.
          * A8/BGRX sampled views require component remapping on every backend. */
@@ -1197,16 +1221,20 @@ static int create_device(void)
             return -1;
         }
         port.imageViewFormatSwizzle = VK_TRUE;
-        f13.pNext = &port;
+        *enable_tail = &port;
         exts[next++] = VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME;
     }
     exts[next++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-    exts[next++] = VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
+    if(V.feat_push)exts[next++] = VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
+    if(V.compat12) {
+        exts[next++]=VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME;
+        exts[next++]=VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME;
+    }
     if (border_ext && have_cb.customBorderColors && have_cb.customBorderColorWithoutFormat) {
         fcb.customBorderColors = VK_TRUE;
         fcb.customBorderColorWithoutFormat = VK_TRUE;
-        fcb.pNext = f13.pNext;
-        f13.pNext = &fcb;
+        fcb.pNext = *enable_tail;
+        *enable_tail = &fcb;
         exts[next++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
         V.feat_border = 1;
     }
@@ -1217,6 +1245,13 @@ static int create_device(void)
     dci.ppEnabledExtensionNames = exts;
     VKCHECK(vkCreateDevice(V.pd, &dci, NULL, &V.dev), "vkCreateDevice");
     volkLoadDevice(V.dev);
+    if(V.compat12) {
+#define EXT_ALIAS(name) name=(PFN_##name)vkGetDeviceProcAddr(V.dev,#name "KHR"); if(!name)return -1
+        EXT_ALIAS(vkCmdBeginRendering);EXT_ALIAS(vkCmdEndRendering);
+        EXT_ALIAS(vkCmdPipelineBarrier2);EXT_ALIAS(vkQueueSubmit2);
+#undef EXT_ALIAS
+        fprintf(stderr,"[RHI] vulkan: Vulkan 1.2 compatibility: descriptor sets, baked state, matched shader interfaces\n");
+    }
     vkGetDeviceQueue(V.dev, V.qfamily, 0, &V.queue);
 
     /* Section 4.9: AMD has no D24S8, so the depth format is the device's. */
@@ -1234,7 +1269,7 @@ static int create_allocator(void)
     memset(&ai, 0, sizeof ai);
     fn.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
     fn.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
-    ai.vulkanApiVersion = VK_API_VERSION_1_3;
+    ai.vulkanApiVersion = V.compat12 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_3;
     ai.physicalDevice = V.pd;
     ai.device = V.dev;
     ai.instance = V.instance;
@@ -1382,7 +1417,7 @@ static int create_layouts(void)
         b[i].descriptorCount = 1;
         b[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     }
-    ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+    ci.flags = V.feat_push ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR : 0;
     ci.bindingCount = n;
     ci.pBindings = b;
     VKCHECK(vkCreateDescriptorSetLayout(V.dev, &ci, NULL, &V.set_layout), "descriptor set layout");
@@ -1605,6 +1640,8 @@ static void v_device_destroy(void)
         for (k = 0; k < f->ring.n; k++)
             vmaDestroyBuffer(V.vma, f->ring.c[k].b, f->ring.c[k].a);
         free(f->ring.c);
+        for(uint32_t j=0;j<f->descriptor_count;j++)vkDestroyDescriptorPool(V.dev,f->descriptor_pools[j],NULL);
+        free(f->descriptor_pools);
         vkDestroySemaphore(V.dev, f->acquire, NULL);
         vkDestroyCommandPool(V.dev, f->pool, NULL);
     }
@@ -2581,6 +2618,10 @@ static int reflect(RhiShader *sh)
             semantic_of(v->name ? v->name : "", io->sem, sizeof io->sem, &io->index);
             io->location = (uint32_t)v->location;
             io->loc_word = v->loc_word;
+            io->variable=id;
+            io->components=t->op==OP_TYPE_VECTOR?t->b:1;
+            SpvId *scalar=t->op==OP_TYPE_VECTOR&&t->a<s.bound?&s.ids[t->a]:t;
+            io->scalar=((uint32_t)scalar->op<<16)|scalar->a;
         }
     }
     free(s.ids);
@@ -3069,11 +3110,23 @@ static VkShaderModule linked_ps_module(const RhiShader *vs, const RhiShader *ps)
     if (trace_on())
         fprintf(stderr, "[VKTRACE] link vs %llu ps %llu: %s\n", (unsigned long long)vs->id,
                 (unsigned long long)ps->id, changed ? "pixel inputs moved" : "already agree");
-    if (!changed) {
+    if (!changed && !V.compat12) {
         free(code);
         return VK_NULL_HANDLE;          /* the pixel shader's own module will do */
     }
-    ci.codeSize = ps->words * 4;
+    size_t linked_words=ps->words;
+    if(V.compat12) {
+        TsfpVkInputWidth widths[32];size_t nw=0;
+        for(i=0;i<ps->nin;i++)for(k=0;k<vs->nout;k++)
+            if(same_semantic(&vs->out[k],ps->in[i].sem,ps->in[i].index)) {
+                if(vs->out[k].scalar!=ps->in[i].scalar || vs->out[k].components<ps->in[i].components) {free(code);return VK_NULL_HANDLE;}
+                widths[nw++]=(TsfpVkInputWidth){ps->in[i].variable,vs->out[k].components};break;
+            }
+        uint32_t *wide=NULL;size_t wide_words=0;
+        if(!tsfp_vk_widen_inputs(code,linked_words,widths,nw,&wide,&wide_words)){free(code);return VK_NULL_HANDLE;}
+        if(wide){free(code);code=wide;linked_words=wide_words;}
+    }
+    ci.codeSize = linked_words * 4;
     ci.pCode = code;
     vkCreateShaderModule(V.dev, &ci, NULL, &m);
     free(code);
@@ -3123,6 +3176,9 @@ static Pipe *build_pipeline(const PipeKey *key)
         VK_DYNAMIC_STATE_BLEND_CONSTANTS, VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE,
         VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE,
     };
+    static const VkDynamicState basic_dyn[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK,VK_DYNAMIC_STATE_STENCIL_WRITE_MASK,
+        VK_DYNAMIC_STATE_STENCIL_REFERENCE,VK_DYNAMIC_STATE_DEPTH_BIAS,VK_DYNAMIC_STATE_BLEND_CONSTANTS};
     VkPipelineDynamicStateCreateInfo dy = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
     VkPipelineRenderingCreateInfo ri = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
     VkGraphicsPipelineCreateInfo gci = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
@@ -3152,6 +3208,7 @@ static Pipe *build_pipeline(const PipeKey *key)
     st[nst++].pName = vs->entry;
     if (ps) {
         linked = linked_ps_module(vs, ps);
+        if(V.compat12 && !linked){fprintf(stderr,"[RHI] vulkan: incompatible shader interface\n");return p;}
         st[nst].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         st[nst].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
         st[nst].module = linked ? linked : ps->module;
@@ -3198,7 +3255,7 @@ static Pipe *build_pipeline(const PipeKey *key)
     }
     for (k = 0; k < p->nvb; k++) {
         vb[k].binding = p->vb_slots[k];
-        vb[k].stride = 0;
+        vb[k].stride = V.compat12 ? key->fixed_stride[p->vb_slots[k]] : 0;
         vb[k].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     }
     vi.vertexBindingDescriptionCount = p->nvb;
@@ -3227,8 +3284,20 @@ static Pipe *build_pipeline(const PipeKey *key)
     ba.colorWriteMask = key->ps ? (key->blend.write_mask & 0xF) : 0;
     cb.attachmentCount = key->color ? 1 : 0;
     cb.pAttachments = &ba;
-    dy.dynamicStateCount = sizeof dyn / sizeof dyn[0];
-    dy.pDynamicStates = dyn;
+    dy.dynamicStateCount = V.compat12 ? sizeof basic_dyn / sizeof basic_dyn[0] : sizeof dyn / sizeof dyn[0];
+    dy.pDynamicStates = V.compat12 ? basic_dyn : dyn;
+    if(V.compat12) {
+        const RhiRasterDesc *r=&key->fixed_raster;const RhiDepthDesc *d=&key->fixed_depth;
+        ia.topology=vk_topology(key->fixed_topology);
+        vps.viewportCount=vps.scissorCount=1;
+        rs.cullMode=r->cull==RHI_CULL_FRONT?VK_CULL_MODE_FRONT_BIT:r->cull==RHI_CULL_BACK?VK_CULL_MODE_BACK_BIT:VK_CULL_MODE_NONE;
+        rs.frontFace=raster_front_face(r);
+        rs.depthBiasEnable=(r->depth_bias||r->slope_scaled_depth_bias)?VK_TRUE:VK_FALSE;
+        ds.depthTestEnable=d->depth_enable;ds.depthWriteEnable=d->depth_enable&&d->depth_write;
+        ds.depthCompareOp=vk_cmp(d->depth_func);ds.stencilTestEnable=d->stencil_enable;
+        ds.front=(VkStencilOpState){vk_stencil(d->front.fail),vk_stencil(d->front.pass),vk_stencil(d->front.depth_fail),vk_cmp(d->front.func),d->stencil_read_mask,d->stencil_write_mask,0};
+        ds.back=(VkStencilOpState){vk_stencil(d->back.fail),vk_stencil(d->back.pass),vk_stencil(d->back.depth_fail),vk_cmp(d->back.func),d->stencil_read_mask,d->stencil_write_mask,0};
+    }
     ri.colorAttachmentCount = key->color ? 1 : 0;
     ri.pColorAttachmentFormats = &p->key.color;
     ri.depthAttachmentFormat = key->depth;
@@ -3275,6 +3344,11 @@ static Pipe *find_pipeline(void)
     k.samples = V.rt_color ? V.rt_color->image->desc.samples
                            : V.rt_depth ? V.rt_depth->image->desc.samples : 1;
     k.topo_class = topo_class(V.topology);
+    if(V.compat12) {
+        k.fixed_depth=*depth_desc();k.fixed_raster=*r;
+        k.fixed_topology=V.topology;
+        for(uint32_t i=0;i<MAX_VB;i++)k.fixed_stride[i]=V.vb[i].b?V.vb[i].stride:0;
+    }
     if (!k.color)
         memset(&k.blend, 0, sizeof k.blend);
     if (V.npipes * 10 >= V.pipe_cap * 7 && !pipes_grow())
@@ -3354,6 +3428,33 @@ static int view_fits(const RhiView *v, const Refl *r)
     }
 }
 
+/* Per-recording descriptor arena. Pools reset only after their last GPU serial. */
+static VkDescriptorSet descriptor_set(void)
+{
+    Frame *f=&V.frames[V.fi];
+    for(;;) {
+        if(f->descriptor_current==f->descriptor_count) {
+            if(f->descriptor_count==f->descriptor_cap) {
+                uint32_t cap=f->descriptor_cap?f->descriptor_cap*2:4;
+                VkDescriptorPool *p=realloc(f->descriptor_pools,cap*sizeof *p);if(!p)return VK_NULL_HANDLE;
+                f->descriptor_pools=p;f->descriptor_cap=cap;
+            }
+            VkDescriptorPoolSize sizes[]={{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,16*128},
+                {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,16*128},{VK_DESCRIPTOR_TYPE_SAMPLER,16*128}};
+            VkDescriptorPoolCreateInfo ci={VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            ci.maxSets=128;ci.poolSizeCount=3;ci.pPoolSizes=sizes;
+            if(vkCreateDescriptorPool(V.dev,&ci,NULL,&f->descriptor_pools[f->descriptor_count])!=VK_SUCCESS)return VK_NULL_HANDLE;
+            f->descriptor_count++;
+        }
+        VkDescriptorSetAllocateInfo ai={VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};VkDescriptorSet set;
+        ai.descriptorPool=f->descriptor_pools[f->descriptor_current];ai.descriptorSetCount=1;ai.pSetLayouts=&V.set_layout;
+        VkResult result=vkAllocateDescriptorSets(V.dev,&ai,&set);
+        if(result==VK_SUCCESS)return set;
+        if(result!=VK_ERROR_OUT_OF_POOL_MEMORY&&result!=VK_ERROR_FRAGMENTED_POOL)return VK_NULL_HANDLE;
+        f->descriptor_current++;
+    }
+}
+
 static int push_descriptors(const Pipe *p)
 {
     VkWriteDescriptorSet w[MAX_REFL * 2];
@@ -3417,8 +3518,16 @@ static int push_descriptors(const Pipe *p)
         }
         n++;
     }
-    if (n)
-        vkCmdPushDescriptorSetKHR(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, V.pipe_layout, 0, n, w);
+    if (n) {
+        VkCommandBuffer cb=cmd();
+        if(V.feat_push)vkCmdPushDescriptorSetKHR(cb,VK_PIPELINE_BIND_POINT_GRAPHICS,V.pipe_layout,0,n,w);
+        else {
+            VkDescriptorSet set=descriptor_set();if(!set)return 0;
+            for(uint32_t k=0;k<n;k++)w[k].dstSet=set;
+            vkUpdateDescriptorSets(V.dev,n,w,0,NULL);
+            vkCmdBindDescriptorSets(cb,VK_PIPELINE_BIND_POINT_GRAPHICS,V.pipe_layout,0,1,&set,0,NULL);
+        }
+    }
     return 1;
 }
 
@@ -3485,6 +3594,10 @@ static void apply_dynamic_state(VkCommandBuffer cb)
         back.fail = vk_stencil(d->back.fail); back.pass = vk_stencil(d->back.pass);
         back.depth_fail = vk_stencil(d->back.depth_fail); back.cmp = vk_cmp(d->back.func);
 
+        if(V.compat12) {
+            DYN_SET(vp,v,vkCmdSetViewport(cb,0,1,&v));
+            DYN_SET(sc,sc,vkCmdSetScissor(cb,0,1,&sc));
+        } else {
         DYN_SET(vp, v, vkCmdSetViewportWithCount(cb, 1, &v));
         DYN_SET(sc, sc, vkCmdSetScissorWithCount(cb, 1, &sc));
         DYN_SET(cull, cull, vkCmdSetCullMode(cb, cull));
@@ -3493,7 +3606,9 @@ static void apply_dynamic_state(VkCommandBuffer cb)
         if (!V.dyn.valid)
             vkCmdSetPrimitiveRestartEnable(cb, VK_FALSE);
         DYN_SET(bias_enable, bias_enable, vkCmdSetDepthBiasEnable(cb, bias_enable));
+        }
         DYN_SET(bias, bias, vkCmdSetDepthBias(cb, bias[0], bias[1], bias[2]));
+        if(!V.compat12) {
         DYN_SET(depth_test, depth_test, vkCmdSetDepthTestEnable(cb, depth_test));
         DYN_SET(depth_write, depth_write, vkCmdSetDepthWriteEnable(cb, depth_write));
         DYN_SET(depth_cmp, depth_cmp, vkCmdSetDepthCompareOp(cb, depth_cmp));
@@ -3502,6 +3617,7 @@ static void apply_dynamic_state(VkCommandBuffer cb)
                                                 front.depth_fail, front.cmp));
         DYN_SET(back, back, vkCmdSetStencilOp(cb, VK_STENCIL_FACE_BACK_BIT, back.fail, back.pass,
                                               back.depth_fail, back.cmp));
+        }
         DYN_SET(read_mask, read_mask, vkCmdSetStencilCompareMask(cb, VK_STENCIL_FACE_FRONT_AND_BACK, read_mask));
         DYN_SET(write_mask, write_mask, vkCmdSetStencilWriteMask(cb, VK_STENCIL_FACE_FRONT_AND_BACK, write_mask));
         DYN_SET(ref, ref, vkCmdSetStencilReference(cb, VK_STENCIL_FACE_FRONT_AND_BACK, ref));
@@ -3544,12 +3660,14 @@ static int prepare_draw(void)
             off = V.vb[slot].offset;
             stride = V.vb[slot].stride;
         }
-        vkCmdBindVertexBuffers2(cb, slot, 1, &buf, &off, NULL, &stride);
+        if(V.compat12)vkCmdBindVertexBuffers(cb,slot,1,&buf,&off);
+        else vkCmdBindVertexBuffers2(cb, slot, 1, &buf, &off, NULL, &stride);
     }
     if (!p->nvb) {
         /* Dynamic stride wants a stride bound even when nothing is read. */
         VkDeviceSize off = 0, stride = 0;
-        vkCmdBindVertexBuffers2(cb, 0, 1, &V.zero_b, &off, NULL, &stride);
+        if(V.compat12)vkCmdBindVertexBuffers(cb,0,1,&V.zero_b,&off);
+        else vkCmdBindVertexBuffers2(cb, 0, 1, &V.zero_b, &off, NULL, &stride);
     }
     return push_descriptors(p);
 }
