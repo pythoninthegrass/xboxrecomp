@@ -2602,4 +2602,42 @@ HRESULT d3d8_CreateImageSurfaceImpl(UINT Width, UINT Height, D3DFORMAT Format, I
     return *ppSurface ? S_OK : E_OUTOFMEMORY;
 }
 
+/* Precision transitions happen rarely, before the replacement is published.
+ * The shader performs the actual format conversion. Synchronize its result to
+ * system storage too: capture's first TEXTURE chunk must contain the copied
+ * state, rather than the zero allocation which preceded the GPU copy. */
+HRESULT d3d8_PreserveFeedbackTexture(IDirect3DTexture8 *dst, IDirect3DTexture8 *src)
+{
+    D3D8Texture *to=(D3D8Texture *)dst,*from=(D3D8Texture *)src;
+    if(!to || !from || to==from || to->locked || from->locked ||
+       to->levels!=1 || from->levels!=1 || to->width!=from->width ||
+       to->height!=from->height || !to->width || !to->height ||
+       !(to->usage&D3DUSAGE_RENDERTARGET) || !(from->usage&D3DUSAGE_RENDERTARGET) ||
+       !to->image || !from->image || !from->srv || !to->sys_mem)return E_INVALIDARG;
+    D3DFORMAT formats[2]={to->d3d8_format,from->d3d8_format};
+    for(unsigned i=0;i<2;i++)if(formats[i]!=D3DFMT_A8R8G8B8 &&
+       formats[i]!=D3DFMT_LIN_A8R8G8B8 && formats[i]!=D3DFMT_A16B16G16R16F)
+        return E_NOTIMPL;
+    unsigned bpp=d3d8_format_bpp(to->d3d8_format)/8;
+    size_t bytes=(size_t)to->width*to->height*bpp;
+    BYTE *linear=malloc(bytes);if(!linear)return E_OUTOFMEMORY;
+    HRESULT result=d3d8_CopyTextureView(dst,from->srv);
+    if(SUCCEEDED(result) && rhi_image_readback(to->image,0,linear,to->width*bpp)!=0)
+        result=E_FAIL;
+    if(SUCCEEDED(result)) {
+        /* Reverse the upload conversion: host RGBA16 -> guest ABGR16. */
+        if(to->d3d8_format==D3DFMT_A16B16G16R16F) {
+            uint16_t *p=(uint16_t *)linear;
+            for(size_t i=0;i<(size_t)to->width*to->height;i++,p+=4) {
+                uint16_t a=p[0],b=p[1];p[0]=p[3];p[1]=p[2];p[2]=b;p[3]=a;
+            }
+        }
+        if(d3d8_format_is_swizzled(to->d3d8_format))
+            xbox_swizzle_rect(to->sys_mem,linear,to->width,to->height,bpp);
+        else for(unsigned y=0;y<to->height;y++)
+            memcpy(to->sys_mem+(size_t)y*to->pitch,linear+(size_t)y*to->width*bpp,to->width*bpp);
+    }
+    free(linear);return result;
+}
+
 #endif /* TSFP_FORMAT_ONLY */

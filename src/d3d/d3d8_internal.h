@@ -336,6 +336,8 @@ HRESULT d3d8_CreateImageSurfaceImpl(UINT Width, UINT Height, D3DFORMAT Format,
  * volume). All three implementations keep it at the same offset as
  * D3D8Texture, and the image likewise. */
 HRESULT d3d8_CopyTextureView(IDirect3DTexture8 *dst, RhiView *source);
+/* Initialize a new feedback target from live GPU content, including capture bytes. */
+HRESULT d3d8_PreserveFeedbackTexture(IDirect3DTexture8 *dst, IDirect3DTexture8 *src);
 RhiView  *d3d8_base_srv(IDirect3DBaseTexture8 *texture);
 RhiImage *d3d8_base_resource(IDirect3DBaseTexture8 *texture);
 

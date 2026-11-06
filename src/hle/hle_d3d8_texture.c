@@ -1218,6 +1218,30 @@ IDirect3DTexture8 *hle_d3d8_render_texture(IDirect3DDevice8 *dev, uint32_t va)
     }
     if (!read_layout(va, &t))
         return NULL;
+    if(e && e->rendered) {
+        /* Retain the old resource until both allocation and preservation
+         * succeed. Flush earlier draws before reading their live GPU output. */
+        /* Earlier queued texture binds must not evict this cache slot. */
+        e->used_swap=now;
+        if(hle_d3d8_defer_recording())hle_d3d8_defer_flush();
+        IDirect3DTexture8 *replacement=NULL,*previous=e->host;
+        HRESULT result=host_CreateTexture(dev,t.width,t.height,t.levels,D3DUSAGE_RENDERTARGET,
+            (D3DFORMAT)host_format,D3DPOOL_DEFAULT,&replacement);
+        if(SUCCEEDED(result) && replacement)
+            result=d3d8_PreserveFeedbackTexture(replacement,previous);
+        if(FAILED(result) || !replacement) {
+            if(replacement)host_ReleaseTexture(replacement);
+            g_skip_create++;e->used_swap=now;return previous;
+        }
+        e->host=replacement;e->render_format=host_format;e->used_swap=now;
+        for(int s=0;s<MAX_STAGES;s++)if(g_bound[s]==previous) {
+            g_bound[s]=replacement;
+            host_SetTexture(dev,(DWORD)s,(IDirect3DBaseTexture8 *)replacement);
+        }
+        host_ReleaseTexture(previous);
+        fprintf(stderr,"[SURFACE-FLOAT] Preserved target 0x%08X at host format %02X\n",va,host_format);
+        return replacement;
+    }
     if (!e) {
         e = cache_slot(dev, now);
         if (!e)
