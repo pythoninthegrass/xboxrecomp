@@ -3376,7 +3376,10 @@ class Lifter:
                 return [_sse_write(ops[0], f"{_sse_read(ops[0])} - {_sse_read(ops[1])}") + f" /* {m} */"]
         if m in ("mulss", "mulsd"):
             if nops >= 2:
-                return [_sse_write(ops[0], f"{_sse_read(ops[0])} * {_sse_read(ops[1])}") + f" /* {m} */"]
+                a, b = _sse_read(ops[0]), _sse_read(ops[1])
+                value = (f"RECOMP_F32_MUL_AT(0x{insn.address:X}, {a}, {b})"
+                         if m == "mulss" else f"{a} * {b}")
+                return [_sse_write(ops[0], value) + f" /* {m} */"]
         if m in ("divss", "divsd"):
             if nops >= 2:
                 return [_sse_write(ops[0], f"{_sse_read(ops[0])} / {_sse_read(ops[1])}") + f" /* {m} */"]

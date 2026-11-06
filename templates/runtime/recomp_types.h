@@ -60,6 +60,9 @@
 #ifndef RECOMP_LOAD_GLOBAL_U32
 #define RECOMP_LOAD_GLOBAL_U32(site, address, value) (value)
 #endif
+#ifndef RECOMP_F32_MUL_AT
+#define RECOMP_F32_MUL_AT(site, left, right) ((left) * (right))
+#endif
 
 /* math.h is load-bearing, and its absence was invisible.
  *

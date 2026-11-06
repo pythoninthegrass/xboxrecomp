@@ -131,7 +131,7 @@ class SsePackedLifterTest(unittest.TestCase):
             Lifter().lift_instruction(
                 _insn("mulss", "xmm0, xmm1",
                       [_xmm("xmm0"), _xmm("xmm1")])),
-            ["xmm0.f[0] = xmm0.f[0] * xmm1.f[0]; /* mulss */"],
+            ["xmm0.f[0] = RECOMP_F32_MUL_AT(0x0, xmm0.f[0], xmm1.f[0]); /* mulss */"],
         )
 
     def test_no_packed_mnemonic_falls_through_to_a_bare_comment(self):
