@@ -1682,9 +1682,8 @@ RhiView *d3d8_base_srv(IDirect3DBaseTexture8 *texture)
     if (!texture) return NULL;
     d3d8_check_overlay();
 #ifdef TSFP_TEXTURE_PACK
-    if(texture->lpVtbl == (const IDirect3DBaseTexture8Vtbl *)&g_tex_vtbl &&
-       ((D3D8Texture *)texture)->pack_srv)
-        return ((D3D8Texture *)texture)->pack_srv;
+    if(texture->lpVtbl == (const IDirect3DBaseTexture8Vtbl *)&g_tex_vtbl)
+        return tsfp_texture_view((D3D8Texture *)texture);
 #endif
     return *(RhiView **)((BYTE *)texture + offsetof(D3D8Texture, srv));
 }

@@ -17,6 +17,9 @@
  */
 
 #include "d3d8_internal.h"
+#ifdef TSFP_TEXTURE_PACK
+#include "texture_pack.h"
+#endif
 #include "d3d8_fvf.h"
 #include <string.h>
 #include <stdio.h>
@@ -1094,6 +1097,9 @@ void d3d8_shaders_prepare_draw(DWORD handle)
     const DWORD *rs;
 
     if (!rhi_device_ready()) return;
+#ifdef TSFP_TEXTURE_PACK
+    tsfp_texture_sync_bindings();
+#endif
     if (d3d8_vsh_prepare_draw(handle)) {
         /* A program that never reads the projection's first column is
          * placing vertices in screen coordinates it worked out itself; one

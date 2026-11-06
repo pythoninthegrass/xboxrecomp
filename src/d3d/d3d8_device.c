@@ -16,6 +16,10 @@
  */
 
 #include "d3d8_internal.h"
+#ifdef TSFP_TEXTURE_PACK
+#include "texture_pack.h"
+#include "texture_mode.h"
+#endif
 #include "d3d8_display.h"
 #ifdef TSFP_PC_DISPLAY
 #include "pc_display.h"
@@ -1571,6 +1575,19 @@ static void rebind_stage_srvs(RhiImage *target)
         rhi_set_textures(stage, 1, &srv);
     }
 }
+
+#ifdef TSFP_TEXTURE_PACK
+/* Refresh textures the game leaves bound across frames. GPU work stays on
+ * the renderer thread; the window only changes an atomic mode flag. */
+void tsfp_texture_sync_bindings(void)
+{
+    static int previous=-1;
+    int mode=tsfp_texture_is_4k();
+    if(mode==previous) return;
+    previous=mode;
+    rebind_stage_srvs(g_cur_rt ? g_cur_rt->image : NULL);
+}
+#endif
 
 static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSurface8 *pRenderTarget, IDirect3DSurface8 *pZStencilSurface)
 {

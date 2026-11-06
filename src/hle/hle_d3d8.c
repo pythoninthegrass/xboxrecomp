@@ -2030,7 +2030,12 @@ static void overlay_frame(void)
         enabled = !enabled;
 #endif
     }
-    if (f10 && !f10_was_down) {
+    /* F10 belongs to Classic/4K textures in the PC build. */
+    if (f10 && !f10_was_down
+#ifdef TSFP_PC_CONTROLS
+        && 0
+#endif
+       ) {
         xbox_Nv2aFlipGateCycle();
         window_start.QuadPart = 0;           /* the old window straddles the change */
     }

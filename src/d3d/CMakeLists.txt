@@ -23,6 +23,14 @@ if(WIN32)
         target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/texture_pack.c")
         target_include_directories(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}")
         target_compile_definitions(xbox_d3d8 PUBLIC TSFP_TEXTURE_PACK)
+        add_executable(tsfp_texture_toggle_test
+            "${TSFP_PC_CONTROLS_DIR}/../tests/texture_toggle.c"
+            "${TSFP_PC_CONTROLS_DIR}/texture_pack.c"
+            "${TSFP_PC_CONTROLS_DIR}/texture_mode.c")
+        target_include_directories(tsfp_texture_toggle_test PRIVATE
+            "${TSFP_PC_CONTROLS_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/..")
+        target_compile_definitions(tsfp_texture_toggle_test PRIVATE TSFP_TEXTURE_PACK)
         add_executable(tsfp_texture_format_test "${TSFP_PC_CONTROLS_DIR}/../tests/texture_pack_format.c")
         target_include_directories(tsfp_texture_format_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
     endif()
