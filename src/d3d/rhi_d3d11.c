@@ -1309,10 +1309,10 @@ static void d_clear_depth(RhiView *v, uint32_t flags, float z, uint8_t s)
         ID3D11DeviceContext_ClearDepthStencilView(g_ctx, (ID3D11DepthStencilView *)v->v, flags, z, s);
 }
 
-static int d_image_resolve(RhiImage *source,RhiImage *destination)
+static int d_image_resolve(RhiImage *source,uint32_t source_sub,RhiImage *destination,uint32_t destination_sub)
 {
     if(!source->res || !destination->res)return -1;
-    ID3D11DeviceContext_ResolveSubresource(g_ctx,destination->res,0,source->res,0,
+    ID3D11DeviceContext_ResolveSubresource(g_ctx,destination->res,destination_sub,source->res,source_sub,
                                           (DXGI_FORMAT)source->desc.format);
     return 0;
 }

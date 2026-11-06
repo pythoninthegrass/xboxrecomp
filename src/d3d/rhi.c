@@ -206,18 +206,32 @@ int rhi_image_readback(RhiImage *img, uint32_t sub, void *dst, uint32_t dst_pitc
     return g_rhi->image_readback(img, sub, dst, dst_pitch);
 }
 
-int rhi_image_resolve(RhiImage *source, RhiImage *destination)
+int rhi_image_resolve_subresource(RhiImage *source,uint32_t source_sub,
+                                  RhiImage *destination,uint32_t destination_sub)
 {
     RhiImageDesc a,b;RhiOutputState saved;int result;
     if(!source || !destination || source==destination || !g_rhi->image_resolve)return -1;
     rhi_image_get_desc(source,&a);rhi_image_get_desc(destination,&b);
-    if(a.type!=RHI_IMAGE_2D || b.type!=RHI_IMAGE_2D || a.depth!=1 || b.depth!=1 ||
-       a.mip_levels!=1 || b.mip_levels!=1 || a.samples<=1 || b.samples>1 ||
-       a.width!=b.width || a.height!=b.height || a.format!=b.format ||
-       (a.bind & RHI_BIND_DEPTH) || (b.bind & RHI_BIND_DEPTH))return -1;
+    if(a.type!=RHI_IMAGE_2D || b.type!=RHI_IMAGE_2D || !a.depth || !b.depth ||
+       a.mip_levels!=1 || !b.mip_levels || a.samples<=1 || b.samples>1 ||
+       source_sub>=a.depth || destination_sub/b.mip_levels>=b.depth ||
+       a.format!=b.format || (a.bind&RHI_BIND_DEPTH) || (b.bind&RHI_BIND_DEPTH))return -1;
+    uint32_t mip=destination_sub%b.mip_levels;
+    if(mip>=32)return -1;
+    uint32_t width=b.width>>mip,height=b.height>>mip;
+    if(!width)width=1;if(!height)height=1;
+    if(a.width!=width || a.height!=height)return -1;
     rhi_output_save(&saved);rhi_set_render_target(NULL,NULL);
-    result=g_rhi->image_resolve(source,destination);
+    result=g_rhi->image_resolve(source,source_sub,destination,destination_sub);
     rhi_output_restore(&saved);return result;
+}
+int rhi_image_resolve(RhiImage *source, RhiImage *destination)
+{
+    RhiImageDesc a,b;
+    if(!source || !destination)return -1;
+    rhi_image_get_desc(source,&a);rhi_image_get_desc(destination,&b);
+    if(a.depth!=1 || b.depth!=1 || a.mip_levels!=1 || b.mip_levels!=1)return -1;
+    return rhi_image_resolve_subresource(source,0,destination,0);
 }
 
 RhiView  *rhi_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *d) { return g_rhi->view_create(img, kind, d); }

@@ -78,7 +78,7 @@ typedef struct RhiBackend {
     void (*draw_indexed)(uint32_t, uint32_t, int32_t);
     void (*clear_color)(RhiView *, const float *);
     void (*clear_depth)(RhiView *, uint32_t, float, uint8_t);
-    int (*image_resolve)(RhiImage *, RhiImage *);
+    int (*image_resolve)(RhiImage *, uint32_t, RhiImage *, uint32_t);
 } RhiBackend;
 
 extern const RhiBackend rhi_d3d11_backend;

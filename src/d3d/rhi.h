@@ -400,6 +400,10 @@ int        rhi_image_readback(RhiImage *img, uint32_t subresource,
  * of identical size/format. No CPU readback. Returns 0 on success, -1 for an
  * unsupported pair; restores output bindings. Arrays/depth are not supported. */
 int rhi_image_resolve(RhiImage *source, RhiImage *destination);
+/* Resolve one MSAA array layer into a matching single-sample mip/array layer.
+ * Subresources are layer*mip_levels+mip, including cube faces. */
+int rhi_image_resolve_subresource(RhiImage *source,uint32_t source_subresource,
+                                  RhiImage *destination,uint32_t destination_subresource);
 
 /* desc may be NULL: the whole image, viewed as the image says. */
 RhiView   *rhi_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *desc);

@@ -3568,7 +3568,7 @@ static void v_draw_indexed(uint32_t n, uint32_t first, int32_t base)
     vkCmdDrawIndexed(cmd(), n, 1, first, base, 0);
 }
 
-static int v_image_resolve(RhiImage *source,RhiImage *destination)
+static int v_image_resolve(RhiImage *source,uint32_t source_sub,RhiImage *destination,uint32_t destination_sub)
 {
     VkImageResolve region;VkImage src,dst;
     VkImageLayout old_src=source->layout,old_dst=destination->layout;
@@ -3581,6 +3581,9 @@ static int v_image_resolve(RhiImage *source,RhiImage *destination)
     memset(&region,0,sizeof region);
     region.srcSubresource.aspectMask=region.dstSubresource.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
     region.srcSubresource.layerCount=region.dstSubresource.layerCount=1;
+    region.srcSubresource.baseArrayLayer=source_sub;
+    region.dstSubresource.baseArrayLayer=destination_sub/destination->desc.mip_levels;
+    region.dstSubresource.mipLevel=destination_sub%destination->desc.mip_levels;
     region.extent.width=source->desc.width;region.extent.height=source->desc.height;region.extent.depth=1;
     vkCmdResolveImage(cmd(),src,source->layout,dst,destination->layout,1,&region);
     full_barrier(cmd());
