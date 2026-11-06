@@ -288,6 +288,16 @@ void sub_000BABA0(void)
 #endif
 }
 
+extern void sub_001AF950_gen(void);
+void sub_001AF950(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_lobby_lost(sub_001AF950_gen);
+#else
+    sub_001AF950_gen();
+#endif
+}
+
 extern void sub_00079860_gen(void);
 void sub_00079860(void)
 {
