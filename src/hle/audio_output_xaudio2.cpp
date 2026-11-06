@@ -320,6 +320,13 @@ extern "C" int recomp_audio_output_position(uint32_t slot, uint64_t *played_byte
     return 1;
 }
 
+extern "C" int recomp_audio_output_tail_pending(uint32_t slot, int finish)
+{
+    uint32_t queued = 0;
+    (void)finish; /* XAudio already consumes every accepted frame. */
+    return recomp_audio_output_position(slot, nullptr, &queued) && queued != 0;
+}
+
 static float gainOf(int32_t volume_hundredth_db)
 {
     if (volume_hundredth_db < -10000) volume_hundredth_db = -10000;

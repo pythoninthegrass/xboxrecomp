@@ -68,6 +68,13 @@ int recomp_audio_output_submit(
 int recomp_audio_output_position(uint32_t slot, uint64_t *played_bytes,
                                  uint32_t *queued_buffers);
 
+/* Whether accepted PCM remains queued, without promising a device cursor.
+   finish signals no more input for this sound: adapters may release a held
+   resampling tail once. Do not set finish while more PCM remains to submit.
+   Returns 0 after drain, reset or unavailable output. Continuous stream/movie
+   clock selection still uses position() and is unaffected by this query. */
+int recomp_audio_output_tail_pending(uint32_t slot, int finish);
+
 /* The slot's volume, now, for everything it has queued: a voice whose level
    changes while it plays (a 3D sound moving) follows without waiting for its
    next submission. 0 when there is no voice. */

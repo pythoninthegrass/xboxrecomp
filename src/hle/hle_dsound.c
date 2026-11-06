@@ -1082,8 +1082,7 @@ HLE_EXPORT(IDirectSoundBuffer_GetStatus)
              * may Stop/reuse the buffer and discard those unheard samples.
              * Explicit Stop/pause/reset clears fed; absent output keeps the
              * existing wall-clock fallback rather than waiting on a device. */
-            uint32_t queued = 0u;
-            if (recomp_audio_output_position(slot_of(b), NULL, &queued) && queued)
+            if (recomp_audio_output_tail_pending(slot_of(b), !b->output_model.playing))
                 status = 1u;
         }
     }
