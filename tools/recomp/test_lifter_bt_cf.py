@@ -23,8 +23,7 @@ not count the bt family as CF producers -- CF_TRACKED is only add/sub/adc/sbb/
 shl/shr/sar -- so for a function whose sole carry consumer followed a `bts`,
 the capture was never even emitted. Both halves are fixed; this pins both.
 
-Plain `bt` keeps the re-read deliberately: it is exact, and it avoids forcing
-_cf emission across a whole function for the common read-only case.
+Plain `bt` also captures CF, so subsequent operand writes cannot change it.
 """
 import unittest
 
@@ -63,7 +62,7 @@ class BitTestCarryTest(unittest.TestCase):
                 generated = _reg_block(mnemonic, "jb")
                 self.assertIn("if (_cf)", generated)
                 capture = generated.index("_cf = ")
-                write = generated.index("edx = (edx")
+                write = generated.index("edx = (_bitop_value")
                 self.assertLess(capture, write,
                                 "CF must be captured before the bit is written")
 
@@ -80,11 +79,11 @@ class BitTestCarryTest(unittest.TestCase):
             with self.subTest(mnemonic=mnemonic):
                 self.assertIn("if (!_cf)", _reg_block(mnemonic, "jae"))
 
-    def test_plain_bt_still_reads_the_bit(self):
-        # bt does not modify, so the re-read is exact and is kept -- otherwise
-        # every function containing a bt would be forced to publish _cf.
+    def test_plain_bt_uses_the_snapshot(self):
+        # Later instructions may overwrite even a non-modifying BT operand.
         generated = _reg_block("bt", "jb")
-        self.assertIn("(edx >> (eax & 31)) & 1", generated.splitlines()[-1])
+        self.assertIn("if (_cf)", generated.splitlines()[-1])
+        self.assertLess(generated.index("_cf = "), generated.index("if (_cf)"))
 
     def test_bit_string_form_also_answers_from_the_snapshot(self):
         # bts with a memory base and a register offset is the strpbrk shape.
@@ -100,7 +99,7 @@ class BitTestCarryTest(unittest.TestCase):
             lifter, BasicBlock(start=0, instructions=[bit, branch]))
         generated = "\n".join(lifted)
         self.assertIn("if (_cf)", generated)
-        self.assertLess(generated.index("_cf = "), generated.index("= (MEM32"))
+        self.assertLess(generated.index("_cf = "), generated.index("MEM32(_bitop_address) ="))
 
     def test_the_snapshot_is_actually_emitted_for_these_functions(self):
         # The other half of the bug. Without this, the consumer would name a
@@ -112,8 +111,8 @@ class BitTestCarryTest(unittest.TestCase):
                         _insns(mnemonic, "jb")),
                     "a carry branch after %s must publish _cf" % mnemonic)
 
-    def test_plain_bt_does_not_force_cf_publication(self):
-        self.assertFalse(
+    def test_plain_bt_forces_cf_publication(self):
+        self.assertTrue(
             FunctionTranslator._function_needs_cf(_insns("bt", "jb")))
 
 

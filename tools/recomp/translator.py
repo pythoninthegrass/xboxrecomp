@@ -892,8 +892,8 @@ class FunctionTranslator:
 
         last_setter = None
         for insn in instructions:
-            if insn.mnemonic in ("rcl", "rcr", "mul", "imul"):
-                return True  # Own carry rotates and products publish/read carry.
+            if insn.mnemonic in ("rcl", "rcr", "mul", "imul", "bt", "bts", "btr", "btc"):
+                return True  # Own carry producers publish their captured value.
             if _constant_bit_noop(insn):
                 continue
             m = insn.mnemonic

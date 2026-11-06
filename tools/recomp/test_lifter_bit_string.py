@@ -35,12 +35,12 @@ def _lift(mnemonic, bit_operand):
 class BitStringTest(unittest.TestCase):
     def test_bts_selects_the_dword_by_offset(self):
         generated = _lift("bts", Operand(type="reg", reg="eax"))
-        self.assertIn("(((int32_t)(eax) >> 5) * 4)", generated)
-        self.assertIn("(eax) & 31", generated)
+        self.assertIn("_bitop_word * 4u", generated)
+        self.assertIn("_bitop_offset & 31u", generated)
 
     def test_bt_selects_the_dword_by_offset(self):
         generated = _lift("bt", Operand(type="reg", reg="eax"))
-        self.assertIn("(((int32_t)(eax) >> 5) * 4)", generated)
+        self.assertIn("_bitop_word * 4u", generated)
 
     def test_immediate_offset_stays_within_the_addressed_dword(self):
         # An immediate bit offset really is limited to 0..31 of the dword the
@@ -57,7 +57,7 @@ class BitStringTest(unittest.TestCase):
         lifted, _ = lift_basic_block(
             lifter, BasicBlock(start=0, instructions=[insn]))
         generated = chr(10).join(lifted)
-        self.assertIn("eax & 31", generated)
+        self.assertIn("_bitop_offset & 31u", generated)
         self.assertNotIn(">> 5", generated)
 
 

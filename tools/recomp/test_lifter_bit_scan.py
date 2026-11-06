@@ -28,24 +28,24 @@ def _scan(mnemonic, dst="eax", src="ecx", size=4):
 
 def test_bsf_scans_from_the_low_bit():
     body = "".join(Lifter().lift_instruction(_scan("bsf")))
-    assert "_bs_i = 0" in body and "_bs_i++" in body
+    assert "_bitop_index = 0" in body and "++_bitop_index" in body
 
 
 def test_bsr_scans_from_the_high_bit():
     body = "".join(Lifter().lift_instruction(_scan("bsr")))
-    assert "_bs_i = 31" in body and "_bs_i--" in body
+    assert "while ((_bitop_value >>= 1) != 0u) ++_bitop_index" in body
 
 
 def test_zero_source_leaves_the_destination_untouched():
     # The architecture leaves the destination undefined for a zero source, so
     # the lift must not invent a value -- the write sits behind the guard.
     body = "".join(Lifter().lift_instruction(_scan("bsf")))
-    assert "if (_bs_v) {" in body
+    assert "if (_bitop_value) {" in body
 
 
 def test_zero_flag_is_published_through_the_compare_snapshot():
     body = "".join(Lifter().lift_instruction(_scan("bsf")))
-    assert "_fa = _bs_v" in body and "_fb = 0" in body
+    assert "_fa = _bitop_value" in body and "_fb = 0" in body
 
 
 def test_jnz_after_a_scan_reads_that_snapshot():
