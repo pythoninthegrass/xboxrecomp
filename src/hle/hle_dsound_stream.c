@@ -629,7 +629,9 @@ static void read_format(Stream *s, uint32_t wfx)
 static void relayout(Stream *s, uint64_t now, uint32_t new_freq, uint32_t wfx)
 {
     uint64_t c, pos;
-    int i;
+    uint32_t old_tag = s->tag, old_channels = s->channels;
+    uint32_t old_bits = s->bits, old_align = s->align;
+    int i, layout_changed;
 
     sync_to_host(s, now);
     complete_passed(s, now);
@@ -638,16 +640,21 @@ static void relayout(Stream *s, uint64_t now, uint32_t new_freq, uint32_t wfx)
     if (wfx)
         read_format(s, wfx);
     s->freq = new_freq;
+    /* Rate/frequency changes do not change the packet's byte layout. Keep
+     * its original start so pump resumes at the exact unheard sample,
+     * including a position inside an ADPCM block or a paused packet. */
+    layout_changed = wfx && (s->tag != old_tag || s->channels != old_channels ||
+                            s->bits != old_bits || s->align != old_align);
     pos = c;
     for (i = 0; i < s->count; i++) {
         Packet *p = &s->packets[(s->head + i) % MAX_PACKETS];
-        if (wfx) {
+        if (layout_changed) {
             p->start = pos;
             p->end   = pos + decoded_size(s, p->size);
         }
         pos = p->end;
     }
-    if (wfx || pos > s->queued)
+    if (layout_changed || pos > s->queued)
         s->queued = pos;
     s->consumed_base = c;
     s->sent          = c;

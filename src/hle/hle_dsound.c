@@ -80,7 +80,7 @@ enum {
 
 typedef struct Buffer {
     uint32_t iface;              /* the IDirectSoundBuffer the game holds */
-    uint32_t data, size, format;
+    uint32_t data, size, format, rate, align;
     int      output;             /* samples we can send to the host */
     /* IDirectSoundBuffer_Pause: the model is stopped with its cursor kept,
      * and paused_flags holds the play flags to resume with. */
@@ -608,7 +608,7 @@ static Buffer *model_for_known(Buffer *known, uint32_t iface, uint64_t now)
 {
     Buffer *b = known ? known : find(iface);
     uint32_t size, data, format, tag, channels, bits, align, rate, loop_start;
-    uint32_t decoded_size, decoded_loop, block_align;
+    uint32_t decoded_size, decoded_loop, block_align, raw_size;
     int output;
     uint32_t i;
 
@@ -630,7 +630,8 @@ static Buffer *model_for_known(Buffer *known, uint32_t iface, uint64_t now)
     channels   = (format >> 16) & 0xFFu;
     bits       = format >> 24;
 
-    if (b && (b->data != data || b->size != size || b->format != format)) {
+    if (b && (b->data != data || b->size != size || b->format != format ||
+              b->rate != rate || b->align != align)) {
         retire(b);
         b = NULL;
     }
@@ -644,18 +645,14 @@ static Buffer *model_for_known(Buffer *known, uint32_t iface, uint64_t now)
      * with no model and no sound. The tail is less than one block. b->size
      * below keeps the raw size, so a real change is still noticed. */
     {
-        uint32_t raw_size = size;
+        raw_size = size;
         size -= size % align;
         if (size == 0u) {
             if (b) retire(b);
             return NULL;
         }
-        if (b) {
-            b->size = raw_size;
-        }
         if (loop_start >= size)
             loop_start = 0u;
-        (void)raw_size;
     }
     if (loop_start >= size || loop_start % align != 0u)
         loop_start = 0u;
@@ -700,8 +697,10 @@ static Buffer *model_for_known(Buffer *known, uint32_t iface, uint64_t now)
                 return NULL;
             b->iface = iface;
             b->data = data;
-            b->size = size;
+            b->size = raw_size;
             b->format = format;
+            b->rate = rate;
+            b->align = align;
             b->output = output;
             b->model.loop_start_bytes = decoded_loop;
             b->output_model = b->model;
