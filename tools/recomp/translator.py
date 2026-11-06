@@ -134,25 +134,8 @@ def _incoming_flag_state(sources, known, is_entry):
     return None
 
 
-def write_if_changed(path, text):
-    """Write text to path only when it differs from what is already there.
-
-    Every regen rewrites all 54 chunks of generated C. If the bytes are
-    identical the mtime bump still forces the compiler to redo the whole
-    365 MB at /O2, which is minutes of a saturated box for a one-function
-    change. Comparing first makes an unchanged chunk free.
-
-    Returns True if the file was written.
-    """
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            if f.read() == text:
-                return False
-    except OSError:
-        pass
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-    return True
+from tools.xbe_parser.xbe_parser import XBEParser as _ProjectXBEParser
+from generation_output import write_if_changed
 
 
 def _fixup_icall_esp_save(lines):
