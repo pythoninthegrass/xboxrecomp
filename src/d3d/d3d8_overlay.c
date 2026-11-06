@@ -13,6 +13,9 @@
  */
 #include "d3d8_internal.h"
 #include "d3d8_overlay.h"
+#include "pc_counter_layout.h"
+static int product_counter;
+void d3d8_overlay_set_counter(int enabled) { product_counter=enabled; }
 
 #include <stdio.h>
 #include <string.h>
@@ -212,10 +215,11 @@ static void overlay_draw(const char *text, int lower_right)
 
     if (!(mapped = rhi_buffer_map(g.cb, RHI_MAP_WRITE_DISCARD)))
         goto restore;
-    c.x = -1.0f + 2.0f * (float)(lower_right ? (int)width-g.text_w-OVERLAY_PAD : OVERLAY_PAD) / (float)width;
-    c.y =  1.0f - 2.0f * (float)(lower_right ? (int)height-OVERLAY_H-OVERLAY_PAD : OVERLAY_PAD) / (float)height;
-    c.w =  2.0f * (float)g.text_w / (float)width;
-    c.h =  2.0f * (float)OVERLAY_H / (float)height;
+    float scale=!lower_right && product_counter?pc_counter_scale(width,height,g.text_w,OVERLAY_H):1.f;
+    c.x = -1.0f + 2.0f * (float)(lower_right ? (int)width-g.text_w-OVERLAY_PAD : OVERLAY_PAD) * scale / (float)width;
+    c.y =  1.0f - 2.0f * (float)(lower_right ? (int)height-OVERLAY_H-OVERLAY_PAD : OVERLAY_PAD) * scale / (float)height;
+    c.w =  2.0f * (float)g.text_w * scale / (float)width;
+    c.h =  2.0f * (float)OVERLAY_H * scale / (float)height;
     c.tex_w = (float)g.text_w;
     c.tex_h = (float)OVERLAY_H;
     c.pad0 = c.pad1 = 0.0f;

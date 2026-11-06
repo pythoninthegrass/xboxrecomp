@@ -34,6 +34,7 @@ extern "C" {
  * failure to create anything it needs disables it for the rest of the run,
  * once, with a line on stderr -- an overlay must never be the reason a title
  * stops drawing. */
+void d3d8_overlay_set_counter(int enabled);
 void d3d8_overlay_draw(const char *text);
 
 /* Releases everything. Called from the device teardown. */

@@ -2131,6 +2131,7 @@ static void overlay_frame(void)
 
 #ifdef TSFP_PC_CONTROLS
     enabled = pc_debug_overlay(line, line_size, xbox_Nv2aFlipGateModeName());
+    d3d8_overlay_set_counter(pc_counter_enabled());
 #endif
     g_overlay_shown = enabled;
     if (enabled)
