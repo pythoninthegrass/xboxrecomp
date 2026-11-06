@@ -107,10 +107,14 @@ static uint64_t g_buffer_generation;
 static CRITICAL_SECTION g_lock;
 static INIT_ONCE g_lock_once = INIT_ONCE_STATIC_INIT;
 
+static void report_final(void);
+
 static BOOL CALLBACK init_lock(PINIT_ONCE once, PVOID param, PVOID *ctx)
 {
     (void)once; (void)param; (void)ctx;
     InitializeCriticalSection(&g_lock);
+    if (atexit(report_final))
+        fprintf(stderr, "[DSOUND] unable to register final health summary\n");
     return TRUE;
 }
 
@@ -183,6 +187,21 @@ static struct {
     uint64_t freq_calls, freq_same, freq_changed, freq_changed_playing;
     uint64_t commits_3d, commits_original;
 } g_stat;
+
+/* Normal process exit only: take no guest-memory reads or output calls here.
+ * Output teardown has its own idempotent final report, in either exit order. */
+static void report_final(void)
+{
+    uint32_t occupied = 0;
+    lock();
+    for (uint32_t i = 0; i < SLOTS; ++i) occupied += g_buffers[i].iface != 0;
+    fprintf(stderr, "[DSOUND] final health: occupied=%u/%u pool_full=%llu "
+            "release_calls=%llu released_slots=%llu submit_refused=%llu starvation_episodes=%llu\n",
+            occupied, SLOTS, (unsigned long long)g_stat.pool_full,
+            (unsigned long long)g_stat.releases, (unsigned long long)g_stat.released,
+            (unsigned long long)g_stat.refused, (unsigned long long)g_stat.underruns);
+    unlock();
+}
 
 /* Buffer settings: [iface] = [object + 0x1C]. Voice settings: [object + 0x10],
  * i.e. [iface - 0x0C]. */

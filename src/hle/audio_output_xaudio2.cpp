@@ -80,7 +80,7 @@ void routeVoice(uint32_t slot)
     voice.source->SetOutputMatrix(master,voice.channels,2,matrix);
 }
 bool reported_nonzero[kVoiceCount];
-bool attempted, callback_registered, summary_printed;
+bool attempted, callback_registered, summary_printed, exit_registered;
 bool discontinuity[kVoiceCount];
 double retry_ms;
 std::recursive_mutex output_lock;
@@ -191,6 +191,11 @@ extern "C" void recomp_audio_output_initialize(void)
 {
     std::lock_guard<std::recursive_mutex> guard(output_lock);
     if (summary_printed) return;
+    if (!exit_registered) {
+        exit_registered = true;
+        if (std::atexit(recomp_audio_output_shutdown))
+            std::fprintf(stderr, "[audio-output] unable to register final health summary\n");
+    }
     checkCriticalError();
     if (attempted || nowMs() < retry_ms) return;
     attempted = true;
@@ -266,6 +271,7 @@ extern "C" void recomp_audio_output_shutdown(void)
         "[audio-output] summary submitted_buffers=%llu submitted_bytes=%llu "
         "nonzero_buffers=%llu dropped_buffers=%llu\n",
         submitted_buffers, submitted_bytes, nonzero_buffers, dropped_buffers);
+    recomp_audio_output_log_final_health(&health);
 }
 
 extern "C" void recomp_audio_output_reset_voice(uint32_t slot)

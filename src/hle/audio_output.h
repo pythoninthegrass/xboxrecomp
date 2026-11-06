@@ -10,6 +10,7 @@
 #define XBOXRECOMP_AUDIO_OUTPUT_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,6 +88,18 @@ typedef struct RecompAudioEngineStats {
     uint64_t voice_failed, device_failed, open_attempts, opens;
     double   create_ms_total, create_ms_max, destroy_ms_total, destroy_ms_max;
 } RecompAudioEngineStats;
+/* Shared final format for both adapters; lifetime counters survive teardown. */
+static inline void recomp_audio_output_log_final_health(const RecompAudioEngineStats *s)
+{
+    fprintf(stderr, "[audio-output] final health: queue_full=%llu invalid_pcm=%llu "
+            "unavailable=%llu retry_wait=%llu allocation_failed=%llu voice_failed=%llu "
+            "device_failed=%llu open_attempts=%llu opens=%llu\n",
+            (unsigned long long)s->queue_full, (unsigned long long)s->invalid_pcm,
+            (unsigned long long)s->unavailable, (unsigned long long)s->retry_wait,
+            (unsigned long long)s->allocation_failed, (unsigned long long)s->voice_failed,
+            (unsigned long long)s->device_failed, (unsigned long long)s->open_attempts,
+            (unsigned long long)s->opens);
+}
 int recomp_audio_output_engine_stats(RecompAudioEngineStats *stats);
 
 #ifdef __cplusplus
