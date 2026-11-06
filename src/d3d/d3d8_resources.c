@@ -1167,9 +1167,28 @@ static ULONG __stdcall sf_AddRef(IDirect3DSurface8 *self)
 /* The device resolves the previous attachment before preparing the next one.
  * Reseeding on bind preserves CPU/copy writes and aliases of the same guest
  * texture. The normal guest pipeline is rebound after this copy pass. */
+static D3D8Surface *g_msaa_surfaces;
+
 int d3d8_surface_msaa_resolve(D3D8Surface *sf)
 {
     return !sf || !sf->msaa_active || !sf->msaa_color || !sf->msaa_color->image || tsfp_msaa_color_resolve(sf->msaa_color);
+}
+/* Surface wrappers may alias the same texture subresource. Synchronize by
+ * image identity, not by the wrapper used for LockRect or upload. All callers
+ * execute on the serialized renderer thread. */
+static int msaa_image_read(RhiImage *image,unsigned subresource)
+{
+    for(D3D8Surface *sf=g_msaa_surfaces;sf;sf=sf->msaa_next)
+        if(sf->image==image && sf->subresource==subresource &&
+           !d3d8_surface_msaa_resolve(sf))return 0;
+    return 1;
+}
+static int msaa_image_written(RhiImage *image,unsigned subresource)
+{
+    for(D3D8Surface *sf=g_msaa_surfaces;sf;sf=sf->msaa_next)
+        if(sf->image==image && sf->subresource==subresource && sf->msaa_active &&
+           !tsfp_msaa_color_seed(sf->msaa_color))return 0;
+    return 1;
 }
 RhiView *d3d8_surface_draw_view(D3D8Surface *sf)
 {
@@ -1184,6 +1203,7 @@ RhiView *d3d8_surface_msaa_prepare(D3D8Surface *sf,unsigned samples)
     if(!sf->msaa_color){
         sf->msaa_color=calloc(1,sizeof *sf->msaa_color);
         if(!sf->msaa_color)return NULL;
+        sf->msaa_next=g_msaa_surfaces;g_msaa_surfaces=sf;
     }
     if(sf->msaa_color->samples!=samples){
         if(!d3d8_surface_msaa_resolve(sf) && sf->msaa_color->image)return NULL;
@@ -1202,6 +1222,9 @@ static ULONG __stdcall sf_Release(IDirect3DSurface8 *self)
             free(sf->locked_bits);
         sf->locked = FALSE;
         if(sf->msaa_color){
+            D3D8Surface **link=&g_msaa_surfaces;
+            while(*link && *link!=sf)link=&(*link)->msaa_next;
+            if(*link)*link=sf->msaa_next;
             d3d8_surface_msaa_resolve(sf);
             tsfp_msaa_color_destroy(sf->msaa_color);free(sf->msaa_color);
         }
@@ -1306,7 +1329,7 @@ static HRESULT __stdcall sf_LockRect(IDirect3DSurface8 *self, D3DLOCKED_RECT *pL
 
     full = (BYTE *)malloc((size_t)full_pitch * full_rows);
     if (!full) return E_OUTOFMEMORY;
-    if (!d3d8_surface_msaa_resolve(sf) ||
+    if (!msaa_image_read(sf->image,sf->subresource) ||
         rhi_image_readback(sf->image, sf->subresource, full, full_pitch) != 0) {
         free(full);
         return E_FAIL;
@@ -1386,8 +1409,7 @@ static HRESULT __stdcall sf_UnlockRect(IDirect3DSurface8 *self)
                          sf->locked_bits, (uint32_t)sf->locked_pitch, 0);
         /* The bound coverage image must see this CPU edit before the next
          * draw or resolve. Read-only locks leave its samples untouched. */
-        if (sf->msaa_active && sf->msaa_color &&
-            !tsfp_msaa_color_seed(sf->msaa_color)) result = E_FAIL;
+        if (!msaa_image_written(sf->image,sf->subresource)) result = E_FAIL;
     }
 
     free(sf->locked_bits);
@@ -1549,6 +1571,8 @@ static void d3d8_upload_mip_level(RhiImage *image, D3DFORMAT fmt,
     }
 
     rhi_image_update(image, subresource, NULL, upload_data, upload_pitch, upload_pitch * rows);
+    if(!msaa_image_written(image,subresource))
+        fprintf(stderr,"D3D8: MSAA upload synchronization failed\n");
 
     if (linear) free(linear);
     if (converted) free(converted);

@@ -223,6 +223,7 @@ typedef struct D3D8Surface {
     UINT                    palette_pitch;
     UINT                    palette_index; /* stage palette baked into it */
     struct TsfpMsaaColorSurface *msaa_color;
+    struct D3D8Surface *msaa_next;
     BOOL msaa_active;
 } D3D8Surface;
 
