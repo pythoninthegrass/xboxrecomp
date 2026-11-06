@@ -60,6 +60,11 @@ endif()
 # and provides the 'xboxrecomp' umbrella target to link against.
 add_subdirectory(${XBOXRECOMP_DIR} ${CMAKE_BINARY_DIR}/xboxrecomp)
 
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    add_executable(tsfp_pc_debug_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_debug.c")
+    target_link_libraries(tsfp_pc_debug_test PRIVATE xbox_input)
+endif()
+
 # ── Recompiled game executable ──────────────────────────────────
 
 # Collect generated recompiled code.

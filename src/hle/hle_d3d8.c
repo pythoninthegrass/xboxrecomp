@@ -2019,8 +2019,13 @@ static void overlay_frame(void)
         shadow_dump_next_frame();
     }
     f11_was_down = f11;
-    if (f9 && !f9_was_down)
+    if (f9 && !f9_was_down) {
+#ifdef TSFP_PC_CONTROLS
+        pc_debug_toggle_fps();
+#else
         enabled = !enabled;
+#endif
+    }
     if (f10 && !f10_was_down) {
         xbox_Nv2aFlipGateCycle();
         window_start.QuadPart = 0;           /* the old window straddles the change */
@@ -2029,6 +2034,9 @@ static void overlay_frame(void)
     f10_was_down = f10;
 
     QueryPerformanceCounter(&now);
+#ifdef TSFP_PC_CONTROLS
+    pc_debug_frame();
+#endif
     if (!window_start.QuadPart) {
         window_start = now;
         window_frames = 0;
@@ -2040,6 +2048,9 @@ static void overlay_frame(void)
         double secs = (double)(now.QuadPart - window_start.QuadPart) / (double)qpf.QuadPart;
         unsigned long extra = hle_d3d8_interp_presents() - window_extra;
 
+#ifdef TSFP_PC_CONTROLS
+        pc_debug_sample((double)window_frames / secs, (double)(window_frames + extra) / secs);
+#endif
         /* With frame interpolation, what reaches the screen as well. */
         if (extra)
             snprintf(line, line_size, "%.1f fps (%.1f shown)   cap %s",
@@ -2053,6 +2064,9 @@ static void overlay_frame(void)
         window_extra = hle_d3d8_interp_presents();
     }
 
+#ifdef TSFP_PC_CONTROLS
+    enabled = pc_debug_overlay(line, line_size, xbox_Nv2aFlipGateModeName());
+#endif
     g_overlay_shown = enabled;
     if (enabled)
         d3d8_overlay_draw(line);

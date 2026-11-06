@@ -38,3 +38,9 @@ endif()
 # Not built by default; `cmake --build <dir> --target recomp_pad_probe`.
 add_executable(recomp_pad_probe EXCLUDE_FROM_ALL recomp_pad_probe.c)
 target_link_libraries(recomp_pad_probe PRIVATE xbox_input)
+
+# PC diagnostics use the same host-input library as the settings dialog.
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_debug.c")
+    target_link_libraries(xbox_input PUBLIC shell32)
+endif()
