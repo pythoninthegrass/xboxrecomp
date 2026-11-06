@@ -136,6 +136,21 @@ void sub_0035CC10(void)
 extern void sub_0005FDC0_gen(void);
 void sub_0005FDC0(void)
 { pc_network_bots_guest_pose(sub_0005FDC0_gen); }
+extern void sub_00354240_gen(void);
+void sub_00354240(void)
+{ pc_network_bots_guest_lobby_send(sub_00354240_gen); }
+extern void sub_0035E630_gen(void);
+void sub_0035E630(void)
+{ pc_network_bots_guest_capacity(sub_0035E630_gen); }
+extern void sub_002D38C0_gen(void);
+void sub_002D38C0(void)
+{ pc_network_bots_guest_start(sub_002D38C0_gen); }
+extern void sub_00197890_gen(void);
+void sub_00197890(void)
+{ pc_network_bots_guest_lobby_draw(sub_00197890_gen); }
+extern void sub_0003D7F0_gen(void);
+void sub_0003D7F0(void)
+{ pc_network_bots_guest_lobby_text(sub_0003D7F0_gen); }
 extern void sub_000BB6C0_gen(void);
 void sub_000BB6C0(void)
 { pc_network_bots_guest_damage(sub_000BB6C0_gen); }
