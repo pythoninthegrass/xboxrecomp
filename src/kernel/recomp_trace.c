@@ -424,7 +424,7 @@ static int trace_only_match(const char *name)
     static int hits[16];
     const char *p;
     int idx = 0;
-    size_t n = strlen(name);
+    size_t n;
 
     if (!init) {
         const char *v = getenv("RECOMP_TRACE_ONLY");
@@ -439,6 +439,9 @@ static int trace_only_match(const char *name)
     }
     if (!list[0])
         return 0;
+    /* Every lifted function enters here. With no name filter, do not scan
+     * its diagnostic label on the gameplay hot path. */
+    n = strlen(name);
     for (p = list; *p; idx++) {
         const char *end = strchr(p, ',');
         size_t len = end ? (size_t)(end - p) : strlen(p);
