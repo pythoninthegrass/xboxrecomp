@@ -68,9 +68,9 @@ def test_shr_produces_shifted_out_bit():
 
 def test_adc_consumes_and_reproduces_carry():
     out = _lift("adc", [EDX, ECX])
-    assert "_cf" in out, out
+    assert "uint32_t _alu_carry = (_cf != 0);" in out, out
     # Carry-out for the next word in the chain.
-    assert "_cf = (int)((_t >>" in out, out
+    assert "_cf = (int)((_alu_wide >>" in out, out
 
 
 def test_logical_ops_clear_carry():

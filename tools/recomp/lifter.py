@@ -21,6 +21,7 @@ import struct
 from .disasm import Instruction, Operand, LOOP_JUMPS
 from .config import is_code_address, is_data_address, va_to_file_offset
 import translation_moves as _project_moves
+import translation_integer as _project_integer
 
 # Function export names of the Windows libraries the host exe links
 # (kernel32/user32/gdi32/advapi32/winmm/ws2_32/ole32/dbghelp/...). A guest
@@ -1805,103 +1806,17 @@ class Lifter:
         return (f"_fa = (uint32_t)({dst}) & {mask};"
                 f" _fas = (int32_t){sx}(_fa); /* {m} result */")
 
-    def _lift_alu_binop(self, insn, ops, m):
-        if len(ops) < 2:
-            return [f"/* {m}: bad operands */"]
-        c_op = {"add": "+", "sub": "-", "and": "&", "or": "|", "xor": "^"}[m]
-        dst = _fmt_operand_read(ops[0])
-        src = _fmt_operand_read(ops[1])
-        # XOR reg, reg → zero
-        if m == "xor" and ops[0].type == "reg" and ops[1].type == "reg" and ops[0].reg == ops[1].reg:
-            out = ["_cf = 0; /* xor clears CF */"] if self.needs_cf else []
-            out.append(_fmt_operand_write(ops[0], "0") + " /* xor self */")
-            out.append(self._result_snapshot(ops, m))
-            return out
-        expr = f"{dst} {c_op} {src}"
-        out = []
-        if m in _RESULT_SRC_SETTERS:
-            out.append(self._result_snapshot(ops, m, src_too=True))
-        if self.needs_cf:
-            # CF must be computed from the pre-write operands.
-            if m == "add":
-                w = _operand_width(ops[0]) or 4
-                out.append(f"_cf = (int)((((uint64_t)({dst}) + (uint64_t)({src})) >> {w * 8}) & 1);")
-            elif m == "sub":
-                out.append(f"_cf = (int)((uint32_t)({dst}) < (uint32_t)({src}));")
-            else:
-                out.append("_cf = 0; /* logical op clears CF */")
-        out.append(_fmt_operand_write(ops[0], expr))
-        out.append(self._result_snapshot(ops, m))
-        return out
+    _lift_alu_binop = _project_integer.alu_binop
 
-    def _lift_inc_dec(self, insn, ops, m):
-        if len(ops) < 1:
-            return [f"/* {m}: no operand */"]
-        val = _fmt_operand_read(ops[0])
-        delta = "1"
-        op_char = "+" if m == "inc" else "-"
-        # For sub-registers (al, cl, etc.), use the SET macro instead of ++
-        if ops[0].type == "reg" and ops[0].reg in (
-                "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp"):
-            out = [f"{val}{'++' if m == 'inc' else '--'};"]
-        else:
-            source = val
-            if m == "dec" and ops[0].type == "mem" and ops[0].mem_size == 1:
-                source = f"RECOMP_LOAD_U8_AT(0x{insn.address:X}, {val})"
-            out = [_fmt_operand_write(ops[0], f"{source} {op_char} {delta}")]
-        size = _operand_width(ops[0]) or 4
-        mask, sx = self._SNAP_MASK[size], self._SNAP_SX[size]
-        overflow_result = (1 << (size * 8 - 1)) - (m == "dec")
-        out += [f"_fa = (uint32_t)({val}) & {mask};",
-                f"_fas = (int32_t){sx}(_fa); _fb = (_fa == 0x{overflow_result:X}u); /* {m} result/SF/OF; CF unchanged */"]
-        return out
+    _lift_inc_dec = _project_integer.inc_dec
 
-    def _lift_neg(self, insn, ops, preserve_carry=False):
-        if len(ops) < 1:
-            return ["/* neg: no operand */"]
-        val = _fmt_operand_read(ops[0])
-        out = []
-        if preserve_carry or self.needs_cf:
-            # neg sets CF iff the operand was non-zero (neg/sbb sign-extract).
-            out.append(f"_cf = (int)(({val}) != 0);")
-        out.append(_fmt_operand_write(ops[0], f"(uint32_t)(-(int32_t){val})"))
-        out.append(self._result_snapshot(ops, "neg"))
-        return out
+    _lift_neg = _project_integer.neg
 
-    def _lift_not(self, insn, ops):
-        if len(ops) < 1:
-            return ["/* not: no operand */"]
-        val = _fmt_operand_read(ops[0])
-        return [_fmt_operand_write(ops[0], f"~{val}")]
+    _lift_not = _project_integer.bit_not
 
-    def _lift_sbb(self, insn, ops):
-        """SBB: subtract with borrow. Common idiom: sbb reg, reg → -CF (0 or -1)."""
-        if len(ops) < 2:
-            return ["/* sbb: bad operands */"]
-        dst = _fmt_operand_read(ops[0])
-        src = _fmt_operand_read(ops[1])
-        # sbb reg, reg is a common idiom: result is 0 or 0xFFFFFFFF depending on CF
-        if ops[0].type == "reg" and ops[1].type == "reg" and ops[0].reg == ops[1].reg:
-            return [_fmt_operand_write(ops[0], "_cf ? 0xFFFFFFFF : 0")
-                    + " /* sbb self (CF extend) */",
-                    self._result_snapshot(ops, "sbb")]
-        w = (_operand_width(ops[0]) or 4) * 8
-        return ["{ uint64_t _t = (uint64_t)(%s) - (uint64_t)(%s) - (uint64_t)_cf;"
-                " _cf = (int)((_t >> %d) & 1); %s }  /* sbb */"
-                % (dst, src, w, _fmt_operand_write(ops[0], "(uint32_t)_t")),
-                self._result_snapshot(ops, "sbb")]
+    _lift_sbb = _project_integer.sbb
 
-    def _lift_adc(self, insn, ops):
-        """ADC: add with carry."""
-        if len(ops) < 2:
-            return ["/* adc: bad operands */"]
-        dst = _fmt_operand_read(ops[0])
-        src = _fmt_operand_read(ops[1])
-        w = (_operand_width(ops[0]) or 4) * 8
-        return ["{ uint64_t _t = (uint64_t)(%s) + (uint64_t)(%s) + (uint64_t)_cf;"
-                " _cf = (int)((_t >> %d) & 1); %s }  /* adc */"
-                % (dst, src, w, _fmt_operand_write(ops[0], "(uint32_t)_t")),
-                self._result_snapshot(ops, "adc")]
+    _lift_adc = _project_integer.adc
 
     def _lift_double_shift(self, insn, ops, m):
         """SHLD/SHRD, with x86's count rules rather than C's.

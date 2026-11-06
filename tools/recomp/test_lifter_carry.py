@@ -19,9 +19,9 @@ class CarryLifterTest(unittest.TestCase):
             Lifter(), BasicBlock(start=0, instructions=[neg, sbb]))
         generated = "\n".join(lifted)
 
-        self.assertIn("_cf = (int)((esi) != 0);", generated)
+        self.assertIn("_cf = (_alu_left != 0);", generated)
         self.assertIn(
-            "esi = _cf ? 0xFFFFFFFF : 0; /* sbb self (CF extend) */",
+            "uint64_t _alu_wide = (uint64_t)_alu_left - _alu_right - _alu_carry;",
             generated,
         )
 
@@ -59,7 +59,7 @@ class CarryLifterTest(unittest.TestCase):
         # and it must land between the cmp and the sbb, not before the cmp
         cmp_at = generated.index("/* cmp ")
         cf_at = generated.index("_cf = (int)(_fa < _fb);")
-        sbb_at = generated.index("sbb self (CF extend)")
+        sbb_at = generated.index("uint32_t _alu_carry = (_cf != 0);")
         self.assertLess(cmp_at, cf_at)
         self.assertLess(cf_at, sbb_at)
 
@@ -96,9 +96,9 @@ class CarryLifterTest(unittest.TestCase):
             Lifter(), BasicBlock(start=0, instructions=[neg, adc]))
         generated = "\n".join(lifted)
 
-        self.assertIn("_cf = (int)((eax) != 0);", generated)
-        self.assertIn("+ (uint64_t)_cf;", generated)
-        self.assertIn("edx = (uint32_t)_t;", generated)
+        self.assertIn("_cf = (_alu_left != 0);", generated)
+        self.assertIn("+ _alu_carry;", generated)
+        self.assertIn("edx = _alu_result;", generated)
 
     def test_neg_carry_feeds_sbb_across_push(self):
         neg = Instruction(0, 2, "neg", "eax", "f7d8")
@@ -115,9 +115,9 @@ class CarryLifterTest(unittest.TestCase):
             Lifter(), BasicBlock(start=0, instructions=[neg, push, sbb]))
         generated = "\n".join(lifted)
 
-        self.assertIn("_cf = (int)((eax) != 0);", generated)
+        self.assertIn("_cf = (_alu_left != 0);", generated)
         self.assertIn(
-            "eax = _cf ? 0xFFFFFFFF : 0; /* sbb self (CF extend) */",
+            "uint64_t _alu_wide = (uint64_t)_alu_left - _alu_right - _alu_carry;",
             generated,
         )
 
@@ -139,7 +139,7 @@ class CarryLifterTest(unittest.TestCase):
             Lifter(), BasicBlock(start=0, instructions=[neg, add, sbb]))
         generated = "\n".join(lifted)
 
-        self.assertNotIn("_cf = (int)((eax) != 0);", generated)
+        self.assertNotIn("_cf = (_alu_left != 0);", generated)
 
     def test_neg_carry_not_preserved_across_branch(self):
         neg = Instruction(0, 2, "neg", "eax", "f7d8")
@@ -156,7 +156,7 @@ class CarryLifterTest(unittest.TestCase):
             Lifter(), BasicBlock(start=0, instructions=[neg, jmp, sbb]))
         generated = "\n".join(lifted)
 
-        self.assertNotIn("_cf = (int)((eax) != 0);", generated)
+        self.assertNotIn("_cf = (_alu_left != 0);", generated)
 
     def test_neg_carry_not_preserved_across_popfd(self):
         neg = Instruction(0, 2, "neg", "eax", "f7d8")
@@ -172,7 +172,7 @@ class CarryLifterTest(unittest.TestCase):
             Lifter(), BasicBlock(start=0, instructions=[neg, popfd, sbb]))
         generated = "\n".join(lifted)
 
-        self.assertNotIn("_cf = (int)((eax) != 0);", generated)
+        self.assertNotIn("_cf = (_alu_left != 0);", generated)
 
 
 if __name__ == "__main__":
@@ -205,7 +205,7 @@ class CarryBranchTest(unittest.TestCase):
 
     def test_add_publishes_carry(self):
         self.assertIn(
-            "_cf = (int)((((uint64_t)(edx) + (uint64_t)(edx)) >> 32) & 1);",
+            "_cf = (int)((_alu_wide >> 32) & 1u);",
             self._add_then("jae"),
         )
 
