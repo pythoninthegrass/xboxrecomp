@@ -78,3 +78,7 @@ if(UNIX AND TSFP_NATIVE_RHI)
     target_compile_definitions(xbox_hle PRIVATE TSFP_PC_CONTROLS TSFP_RHI_RENDERER)
     target_include_directories(xbox_hle PRIVATE "${TSFP_NATIVE_DIR}/.." "${TSFP_NATIVE_DIR}")
 endif()
+
+if(UNIX AND TSFP_NATIVE_RHI)
+    target_link_libraries(xbox_hle PRIVATE xbox_video)
+endif()

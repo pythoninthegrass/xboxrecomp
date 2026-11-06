@@ -22,8 +22,8 @@
 #include "hle.h"
 #include "../kernel/xbox_memory_layout.h"   /* xbox_EnvSwitch */
 
-#if defined(_WIN32)
-#include <windows.h>
+#if defined(_WIN32) || ((defined(__linux__) || defined(__APPLE__)) && defined(TSFP_RHI_RENDERER))
+#include "platform/xbox_winnt.h"
 
 #include "audio_output.h"
 #include "xbox_adpcm.h"
@@ -40,7 +40,11 @@
 void hle_d3d8_movie_surface(uint32_t data, uint32_t xbox_format);
 
 /* kernel_path.c: an Xbox path to the host file it names. */
+#ifdef _WIN32
 BOOL xbox_translate_path(const char *xbox_path, WCHAR *host_path_buf, DWORD buf_size);
+#else
+BOOL xbox_translate_path(const char *xbox_path, char *host_path_buf, DWORD buf_size);
+#endif
 
 #define MAX_MOVIES      4
 #define MAX_CATCH_UP    8u          /* pictures decoded in one poll when behind */
@@ -223,7 +227,11 @@ static uint32_t movie_clock(movie *m)
 int xmv_play_open(uint32_t source_va, uint32_t *width, uint32_t *height)
 {
     char path[300];
+#ifdef _WIN32
     WCHAR host[MAX_PATH * 2];
+#else
+    char host[4096];
+#endif
     FILE *f;
     movie *m = NULL;
     int i;
@@ -242,7 +250,12 @@ int xmv_play_open(uint32_t source_va, uint32_t *width, uint32_t *height)
         }
     if (!m)
         return 0;
-    if (!xbox_translate_path(path, host, MAX_PATH * 2) || !(f = _wfopen(host, L"rb"))) {
+#ifdef _WIN32
+    int opened=xbox_translate_path(path,host,MAX_PATH*2) && (f=_wfopen(host,L"rb"));
+#else
+    int opened=xbox_translate_path(path,host,sizeof host) && (f=fopen(host,"rb"));
+#endif
+    if (!opened) {
         fprintf(stderr, "[XMV] %s: not found on the host; the movie is skipped\n", path);
         return 0;
     }
