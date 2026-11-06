@@ -130,6 +130,9 @@ void sub_001BB5C0(void)
 extern void sub_0009EAB0_gen(void);
 void sub_0009EAB0(void)
 { pc_network_bots_guest_bounds(sub_0009EAB0_gen); }
+extern void sub_0035CC10_gen(void);
+void sub_0035CC10(void)
+{ pc_network_bots_guest_death_gate(sub_0035CC10_gen); }
 extern void sub_000BB6C0_gen(void);
 void sub_000BB6C0(void)
 { pc_network_bots_guest_damage(sub_000BB6C0_gen); }
