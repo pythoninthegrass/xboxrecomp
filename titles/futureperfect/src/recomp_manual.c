@@ -238,6 +238,16 @@ void sub_002CBAF0(void)
 #endif
 }
 
+extern void sub_001922D0_gen(void);
+void sub_001922D0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_profile_save(sub_001922D0_gen);
+#else
+    sub_001922D0_gen();
+#endif
+}
+
 extern void sub_00060310_gen(void);
 void sub_00060310(void)
 {
