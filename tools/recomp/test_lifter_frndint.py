@@ -29,7 +29,9 @@ class FrndintLiftTest(unittest.TestCase):
         insn = Instruction(0x0017EEDB, 2, "frndint", "", "")
         insn.operands = []
         out = "\n".join(Lifter().lift_instruction(insn))
-        self.assertIn("fp_top() = recomp_frndint(fp_top(), g_fp_control_word);", out)
+        self.assertIn("((g_fp_control_word >> 10) & 3u)", out)
+        self.assertIn("fp_top() = _x87_value_rounded;", out)
+        self.assertIn("modf(_x87_value, &_fp_integral)", out)
         self.assertNotIn("rint(fp_top())", out.replace("recomp_frndint(fp_top()", ""))
 
 

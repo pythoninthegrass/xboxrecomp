@@ -63,7 +63,7 @@ def _with_stubbed_mem(fn):
     """
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        import tools.recomp.lifter as lf
+        import translation_x87 as lf
         original = lf._fmt_mem
         lf._fmt_mem = lambda op: "0xK"
         try:
@@ -75,12 +75,12 @@ def _with_stubbed_mem(fn):
 
 
 def test_fnstsw_ax_sets_ah_from_fpu_cmp():
-    out = "\n".join(Lifter().lift_instruction(_Insn("fnstsw", [], "ax")))
+    out = "\n".join(Lifter().lift_instruction(_Insn("fnstsw", [_Op("ax", reg="ax")], "ax")))
     assert "g_fp_cc" in out, out
     # `fnstsw ax` writes the whole of AX, and the status word carries TOP in
     # bits 11-13 as well as the condition codes -- the hardware AH includes it,
     # so a comparison against the real CPU fails without it.
-    assert "eax = (eax & 0xFFFF0000u)" in out, out
+    assert "SET_LO16(eax," in out, out
     assert "(g_fp_top & 7u) << 11" in out, out
     # Classification and comparison instructions publish shared condition bits.
 
@@ -149,7 +149,7 @@ def test_arith_honors_operands():
     L = Lifter()
 
     def lift(m, ops, s=""):
-        return L.lift_instruction(_Insn(m, ops, s))[0]
+        return " ".join(L.lift_instruction(_Insn(m, ops, s)))
 
     mem = _Op("m", type="mem", mem_size=4)
     st0 = _Op("st0", type="reg", reg="st(0)")
@@ -157,33 +157,33 @@ def test_arith_honors_operands():
 
     # fmul [mem]: st0 *= mem, NO pop
     o = lift("fmul", [mem], "dword ptr [0xK]")
-    assert "fp_top() = fp_top() * MEMF(0xK)" in o and "fp_pop" not in o, o
+    assert "fp_top() = _fp_left * _fp_right" in o and "fp_pop" not in o, o
     # fadd st(0), st(0): double st0, no pop
     o = lift("fadd", [st0, st0], "st(0), st(0)")
-    assert "fp_top() = fp_top() + fp_top()" in o and "fp_pop" not in o, o
+    assert "fp_top() = _fp_left + _fp_right" in o and "fp_pop" not in o, o
     # faddp: st1 += st0, pop
     o = lift("faddp", [], "")
-    assert "fp_st1() = fp_st1() + fp_top(); fp_pop();" in o, o
+    assert "fp_st1() = _fp_left + _fp_right; fp_pop();" in o, o
     # faddp st(1): capstone reports the pop form as ONE operand. Must target
     # st(i) and pop -- NOT st0 without a pop (that broke normalize's sum of
     # squares and gave Halo a 1/sqrt(2)-scaled camera basis).
     o = lift("faddp", [st1], "st(1)")
-    assert "fp_st1() = fp_st1() + fp_top(); fp_pop();" in o, o
+    assert "fp_st1() = _fp_left + _fp_right; fp_pop();" in o, o
     # faddp st(2): st(2) = st(2) + st0, pop
     o = lift("faddp", [_Op("st2", type="reg", reg="st(2)")], "st(2)")
-    assert "g_fp_stack[(g_fp_top + 2) & 7] = g_fp_stack[(g_fp_top + 2) & 7] + fp_top(); fp_pop();" in o, o
+    assert "g_fp_stack[(g_fp_top + 2) & 7] = _fp_left + _fp_right; fp_pop();" in o, o
     # fmul st(3): non-pop single operand stays st0 *= st(3), no pop
     o = lift("fmul", [_Op("st3", type="reg", reg="st(3)")], "st(3)")
-    assert "fp_top() = fp_top() * g_fp_stack[(g_fp_top + 3) & 7]" in o and "fp_pop" not in o, o
+    assert "fp_top() = _fp_left * _fp_right" in o and "fp_pop" not in o, o
     # fmulp st(1): st1 *= st0, pop
     o = lift("fmulp", [st1], "st(1)")
-    assert "fp_st1() = fp_st1() * fp_top(); fp_pop();" in o, o
+    assert "fp_st1() = _fp_left * _fp_right; fp_pop();" in o, o
     # fsubr [mem]: st0 = mem - st0 (reversed)
     o = lift("fsubr", [mem], "dword ptr [0xK]")
-    assert "fp_top() = MEMF(0xK) - fp_top()" in o, o
+    assert "fp_top() = _fp_right - _fp_left" in o, o
     # fdivrp st(1), st(0): st1 = st0 / st1, pop
     o = lift("fdivrp", [st1, st0], "st(1), st(0)")
-    assert "fp_st1() = fp_top() / fp_st1(); fp_pop();" in o, o
+    assert "fp_st1() = _fp_right / _fp_left; fp_pop();" in o, o
 
 
 def test_fcom_pop_counts():
@@ -207,17 +207,17 @@ def test_fst_mem_does_not_pop():
     under valid_real_matrix4x3 and failed Halo's camera assert."""
     L = Lifter()
     mem = _Op("m", type="mem", mem_size=4)
-    o = L.lift_instruction(_Insn("fst", [mem], "dword ptr [0xK]"))[0]
+    o = " ".join(L.lift_instruction(_Insn("fst", [mem], "dword ptr [0xK]")))
     assert "fp_pop" not in o, o
-    o = L.lift_instruction(_Insn("fstp", [mem], "dword ptr [0xK]"))[0]
+    o = " ".join(L.lift_instruction(_Insn("fstp", [mem], "dword ptr [0xK]")))
     assert "fp_pop();" in o, o
 
 
 def test_fstp_sti_pops():
     """fstp st(i) must pop the FPU stack (it was a no-op comment, leaking it)."""
     L = Lifter()
-    o = L.lift_instruction(_Insn("fstp", [_Op("st0", type="reg", reg="st(0)")],
-                                 "st(0)"))[0]
+    o = " ".join(L.lift_instruction(_Insn("fstp", [_Op("st0", type="reg", reg="st(0)")],
+                                 "st(0)")))
     assert "fp_pop();" in o, o
 
 

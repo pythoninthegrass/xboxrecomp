@@ -13,7 +13,7 @@ class FpuLifterTest(unittest.TestCase):
 
         self.assertEqual(
             Lifter().lift_instruction(instruction),
-            ["{ double _t = fp_top(); fp_push(_t); } /* fld st(0) */"],
+            ['{ /* own fld */', 'double _x87_value = fp_top();', 'fp_push(_x87_value);', '}'],
         )
 
     def test_fst_does_not_pop_and_fstp_does(self):
@@ -27,11 +27,11 @@ class FpuLifterTest(unittest.TestCase):
 
         self.assertEqual(
             Lifter().lift_instruction(store),
-            ["MEMF(esp + 0x18) = (float)fp_top(); /* fst */"],
+            ['{ /* own fst */', 'double _x87_value = fp_top();', 'uint32_t _fp_address = (uint32_t)(esp + 0x18);', 'MEMF(_fp_address) = (float)_x87_value;', '}'],
         )
         self.assertEqual(
             Lifter().lift_instruction(store_pop),
-            ["MEMF(esp + 0x18) = (float)fp_top(); fp_pop(); /* fstp */"],
+            ['{ /* own fstp */', 'double _x87_value = fp_top();', 'uint32_t _fp_address = (uint32_t)(esp + 0x18);', 'MEMF(_fp_address) = (float)_x87_value;', 'fp_pop();', '}'],
         )
 
     def test_qword_integer_conversion_uses_signed_64_bit_storage(self):
@@ -45,12 +45,11 @@ class FpuLifterTest(unittest.TestCase):
 
         self.assertEqual(
             Lifter().lift_instruction(store),
-            ["SMEM64(esp + 0x10) = (int64_t)recomp_fist(fp_top(), g_fp_control_word, 64); "
-             "fp_pop(); /* fistp */"],
+            ['{ /* own fistp */', 'uint32_t _fp_address = (uint32_t)(esp + 0x10);', 'double _x87_value = fp_top();', 'double _x87_value_rounded = _x87_value;', 'if (isfinite(_x87_value)) {', '    double _fp_integral; double _fp_fraction = modf(_x87_value, &_fp_integral);', '    unsigned _fp_mode = ((g_fp_control_word >> 10) & 3u);', '    double _fp_increment = 0.0;', '    if (_fp_mode == 1u && _fp_fraction < 0.0) _fp_increment = -1.0;', '    if (_fp_mode == 2u && _fp_fraction > 0.0) _fp_increment = 1.0;', '    if (_fp_mode == 0u && (fabs(_fp_fraction) > 0.5 ||', '        (fabs(_fp_fraction) == 0.5 && fmod(fabs(_fp_integral), 2.0) == 1.0)))', '        _fp_increment = copysign(1.0, _fp_fraction);', '    _x87_value_rounded = _fp_integral + _fp_increment;', '    if (_x87_value_rounded == 0.0) _x87_value_rounded = copysign(0.0, _x87_value);', '}', 'uint64_t _fp_integer = (_x87_value_rounded >= -0x1p63 && _x87_value_rounded < 0x1p63)', '    ? (uint64_t)(int64_t)_x87_value_rounded : UINT64_C(0x8000000000000000);', 'MEM64(_fp_address) = (uint64_t)_fp_integer;', 'fp_pop();', '}'],
         )
         self.assertEqual(
             Lifter().lift_instruction(load),
-            ["fp_push((double)SMEM64(esp + 0x10)); /* fild */"],
+            ['{ /* own fild */', 'uint32_t _x87_value_address = (uint32_t)(esp + 0x10);', 'uint64_t _x87_value_bits = MEM64(_x87_value_address);', 'double _x87_value = (_x87_value_bits & UINT64_C(0x8000000000000000))', '    ? -(double)((~_x87_value_bits + 1u) & UINT64_C(0xFFFFFFFFFFFFFFFF)) : (double)_x87_value_bits;', 'fp_push(_x87_value);', '}'],
         )
 
     def test_memory_arithmetic_updates_st0_without_popping(self):
@@ -62,8 +61,7 @@ class FpuLifterTest(unittest.TestCase):
 
         self.assertEqual(
             Lifter().lift_instruction(instruction),
-            ["fp_top() = fp_top() / MEMF(0x123456); "
-             "/* fdiv dword ptr [0x00123456] */"],
+            ['{ /* own fdiv */', 'uint32_t _fp_right_address = (uint32_t)(0x123456);', 'double _fp_right = MEMF(_fp_right_address);', 'double _fp_left = fp_top();', 'fp_top() = _fp_left / _fp_right;', '}'],
         )
 
     def test_register_arithmetic_updates_st0_without_popping(self):
@@ -72,7 +70,7 @@ class FpuLifterTest(unittest.TestCase):
 
         self.assertEqual(
             Lifter().lift_instruction(instruction),
-            ["fp_top() = fp_top() * fp_st1(); /* fmul st(1) */"],
+            ['{ /* own fmul */', 'double _fp_right = fp_st1();', 'double _fp_left = fp_top();', 'fp_top() = _fp_left * _fp_right;', '}'],
         )
 
     def test_translated_functions_share_runtime_fpu_state(self):
@@ -127,20 +125,18 @@ class FpuLifterTest(unittest.TestCase):
 
         self.assertEqual(
             Lifter().lift_instruction(store),
-            ["MEM16(ebp + 0xFFFFFFFCu) = g_fp_control_word;"
-             " /* fnstcw word ptr [ebp - 4] */"],
+            ['{ /* own fnstcw */', 'MEM16(ebp + 0xFFFFFFFCu) = g_fp_control_word;', '}'],
         )
         self.assertEqual(
             Lifter().lift_instruction(load),
-            ["g_fp_control_word = MEM16(ebp + 0xFFFFFFFCu);"
-             " /* fldcw word ptr [ebp - 4] */"],
+            ['{ /* own fldcw */', 'g_fp_control_word = MEM16(ebp + 0xFFFFFFFCu);', '}'],
         )
 
     def test_status_word_store_reports_the_compare_result(self):
         instruction = Instruction(0, 2, "fnstsw", "ax", "dfe0")
         instruction.operands = [Operand(type="reg", reg="ax")]
 
-        lifted = Lifter().lift_instruction(instruction)
+        lifted = ["\n".join(Lifter().lift_instruction(instruction))]
 
         self.assertEqual(len(lifted), 1)
         # The compare can live in a different lifted body than the FNSTSW that
@@ -157,10 +153,12 @@ class FpuLifterTest(unittest.TestCase):
             Operand(type="mem", mem_base="ebp", mem_disp=8, mem_size=8)
         ]
 
-        lifted = Lifter().lift_instruction(instruction)
+        lifted = ["\n".join(Lifter().lift_instruction(instruction))]
 
         self.assertEqual(len(lifted), 1)
-        self.assertTrue(lifted[0].startswith("g_fp_cmp ="))
+        self.assertIn("g_fp_cmp =", lifted[0])
+        self.assertEqual(lifted[0].count("MEMD("), 1)
+        self.assertLess(lifted[0].index("g_fp_cmp ="), lifted[0].index("fp_pop();"))
         self.assertNotIn("_fpu_cmp", lifted[0])
 
     def test_fxch_swaps_with_the_explicit_register(self):
@@ -172,7 +170,7 @@ class FpuLifterTest(unittest.TestCase):
         instruction.operands = [Operand(type="reg", reg="st(0)"),
                                 Operand(type="reg", reg="st(1)")]
 
-        lifted = Lifter().lift_instruction(instruction)[0]
+        lifted = "\n".join(Lifter().lift_instruction(instruction))
 
         self.assertIn("fp_st1()", lifted)
         self.assertNotIn("fp_top() = fp_top()", lifted)
