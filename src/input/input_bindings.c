@@ -21,6 +21,7 @@
 #include "recomp_pad.h"
 #ifdef TSFP_NATIVE_INPUT
 #include "input_sdl.h"
+#include "platform/win32_compat.h"
 #include "pc_input.h"
 #include <pthread.h>
 #endif
@@ -168,7 +169,7 @@ static Controller g_ctl[PORTS];
 static char g_path[520];
 static int g_have_path;
 static int g_ready;
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
 static SRWLOCK g_pc_bindings_lock = SRWLOCK_INIT;
 static INIT_ONCE g_pc_bindings_once = INIT_ONCE_STATIC_INIT;
 #endif
@@ -726,7 +727,7 @@ static void bindings_load(void)
     fflush(stderr);
 }
 
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
 static BOOL CALLBACK bindings_load_once(PINIT_ONCE once, PVOID parameter, PVOID *context)
 {
     (void)once; (void)parameter; (void)context;
@@ -737,7 +738,7 @@ static BOOL CALLBACK bindings_load_once(PINIT_ONCE once, PVOID parameter, PVOID 
 
 void recomp_bindings_init(void)
 {
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     InitOnceExecuteOnce(&g_pc_bindings_once, bindings_load_once, NULL, NULL);
 #elif defined(TSFP_NATIVE_INPUT)
     static pthread_once_t once=PTHREAD_ONCE_INIT;
@@ -759,7 +760,7 @@ const char *recomp_bindings_device_name(unsigned port)
     return port < PORTS ? g_ctl[port].label : "nothing";
 }
 
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
 #include "pc_bindings.inc"
 #endif
 
@@ -917,7 +918,7 @@ static void say_first_press(unsigned port, const char *control)
 int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
 {
     Controller *c;
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     Controller snapshot;
 #endif
     KeyCache kc;
@@ -937,7 +938,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     if (port >= PORTS)
         return 0;
     c = &g_ctl[port];
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     AcquireSRWLockShared(&g_pc_bindings_lock);
     snapshot = *c;
     ReleaseSRWLockShared(&g_pc_bindings_lock);
@@ -951,7 +952,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     memset(&kc, 0, sizeof kc);
     key_cache_tick();
     memset(&pad, 0, sizeof pad);
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     AcquireSRWLockShared(&g_pc_bindings_lock);
     if (port == 0 && c->device == DEV_KEYBOARD) {
         for (int other=1;other<PORTS;other++)
@@ -964,9 +965,11 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
         have_pad = recomp_pad_read(c->pad, &pad);
 #ifdef TSFP_NATIVE_INPUT
     if(port==0 && c->device==DEV_KEYBOARD) {
+        AcquireSRWLockShared(&g_pc_bindings_lock);
         for(int other=1;other<PORTS;other++)
             if(g_ctl[other].device==DEV_PAD && g_ctl[other].pad>=0)
                 reserved_pads |= 1u<<g_ctl[other].pad;
+        ReleaseSRWLockShared(&g_pc_bindings_lock);
         for(int slot=0;slot<RECOMP_PAD_SLOTS;slot++)
             if(!(reserved_pads & (1u<<slot)) && recomp_pad_read(slot,&pad)) {
                 have_pad=1;auto_pad=slot;break;

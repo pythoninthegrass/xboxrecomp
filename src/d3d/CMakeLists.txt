@@ -118,3 +118,8 @@ if(APPLE AND TSFP_NATIVE_DIR)
     set_source_files_properties(d3d8_resources.c PROPERTIES COMPILE_DEFINITIONS TSFP_FORMAT_ONLY)
     target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}")
 endif()
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    target_sources(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/../pc_display.c")
+    target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/..")
+endif()

@@ -229,3 +229,11 @@ if(APPLE AND TSFP_NATIVE_DIR)
     target_link_libraries(tsfp_native_paths_test PRIVATE xboxrecomp)
     add_test(NAME native_paths COMMAND tsfp_native_paths_test "${CMAKE_BINARY_DIR}/path-tests")
 endif()
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/../pc_display_menu.c")
+    set_source_files_properties("${TSFP_NATIVE_DIR}/../pc_display_menu.c" PROPERTIES
+        INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/gen")
+    target_include_directories(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/..")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE TSFP_NATIVE_DISPLAY)
+endif()

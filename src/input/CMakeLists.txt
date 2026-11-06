@@ -58,7 +58,12 @@ endif()
 if(APPLE AND TSFP_NATIVE_DIR)
     # Compile the same portable input model used by the Windows adapter.
     target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c"
-                                      "${TSFP_NATIVE_DIR}/../pc_input.c")
+                                      "${TSFP_NATIVE_DIR}/../pc_input.c"
+                                      "${TSFP_NATIVE_DIR}/config_files.c"
+                                      "${TSFP_NATIVE_DIR}/settings_macos.m")
+    enable_language(OBJC)
+    set_source_files_properties("${TSFP_NATIVE_DIR}/settings_macos.m" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_link_libraries(xbox_input PUBLIC "-framework Cocoa")
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/..")
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}")
     target_compile_definitions(xbox_input PRIVATE TSFP_NATIVE_INPUT)
