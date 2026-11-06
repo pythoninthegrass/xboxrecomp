@@ -16,7 +16,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-import tools.recomp.lifter as lifter_mod  # noqa: E402
+import translation_layout as layout_mod  # noqa: E402
 from tools.recomp.lifter import Lifter  # noqa: E402
 from tools.recomp.test_call_retaddr import _Insn, _Op  # noqa: E402
 
@@ -34,7 +34,7 @@ def _lift_call_to(body):
                     seh_prolog=0, seh_epilog=0)
     insn = _Insn("call", [_Op(hex(TARGET), type="imm", imm=TARGET)],
                  address=BASE, size=5, call_target=TARGET)
-    with mock.patch.object(lifter_mod, "va_to_file_offset",
+    with mock.patch.object(layout_mod, "va_to_file_offset",
                            lambda va: va - BASE if BASE <= va < BASE + 0x100
                            else None):
         return "\n".join(lifter.lift_instruction(insn))
