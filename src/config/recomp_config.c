@@ -8,6 +8,7 @@
  * build from running.
  */
 #include "recomp_config.h"
+#include "pc_frame_rate_settings.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -498,6 +499,18 @@ static const char *from_file(const char *key)
 
 const char *recomp_config_lookup(const char *env_name, const char *key)
 {
+    /* One startup snapshot shared by every consumer. A preference saved from
+     * the guest menu must never switch a running game's timing system.
+     * Explicit player choices take precedence over launcher rate defaults. */
+    static int frame_rate_loaded, frame_rate=-1;
+    static char frame_rate_text[16];
+    if (!frame_rate_loaded) {
+        frame_rate=pc_frame_rate_read();
+        snprintf(frame_rate_text,sizeof frame_rate_text,"%d",frame_rate);
+        frame_rate_loaded=1;
+    }
+    if (key && !strcmp(key,"native_fps") && frame_rate>=0)
+        return frame_rate_text;
     /* Retired timing options cannot reactivate interpolation or uncapped
      * rendering through old configuration files or inherited overrides. */
     if (key) {

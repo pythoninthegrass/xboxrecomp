@@ -7,7 +7,8 @@ add_library(xbox_config STATIC
     recomp_config.c
 )
 
-target_include_directories(xbox_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(xbox_config PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src)
 
 if(MSVC)
     target_compile_options(xbox_config PRIVATE /W4 $<$<NOT:$<CONFIG:Debug>>:/O2>)
