@@ -112,8 +112,8 @@ add_subdirectory(src/video)
 add_subdirectory(src/hle)
 
 # Frame replay tool: replays a D3D8 capture into the host renderer with no
-# game running (src/hle/d3d8_capture.h). Windows only, like the D3D11 backend.
-if(WIN32)
+# game running (src/hle/d3d8_capture.h), through the common Xbox frontend.
+if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
     add_subdirectory(src/replay)
 endif()
 

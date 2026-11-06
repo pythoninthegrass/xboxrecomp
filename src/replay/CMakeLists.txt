@@ -1,7 +1,7 @@
 # d3d8_replay -- replay a captured frame into the host renderer.
 #
-# Windows only: the D3D11 backend is (src/d3d/CMakeLists.txt builds d3d8_gl.c
-# on POSIX instead, which has no equivalent entry points for this tool).
+# Uses the common Xbox frontend on Windows and native Mac Vulkan.
+# Legacy GL has no equivalent entry points for this tool.
 #
 # It compiles d3d8_capture.c directly rather than linking xbox_hle, because
 # the container has no dependencies and xbox_hle would drag in the kernel
@@ -27,4 +27,10 @@ target_include_directories(d3d8_replay PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../hle
     ${CMAKE_CURRENT_SOURCE_DIR}/../kernel
 )
-target_link_libraries(d3d8_replay PRIVATE xbox_d3d8 user32)
+target_link_libraries(d3d8_replay PRIVATE xbox_d3d8)
+if(WIN32)
+    target_link_libraries(d3d8_replay PRIVATE user32)
+elseif(APPLE AND TSFP_NATIVE_RHI)
+    target_include_directories(d3d8_replay PRIVATE "${TSFP_NATIVE_DIR}")
+    target_sources(d3d8_replay PRIVATE "${TSFP_NATIVE_DIR}/config_files.c")
+endif()

@@ -268,6 +268,9 @@ static void note(const char *fmt, ...)
 
 /* ------------------------------------------------------------------ window */
 
+#if defined(__APPLE__)
+#include "replay_host_sdl.h"
+#else
 static LRESULT CALLBACK replay_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     if (msg == WM_DESTROY) {
@@ -327,6 +330,8 @@ static void pump(void)
         DispatchMessageA(&msg);
     }
 }
+
+#endif
 
 /* -------------------------------------------------------------------- dump */
 
@@ -1503,7 +1508,11 @@ int main(int argc, char **argv)
 
     hwnd = replay_window(r.width, r.height);
     if (!hwnd) {
+#if defined(__APPLE__)
+        fprintf(stderr, "[replay] CreateWindow failed: %s\n", SDL_GetError());
+#else
         fprintf(stderr, "[replay] CreateWindow failed (%lu)\n", GetLastError());
+#endif
         d3d8cap_close_read(cap);
         return 1;
     }
@@ -1518,8 +1527,13 @@ int main(int argc, char **argv)
     pp.Windowed = TRUE;
     pp.EnableAutoDepthStencil = TRUE;
 
-    if (backend)
+    if (backend) {
+#if defined(__APPLE__)
+        setenv("RECOMP_D3D8_BACKEND", backend, 1);
+#else
         _putenv_s("RECOMP_D3D8_BACKEND", backend);
+#endif
+    }
     d3d = xbox_Direct3DCreate8(0);
     hr = d3d ? d3d->lpVtbl->CreateDevice(d3d, 0, 1 /* HAL */, hwnd, 0, &pp, &r.dev)
              : E_FAIL;
@@ -1571,12 +1585,16 @@ int main(int argc, char **argv)
     }
 
     if (hold) {
+#if defined(__APPLE__)
+        replay_hold();
+#else
         MSG msg;
         note("[replay] holding the window open; close it to exit\n");
         while (GetMessageA(&msg, NULL, 0, 0) > 0) {
             TranslateMessage(&msg);
             DispatchMessageA(&msg);
         }
+#endif
     }
 
     free(r.textures);
