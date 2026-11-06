@@ -137,6 +137,11 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_saved_esp;
 extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 
 
+/* Native high refresh updates, independent of console interrupts. */
+#include "pc_native_timing_guest.inc"
+extern void sub_001538C0_gen(void);
+void sub_001538C0(void) { pc_native_timing_guest(sub_001538C0_gen); }
+
 /* PC System Link: public XNet API boundary, US 45410066. */
 #include "pc_network_guest.inc"
 extern RECOMP_MANUAL_TLS uint32_t g_ecx;

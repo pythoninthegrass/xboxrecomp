@@ -67,6 +67,7 @@
 #include <string.h>
 #include "hle.h"
 #include "recomp_config.h"
+#include "pc_native_rate.h"
 #ifdef TSFP_PC_CONTROLS
 #include "pc_controls.h"
 #ifdef _WIN32
@@ -2356,7 +2357,7 @@ HLE_EXPORT(D3DDevice_Swap)
         QueryPerformanceCounter(&t0);
         if (g_swap_last.QuadPart)
             g_swap_frame_ticks += t0.QuadPart - g_swap_last.QuadPart;
-        xbox_Nv2aFlipGateArm();
+        if (!pc_native_rate()) xbox_Nv2aFlipGateArm();
         QueryPerformanceCounter(&t1);
 #ifdef _WIN32
         hle_d3d8_interp_finish();
@@ -2415,7 +2416,7 @@ HLE_EXPORT(D3DDevice_Present)
         QueryPerformanceCounter(&t0);
         if (g_swap_last.QuadPart)
             g_swap_frame_ticks += t0.QuadPart - g_swap_last.QuadPart;
-        xbox_Nv2aFlipGateArm();
+        if (!pc_native_rate()) xbox_Nv2aFlipGateArm();
         QueryPerformanceCounter(&t1);
 #ifdef _WIN32
         hle_d3d8_interp_finish();
