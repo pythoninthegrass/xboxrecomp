@@ -143,6 +143,9 @@ extern void sub_001538C0_gen(void);
 void sub_001538C0(void) { pc_native_timing_guest(sub_001538C0_gen); }
 extern void sub_0018FF70_gen(void);
 void sub_0018FF70(void) { pc_native_input_guest(sub_0018FF70_gen); }
+#include "pc_native_weapon_guest.h"
+extern void sub_00244F30_gen(void);
+void sub_00244F30(void) { pc_native_weapon_fire_guest(sub_00244F30_gen); }
 
 
 /* PC System Link: public XNet API boundary, US 45410066. */
