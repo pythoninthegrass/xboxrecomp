@@ -915,6 +915,10 @@ extern void sub_003533F0_gen(void);
 void sub_003533F0(void)
 { pc_network_bots_guest_score_network(sub_003533F0_gen); }
 extern void sub_001BB5C0_gen(void);
+/* A fractional NPC aim update must not consume another random decision.
+ * Return a nonzero chance outcome without advancing the shared RNG. */
+void pc_native_rng_interval_skip(void)
+{ g_eax=UINT32_MAX; g_esp+=4; }
 static void pc_native_npc_weapon_event(void)
 { pc_native_npc_weapon_fire_guest(sub_001BB5C0_gen, *(const uint32_t *)((uintptr_t)g_esp+g_xbox_mem_offset)); }
 void sub_001BB5C0(void)

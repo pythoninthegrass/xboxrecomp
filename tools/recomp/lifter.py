@@ -1847,6 +1847,8 @@ class Lifter:
         if len(ops) < 1:
             return ["/* push: no operand */"]
         val = _fmt_operand_read(ops[0])
+        if ops[0].type == "imm":
+            val = f"RECOMP_PUSH_IMM_U32_AT(0x{insn.address:X}, {val})"
         return [f"PUSH32(esp, {val});"]
 
     def _lift_pop(self, insn, ops):
@@ -2416,6 +2418,7 @@ class Lifter:
                 # to a plain call when the flag is off. When the callee's own
                 # `ret N` is known, the exact form checks esp both ways.
                 pop = self.callee_pop(insn.call_target)
+                name = f"RECOMP_DIRECT_CALLEE_AT(0x{insn.address:X}, {name})"
                 if pop is None:
                     lines.append(
                         f"PUSH32(esp, 0x{ret_va:08X}u); "

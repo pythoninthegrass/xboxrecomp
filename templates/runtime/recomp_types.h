@@ -60,6 +60,12 @@
 #ifndef RECOMP_LOAD_GLOBAL_U32
 #define RECOMP_LOAD_GLOBAL_U32(site, address, value) (value)
 #endif
+#ifndef RECOMP_PUSH_IMM_U32_AT
+#define RECOMP_PUSH_IMM_U32_AT(site, value) (value)
+#endif
+#ifndef RECOMP_DIRECT_CALLEE_AT
+#define RECOMP_DIRECT_CALLEE_AT(site, function) (function)
+#endif
 #ifndef RECOMP_F32_MUL_AT
 #define RECOMP_F32_MUL_AT(site, left, right) ((left) * (right))
 #endif
