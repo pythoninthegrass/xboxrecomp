@@ -44,6 +44,10 @@ target_sources(xbox_kernel PRIVATE
     "${TSFP_SHARED_SOURCE}/runtime/guest_state.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_abi_diagnostics.c")
 
+# Independent image inspection and materialization, shared by both hosts.
+target_sources(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime/guest_image.c")
+target_include_directories(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime")
+
 # See src/platform/CMakeLists.txt: resolve src/ relative to this file, not via
 # CMAKE_SOURCE_DIR, which is the consuming project's root under add_subdirectory().
 get_filename_component(XBOXRECOMP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
