@@ -1159,14 +1159,15 @@ void xbox_Nv2aFlipGateArm(void)
     static LONGLONG native_previous_gate;
     LARGE_INTEGER native_now;
     QueryPerformanceCounter(&native_now);
-    if (g_flip_gate_idle && native_previous_gate && g_flip_gate_period &&
+    if (native_previous_gate && g_flip_gate_period &&
         native_now.QuadPart - native_previous_gate >= g_flip_gate_period * 9 / 10 &&
         WaitForSingleObject(g_flip_gate_event, 0) == WAIT_OBJECT_0) {
         native_previous_gate = native_now.QuadPart;
 #ifdef _WIN32
         /* Finish matching this guest frame even when its own wait already
          * consumed the tick. Its next host slot may follow the boundary. */
-        g_flip_gate_idle(native_now.QuadPart, g_flip_gate_last_vblank);
+        if (g_flip_gate_idle)
+            g_flip_gate_idle(native_now.QuadPart, g_flip_gate_last_vblank);
 #endif
         return;
     }
