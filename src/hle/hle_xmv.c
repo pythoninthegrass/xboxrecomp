@@ -172,6 +172,7 @@ static int xmv_is_ours(uint32_t handle)
  * E_FAIL" would stop them dead. A title whose symbols do not name the original
  * gets E_FAIL as before. */
 HLE_ORIGINAL(XMVPlaybackStart);
+HLE_ORIGINAL(XMVPlaybackStop);
 HLE_ORIGINAL(XMVPlaybackGetStreamInfo);
 HLE_ORIGINAL(XMVPlaybackCreateAudioStream);
 HLE_ORIGINAL(XMVPlaybackGetAudioStreamInfo);
@@ -260,6 +261,21 @@ HLE_EXPORT(XMVPlaybackStart)
                         "%u ms long (RECOMP_XMV_SECONDS)\n", xmv_ms());
         fflush(stderr);
     }
+    HLE_RETURN(0);
+}
+
+/* Request termination. Future Perfect calls this only after a skip press;
+ * its US 0x00445252 sets the decoder's stop byte at +0x78, not a start flag.
+ * Close the host movie now so its audio and overlay cannot outlive the skip.
+ * Keep the guest object valid until the title observes EOF and destroys it. */
+HLE_EXPORT(XMVPlaybackStop)
+{
+    uint32_t obj = HLE_ARG(0), play;
+    XMV_OTHERS_TO_XDK(XMVPlaybackStop);
+    play = HLE_MEM32(obj + XMV_OFF_PLAY);
+    if (play) xmv_play_close((int)play);
+    HLE_MEM32(obj + XMV_OFF_PLAY) = 0;
+    HLE_MEM32(obj + XMV_OFF_DONE) = 1;
     HLE_RETURN(0);
 }
 
@@ -377,6 +393,11 @@ HLE_EXPORT(XMVPlaybackUpdate)
     uint32_t started, frames, elapsed;
 
     XMV_OTHERS_TO_XDK(XMVPlaybackUpdate);
+
+    if (HLE_MEM32(obj + XMV_OFF_DONE)) {
+        if (status_va) HLE_MEM32(status_va) = XMV_STATUS_ENDOFFILE;
+        HLE_RETURN(0);
+    }
 
     started = HLE_MEM32(obj + XMV_OFF_START_MS);
     frames  = HLE_MEM32(obj + XMV_OFF_FRAMES) + 1u;
