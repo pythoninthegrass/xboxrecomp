@@ -565,12 +565,25 @@ void sub_0013FC50(void)
 
 /* Keep the complete Arcade RANK widget at its authored left inset. */
 extern void sub_0012E3F0_gen(void);
+/* The shared panel measures/fits labels before their outlined draws. Reuse
+ * read mappings only inside that synchronous original operation, excluding
+ * the surrounding placement flushes. Scratch writes still query live. */
+static void pc_panel_text_original(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_prompts_layout_begin();
+#endif
+    sub_0012E3F0_gen();
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_prompts_layout_end();
+#endif
+}
 void sub_0012E3F0(void)
 {
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
-    pc_display_ui(sub_0012E3F0_gen,0x0012E3F0u);
+    pc_display_ui(pc_panel_text_original,0x0012E3F0u);
 #else
-    sub_0012E3F0_gen();
+    pc_panel_text_original();
 #endif
 }
 
