@@ -76,6 +76,11 @@ endif()
 # is silently left out of the build and shows up as unresolved externals.
 file(GLOB RECOMP_GEN_SOURCES CONFIGURE_DEPENDS "src/recomp/gen/*.c")
 
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    add_executable(tsfp_pc_prompts_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_prompts.c")
+    target_link_libraries(tsfp_pc_prompts_test PRIVATE xbox_input)
+endif()
+
 # Core game sources
 set(GAME_SOURCES
     src/main.c

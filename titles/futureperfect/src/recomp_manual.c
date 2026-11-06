@@ -110,6 +110,30 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_saved_esp;
  * means this title was lifted before the macros published it. */
 extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 
+/* Shared text sizing and rendering: translate controller prompt tokens
+ * before either pass so alignment, wrapping, and displayed text agree. */
+#ifdef TSFP_PC_CONTROLS
+#include "pc_prompt_guest.inc"
+#endif
+extern void sub_0003FCF0_gen(void);
+void sub_0003FCF0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_prompt_guest(sub_0003FCF0_gen,3,4);
+#else
+    sub_0003FCF0_gen();
+#endif
+}
+extern void sub_00040FA0_gen(void);
+void sub_00040FA0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_prompt_guest(sub_00040FA0_gen,4,6);
+#else
+    sub_00040FA0_gen();
+#endif
+}
+
 /* -- Future Perfect: the MMX memcpy at 0x000245C0 ----------------------- */
 
 /*

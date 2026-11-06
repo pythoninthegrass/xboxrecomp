@@ -28,6 +28,10 @@ if(WIN32)
     target_link_libraries(xbox_input PUBLIC xinput)
 endif()
 
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_prompts.c")
+endif()
+
 if(MSVC)
     target_compile_options(xbox_input PRIVATE /W4 $<$<NOT:$<CONFIG:Debug>>:/O2>)
 else()
