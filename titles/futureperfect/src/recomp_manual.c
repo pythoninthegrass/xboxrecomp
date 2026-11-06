@@ -394,6 +394,33 @@ void sub_000245C0(void)
 /* 0x000D2B80 builds player-relative movement vectors from camera yaw.
  * Apply raw mouse counts just before those vectors, after the game's own
  * controller look step. Keep the generated original body and its ABI. */
+extern void sub_001476F0_gen(void);
+void sub_001476F0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_tutorial(sub_001476F0_gen);
+#else
+    sub_001476F0_gen();
+#endif
+}
+extern void sub_00040F00_gen(void);
+void sub_00040F00(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_tutorial_wrap(sub_00040F00_gen);
+#else
+    sub_00040F00_gen();
+#endif
+}
+extern void sub_00041DC0_gen(void);
+void sub_00041DC0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_tutorial_text(sub_00041DC0_gen);
+#else
+    sub_00041DC0_gen();
+#endif
+}
 /* US HUD groups: preserve proportions and anchor whole widgets. */
 extern void sub_001334D0_gen(void);
 void sub_001334D0(void)
