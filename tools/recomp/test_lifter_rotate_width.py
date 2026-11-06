@@ -34,11 +34,11 @@ def _emit(mnemonic, reg, count):
 
 
 class RotateWidthTest(unittest.TestCase):
-    def test_helper_matches_the_operand_width(self):
+    def test_expression_matches_the_operand_width(self):
         for _w, reg, rol, ror in _WIDTHS:
             with self.subTest(reg=reg):
-                self.assertIn(rol, _emit("rol", reg, 3))
-                self.assertIn(ror, _emit("ror", reg, 3))
+                self.assertIn(f"% {_w * 8}u", _emit("rol", reg, 3))
+                self.assertIn(f"% {_w * 8}u", _emit("ror", reg, 3))
 
     def test_narrow_rotates_are_not_emitted_at_32_bits(self):
         """The control. An unfixed lifter emits ROL32 for `rol al, 3`."""

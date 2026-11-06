@@ -37,17 +37,18 @@ class RotateCarryEmissionTest(unittest.TestCase):
             for reg in ("al", "ax", "eax"):
                 with self.subTest(mnemonic=m, reg=reg):
                     out = _emit(m, reg, 1)
-                    self.assertIn("RC_ROT", out)
+                    self.assertIn("_bit_ring", out)
                     self.assertNotIn("TODO", out)
 
-    def test_the_operand_width_reaches_the_helper(self):
-        self.assertIn("8,", _emit("rcr", "al", 1))
-        self.assertIn("16,", _emit("rcr", "ax", 1))
-        self.assertIn("32,", _emit("rcr", "eax", 1))
+    def test_the_operand_width_reaches_the_carry_ring(self):
+        self.assertIn("<< 8)", _emit("rcr", "al", 1))
+        self.assertIn("<< 16)", _emit("rcr", "ax", 1))
+        self.assertIn("<< 32)", _emit("rcr", "eax", 1))
 
     def test_the_carry_is_read_and_written(self):
-        """It is the whole point of the instruction: &_cf, not a copy."""
-        self.assertIn("&_cf", _emit("rcr", "eax", 1))
+        """The incoming carry is sampled and the outgoing carry is published."""
+        self.assertIn("_cf != 0", _emit("rcr", "eax", 1))
+        self.assertIn("_cf =", _emit("rcr", "eax", 1))
 
     def test_a_function_containing_one_declares_the_carry(self):
         """Without this the generated C does not compile: _cf is only

@@ -25,6 +25,7 @@ from .disasm import Disassembler
 from .lifter import (Lifter, lift_basic_block, detect_seh_helpers,
                      _RESULT_SNAPSHOT_SETTERS,
                      detect_setjmp_helpers, _func_ident, _operand_width)
+from translation_bits import constant_noop as _constant_bit_noop
 
 
 def _merge_flag_states(states):
@@ -891,6 +892,10 @@ class FunctionTranslator:
 
         last_setter = None
         for insn in instructions:
+            if insn.mnemonic in ("rcl", "rcr"):
+                return True  # Emitted C references carry even behind a zero-count guard.
+            if _constant_bit_noop(insn):
+                continue
             m = insn.mnemonic
             if m in ("adc", "sbb", "stc", "clc", "cmc", "rcl", "rcr"):
                 return True
@@ -903,7 +908,7 @@ class FunctionTranslator:
                 cc = m[4:]
             if (cc in FunctionTranslator._CARRY_CC
                     and (last_setter in CF_TRACKED
-                         or last_setter in ("inc", "dec", "rep-cmps")
+                         or last_setter in ("inc", "dec", "rep-cmps", "rol", "ror")
                          or last_setter in BT_MODIFY)):
                 return True
             if m.startswith("rep") and ("cmps" in m or "scas" in m):

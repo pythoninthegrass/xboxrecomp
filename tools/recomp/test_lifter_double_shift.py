@@ -127,7 +127,7 @@ def test_matches_x86_at_every_count(mnemonic):
 def test_the_count_is_masked_and_zero_is_a_no_op(mnemonic):
     body = _emitted(mnemonic)
     assert "& 31u" in body
-    assert "_c &&" in body
+    assert "_bit_count &&" in body
 
 
 @pytest.mark.parametrize("mnemonic", ("shld", "shrd"))

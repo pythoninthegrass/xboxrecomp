@@ -63,7 +63,7 @@ def test_shr_produces_shifted_out_bit():
     # The exact idiom from Halo geometry.c: shr ecx,1 / rep stosd / adc ecx,ecx
     out = _lift("shr", [ECX, ONE])
     assert "_cf =" in out, out
-    assert ") - 1" in out, out
+    assert "_bit_count - 1u" in out, out
 
 
 def test_adc_consumes_and_reproduces_carry():
