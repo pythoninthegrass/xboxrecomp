@@ -19,6 +19,9 @@ int  rhi_shader_cache_get(const RhiShaderSource *src, const char *backend,
 /* Keep a freshly compiled blob for the next run. */
 void rhi_shader_cache_put(const RhiShaderSource *src, const char *backend,
                           const void *blob, size_t bytes);
+/* Remove only this title's recognized disk cache files. Count or -1 on failure. */
+int rhi_shader_cache_clear(void);
+
 /* A file named `name` in the backend's cache directory, for other caches
  * (the Vulkan pipeline cache). 0 if there is none or caching is off. */
 int  rhi_cache_file_path(const char *backend, const char *name, char *out, size_t n);
