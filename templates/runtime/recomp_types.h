@@ -57,6 +57,9 @@
 #define RECOMP_I32_TO_F32(address, value) ((float)(int32_t)(value))
 #define RECOMP_I32_TO_F64(address, value) ((double)(int32_t)(value))
 #endif
+#ifndef RECOMP_LOAD_GLOBAL_U32
+#define RECOMP_LOAD_GLOBAL_U32(site, address, value) (value)
+#endif
 
 /* math.h is load-bearing, and its absence was invisible.
  *

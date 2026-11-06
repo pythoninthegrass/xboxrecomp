@@ -1751,6 +1751,13 @@ class Lifter:
         if nops := len(ops) < 2:
             return [f"/* mov: bad operands */"]
         src = _fmt_operand_read(ops[1])
+        # A title may reinterpret a specific global load used as a time gate.
+        # Keep instruction addresses out of the generic lifter and keep the
+        # actual memory read single-evaluation under the default policy.
+        if (ops[0].type == "reg" and ops[1].type == "mem" and
+                ops[1].mem_size == 4 and not ops[1].mem_base and
+                not ops[1].mem_index and not ops[1].mem_seg):
+            src = f"RECOMP_LOAD_GLOBAL_U32(0x{insn.address:X}, {_fmt_mem(ops[1])}, {src})"
         out = [_fmt_operand_write(ops[0], src)]
         # `mov ebp, esp` establishes this function's frame. Publish it, because
         # ebp is a per-function local and a callee with no prologue of its own
