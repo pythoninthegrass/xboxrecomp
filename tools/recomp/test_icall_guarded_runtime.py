@@ -56,6 +56,15 @@ def _macro(name):
     raise AssertionError(f"{name} not defined in {HEADER}")
 
 
+def _admission():
+    # Admission is a function-backed macro. Include the real helper body as
+    # well as the public spelling; a macro-only copy cannot link or compile.
+    text = open(HEADER, encoding="utf-8").read()
+    start = text.index("static inline int tsfp_guest_target_is_code(")
+    end = text.index("#define RECOMP_ICALL_IS_CODE(", start)
+    return text[start:end] + _macro("RECOMP_ICALL_IS_CODE")
+
+
 def _dispatch():
     # The public macro now uses shared project dispatch helpers. Compile the
     # complete implementation, preserving the existing guarded-call oracle.
@@ -154,7 +163,7 @@ def _run(tmp, srcs, extra=()):
 def test_guarded_site_matches_generic_dispatch_for_every_target():
     if not _cc():
         pytest.skip("no C compiler on PATH")
-    src = (HARNESS.replace("IS_CODE", _macro("RECOMP_ICALL_IS_CODE"))
+    src = (HARNESS.replace("IS_CODE", _admission())
                   .replace("SAFE_AT", _dispatch())
                   .replace("LIFTED", _lifted_site()))
     with tempfile.TemporaryDirectory() as tmp:
