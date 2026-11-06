@@ -6760,22 +6760,7 @@ static void bridge_PsSetCreateThreadNotifyRoutine(void)
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-/* --- RtlExtendedIntegerMultiply (ordinal 281, 3 args = 12 bytes)
- * LARGE_INTEGER RtlExtendedIntegerMultiply(LARGE_INTEGER Multiplicand,
- *                                          LONG Multiplier);
- * Multiplicand.Low (4) + Multiplicand.High (4) + Multiplier (4). C's int64
- * multiply wraps mod 2^64, which is exactly what the x86 imul pair produces
- * for the low 64 bits the API returns. */
-static void bridge_RtlExtendedIntegerMultiply(void)
-{
-    int32_t mult = (int32_t)STACK_ARG(2);
-    int64_t multi = ((int64_t)(int32_t)STACK_ARG(1) << 32)
-                  | (uint32_t)STACK_ARG(0);
-    int64_t result = multi * (int64_t)mult;
-
-    g_eax = (uint32_t)result;
-    g_edx = (uint32_t)((uint64_t)result >> 32);
-}
+#include "guest_kernel_product.inc"
 
 /* --- RtlExtendedLargeIntegerDivide (ordinal 282, 4 args = 16 bytes)
  * LARGE_INTEGER RtlExtendedLargeIntegerDivide(LARGE_INTEGER Dividend,
