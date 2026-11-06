@@ -173,9 +173,9 @@ def test_rep_compare_matches_x86_for_every_count_and_order():
 
 
 def test_negative_control_without_cf_the_order_is_lost():
-    srcs = {n: re.sub(r"\n\s*_cf = \(M[^\n]*;", "", s)
+    srcs = {n: re.sub(r"\n\s*_cf = \(_str_value[^\n]*;", "", s)
             for n, s in _generated().items()}
-    assert all("_cf = (M" not in s for s in srcs.values())
+    assert all("_cf = (_str_value" not in s for s in srcs.values())
     ran = _build_and_run(srcs)
     assert ran.returncode == 1, "dropping CF should make a -1 come out +1"
     assert "want -1" in ran.stderr, ran.stderr
@@ -196,4 +196,4 @@ def test_cf_is_only_computed_where_the_function_reads_it():
     # compares are this, and they should cost nothing new.
     code = _translate("guid", bytes.fromhex("F3A77501C3C3"))
     assert "_cf" not in code, code
-    assert "_flags = (MEM32(esi) == MEM32(edi));" in code, code
+    assert "_flags = (_str_value == _str_other);" in code, code

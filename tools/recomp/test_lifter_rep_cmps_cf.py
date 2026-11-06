@@ -34,10 +34,10 @@ def _lift(m, needs_cf):
 
 
 def test_the_loop_records_cf_when_a_consumer_needs_it():
-    for m, expect in (("repe cmpsb", "_cf = (MEM8(esi) < MEM8(edi));"),
-                      ("repne scasb", "_cf = (LO8(eax) < MEM8(edi));"),
-                      ("repe cmpsd", "_cf = (MEM32(esi) < MEM32(edi));"),
-                      ("repne scasw", "_cf = (LO16(eax) < MEM16(edi));")):
+    for m, expect in (("repe cmpsb", "_cf = (_str_value < _str_other);"),
+                      ("repne scasb", "_cf = (_str_value < _str_other);"),
+                      ("repe cmpsd", "_cf = (_str_value < _str_other);"),
+                      ("repne scasw", "_cf = (_str_value < _str_other);")):
         code = _lift(m, needs_cf=True)
         assert expect in code, (m, code)
 

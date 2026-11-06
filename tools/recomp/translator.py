@@ -26,6 +26,7 @@ from .lifter import (Lifter, lift_basic_block, detect_seh_helpers,
                      _RESULT_SNAPSHOT_SETTERS,
                      detect_setjmp_helpers, _func_ident, _operand_width)
 from translation_bits import constant_noop as _constant_bit_noop
+import translation_strings as _project_strings
 
 
 def _merge_flag_states(states):
@@ -890,8 +891,11 @@ class FunctionTranslator:
         from .lifter import (FLAG_SETTERS, CF_TRACKED, BT_MODIFY,
                              _EFLAGS_SETTERS, _FLAGS_UNDEFINED)
 
+        from translation_strings import is_compare as string_compare
         last_setter = None
         for insn in instructions:
+            if not insn.mnemonic.startswith("rep") and string_compare(insn):
+                return True  # Single string comparisons publish ordinary CMP snapshots.
             if insn.mnemonic.removeprefix("lock ") in ("xadd", "cmpxchg"):
                 return True  # Own exchange arithmetic publishes captured carry.
             if insn.mnemonic in ("rcl", "rcr", "mul", "imul", "bt", "bts", "btr", "btc"):
@@ -1288,7 +1292,7 @@ class FunctionTranslator:
             insn.is_cond_jump or insn.mnemonic.startswith("set")
             or insn.mnemonic.startswith("cmov")
             for insn in instructions)
-        if has_conditionals:
+        if has_conditionals or any(_project_strings.is_compare(i) for i in instructions):
             lines.append(f"    int _flags = 0; /* fallback flag var */")
 
         # Flag snapshot temporaries: a cmp/test records its operands here,
@@ -1302,6 +1306,7 @@ class FunctionTranslator:
         # because eax may be replaced before the branch reads the result.
         if any(insn.mnemonic in ("cmp", "test", "bsf", "bsr", "cmpxchg",
                                  "lock cmpxchg", "xadd", "lock xadd", "inc", "dec")
+               or (_project_strings.is_compare(insn) and not insn.mnemonic.startswith("rep"))
                or insn.mnemonic in _RESULT_SNAPSHOT_SETTERS
                for insn in instructions):
             lines.append("    uint32_t _fa = 0, _fb = 0;")

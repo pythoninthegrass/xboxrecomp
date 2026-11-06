@@ -40,8 +40,8 @@ class DirectionFlagLifterTest(unittest.TestCase):
 
         # memcpy is still there for the common case, but guarded: it is only
         # reached when the ranges provably do not overlap.
-        self.assertIn("memcpy(_d, _s, _n)", generated)
-        self.assertIn("_d + _n <= _s || _s + _n <= _d", generated)
+        self.assertIn("memcpy((void *)XBOX_PTR(edi), (const void *)XBOX_PTR(esi), (size_t)_str_bytes)", generated)
+        self.assertIn("_str_end_s <= edi || _str_end_d <= esi", generated)
 
     def test_rep_movsb_propagates_an_overlapping_forward_copy(self):
         """The LZ run case: distance 1, length N repeats one byte N times.
@@ -55,21 +55,21 @@ class DirectionFlagLifterTest(unittest.TestCase):
 
         # An explicit ascending byte loop, not memmove: memmove would give the
         # copy-through-a-temporary answer, which is a different result.
-        self.assertIn("for (_i = 0; _i < _n; _i++) _d[_i] = _s[_i];", generated)
+        self.assertIn("MEM8(edi) = (uint8_t)_str_value;", generated)
         self.assertNotIn("memmove", generated)
 
     def test_rep_movsb_backward_case_is_still_a_loop(self):
         generated = _lift(Instruction(0, 2, "rep movsb", "", "f3a4"))
 
-        self.assertIn("MEM8(edi - _i) = MEM8(esi - _i)", generated)
+        self.assertIn("uint32_t _str_step = (uint32_t)RECOMP_DF_STEP(1)", generated)
 
     def test_rep_movsd_overlap_steps_by_dwords(self):
         # Element granularity matters: a dword-at-a-time propagation is not
         # the same sequence of bytes as a byte-at-a-time one.
         generated = _lift(Instruction(0, 2, "rep movsd", "", "f3a5"))
 
-        self.assertIn("MEM32(edi + _i*4) = MEM32(esi + _i*4)", generated)
-        self.assertIn("_d + _n <= _s || _s + _n <= _d", generated)
+        self.assertIn("MEM32(edi) = (uint32_t)_str_value;", generated)
+        self.assertIn("_str_end_s <= edi || _str_end_d <= esi", generated)
 
     def test_unprefixed_string_ops_step_by_the_direction_flag(self):
         for mnemonic, size in (("movsb", 1), ("stosw", 2), ("lodsd", 4)):
