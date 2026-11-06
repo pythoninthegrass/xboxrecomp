@@ -623,6 +623,12 @@ typedef enum D3DCLEAR_FLAGS {
     D3DCLEAR_TARGET  = 0x01,
     D3DCLEAR_ZBUFFER = 0x02,
     D3DCLEAR_STENCIL = 0x04,
+    /* Host extension: preserve Xbox channel selection through capture/replay. */
+    D3DCLEAR_CHANNEL_RED = 0x10,
+    D3DCLEAR_CHANNEL_GREEN = 0x20,
+    D3DCLEAR_CHANNEL_BLUE = 0x40,
+    D3DCLEAR_CHANNEL_ALPHA = 0x80,
+    D3DCLEAR_CHANNEL_MASK = 0xF0,
 } D3DCLEAR_FLAGS;
 
 /* ================================================================

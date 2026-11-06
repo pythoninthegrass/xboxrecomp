@@ -106,7 +106,8 @@ extern "C" {
  * version 4 cube textures and the face a render target names, version 6
  * fixed-function lights and the material, version 7 the texels of cubes
  * filled from memory and the stage palettes P8 textures are expanded with. */
-#define D3D8CAP_VERSION      7u
+/* Version 8 carries per-channel colour-clear flags; older captures still read. */
+#define D3D8CAP_VERSION      8u
 /* The oldest version the reader still accepts. A bump that only adds chunk
  * kinds leaves an older file a valid newer one that happens not to contain
  * them (version 6 added three; version 5 one), so it leaves this alone. A

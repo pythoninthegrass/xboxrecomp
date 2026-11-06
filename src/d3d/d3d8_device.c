@@ -30,6 +30,9 @@
 #include <string.h>
 /* malloc: without <stdlib.h> its pointer is truncated to int. */
 #include <stdlib.h>
+#ifdef TSFP_PC_DISPLAY
+#include "pc_clear_rhi.inc"
+#endif
 
 /* ================================================================
  * Internal device state
@@ -687,6 +690,9 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
     if (ref <= 0) {
         /* Cleanup subsystems first */
         up_ring_shutdown();
+#ifdef TSFP_PC_DISPLAY
+        pc_clear_shutdown();
+#endif
         d3d8_overlay_shutdown();
         d3d8_movie_shutdown();
         xbox_D3D8ScreenCopyShutdown();
@@ -842,14 +848,23 @@ static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3
     RhiView *rtv = g_cur_rt ? g_cur_rt->rtv : g_device_state.rhi_default_rtv;
     RhiView *dsv = g_cur_ds ? g_cur_ds->dsv : NULL;
 
-    if ((Flags & D3DCLEAR_TARGET) && rtv) {
+    if ((Flags & (D3DCLEAR_TARGET | D3DCLEAR_CHANNEL_MASK)) && rtv) {
         float clear_color[4] = {
             ((Color >> 16) & 0xFF) / 255.0f,  /* R */
             ((Color >>  8) & 0xFF) / 255.0f,  /* G */
             ((Color >>  0) & 0xFF) / 255.0f,  /* B */
             ((Color >> 24) & 0xFF) / 255.0f,  /* A */
         };
-        rhi_clear_color(rtv, clear_color);
+        if (Flags & D3DCLEAR_TARGET) {
+            rhi_clear_color(rtv, clear_color);
+        } else {
+#ifdef TSFP_PC_DISPLAY
+            unsigned width=g_cur_rt ? g_cur_rt->width : g_device_state.width;
+            unsigned height=g_cur_rt ? g_cur_rt->height : g_device_state.height;
+            if(!pc_clear_masked(rtv,width,height,clear_color,
+                                (Flags & D3DCLEAR_CHANNEL_MASK)>>4))return E_FAIL;
+#endif
+        }
     }
 
     if ((Flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)) && dsv) {
