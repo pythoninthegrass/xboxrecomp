@@ -30,6 +30,7 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_strings.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_time.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_storage.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_kernel_storage.c"

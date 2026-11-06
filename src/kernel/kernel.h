@@ -567,22 +567,6 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
  * Runtime Library (kernel_rtl.c)
  * ============================================================================ */
 
-VOID    __stdcall xbox_RtlInitAnsiString(PXBOX_ANSI_STRING DestinationString, const char* SourceString);
-VOID    __stdcall xbox_RtlInitUnicodeString(PXBOX_UNICODE_STRING DestinationString, const WCHAR* SourceString);
-
-NTSTATUS __stdcall xbox_RtlAnsiStringToUnicodeString(
-    PXBOX_UNICODE_STRING DestinationString,
-    PXBOX_ANSI_STRING SourceString,
-    BOOLEAN AllocateDestinationString);
-
-NTSTATUS __stdcall xbox_RtlUnicodeStringToAnsiString(
-    PXBOX_ANSI_STRING DestinationString,
-    PXBOX_UNICODE_STRING SourceString,
-    BOOLEAN AllocateDestinationString);
-
-BOOLEAN __stdcall xbox_RtlEqualString(PXBOX_ANSI_STRING String1, PXBOX_ANSI_STRING String2, BOOLEAN CaseInSensitive);
-ULONG   __stdcall xbox_RtlCompareMemoryUlong(PVOID Source, ULONG Length, ULONG Pattern);
-
 /* Name contended CRT locks by index instead of by address. */
 void xbox_SetCrtLockTable(uint32_t table_va, uint32_t count);
 
