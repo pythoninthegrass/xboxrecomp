@@ -131,15 +131,23 @@ class CvtPi2PsTest(unittest.TestCase):
     def test_mmx_source_is_lifted(self):
         lifted = Lifter().lift_instruction(
             _insn("cvtpi2ps", "xmm0, mm0", [_xmm("xmm0"), _xmm("mm0")]))
-        self.assertEqual(len(lifted), 1)
-        self.assertIn("XMM_FROM_PI(xmm0, mm0)", lifted[0])
+        code = "\n".join(lifted)
+        self.assertIn("uint64_t _mm_b = mm0.q;", code)
+        self.assertIn("xmm0.f[0] = ", code)
+        self.assertIn("xmm0.f[1] = ", code)
+        self.assertNotIn("xmm0.f[2] =", code)
+        self.assertNotIn("XMM_FROM_PI", code)
 
     def test_memory_source_is_lifted(self):
         lifted = Lifter().lift_instruction(
             _insn("cvtpi2ps", "xmm1, qword ptr [eax]",
                   [_xmm("xmm1"), _mem("eax", size=8)]))
-        self.assertEqual(len(lifted), 1)
-        self.assertIn("MMX_MEM(", lifted[0])
+        code = "\n".join(lifted)
+        self.assertIn("_mm_b_address = (uint32_t)(eax)", code)
+        self.assertEqual(code.count("MEM32("), 2)
+        self.assertIn("xmm1.f[0] = ", code)
+        self.assertIn("xmm1.f[1] = ", code)
+        self.assertNotIn("MMX_MEM", code)
 
     def test_it_does_not_become_a_comment(self):
         # The regression itself: a TODO comment compiles and does nothing.
