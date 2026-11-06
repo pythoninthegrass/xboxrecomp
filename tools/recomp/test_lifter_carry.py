@@ -57,7 +57,7 @@ class CarryLifterTest(unittest.TestCase):
 
         self.assertIn("_cf = (int)(_fa < _fb);", generated)
         # and it must land between the cmp and the sbb, not before the cmp
-        cmp_at = generated.index("/* cmp ")
+        cmp_at = generated.index("/* own cmp snapshot */")
         cf_at = generated.index("_cf = (int)(_fa < _fb);")
         sbb_at = generated.index("uint32_t _alu_carry = (_cf != 0);")
         self.assertLess(cmp_at, cf_at)

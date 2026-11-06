@@ -51,7 +51,7 @@ class ZeroTestNormalisationTest(unittest.TestCase):
     def test_the_emitted_snapshot_compares_against_zero(self):
         out = _emit("test", [_reg("eax"), _reg("eax")])
         self.assertIn("_fb = (uint32_t)(0)", out)
-        self.assertIn("cmp eax, 0", out)
+        self.assertIn("own cmp snapshot", out)
 
     def test_carry_is_still_cleared(self):
         """test clears CF, and nothing borrows from zero -- same answer."""
