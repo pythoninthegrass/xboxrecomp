@@ -710,7 +710,7 @@ void xbox_Nv2aFlipGateArm(void)
         return;                                         /* no vblank has ever come */
     if (!g_flip_gate_event)
         return;
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32) || defined(__linux__)
     /* A cinematic may already have waited for this vblank inside the title.
      * Interpolation must not add another full tick and halve its simulation.
      * A cheap frame still waits normally, lending time for its midpoint. */
