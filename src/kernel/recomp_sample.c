@@ -1,3 +1,4 @@
+#include <stddef.h>
 /**
  * A sampling profiler for the whole process, by thread and by native symbol.
  *

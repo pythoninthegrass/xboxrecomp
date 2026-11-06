@@ -819,6 +819,7 @@ static void park_enter(void)
  * logical processor's EfficiencyClass (higher is faster); the pick is the
  * highest-numbered processor of the highest class, which also keeps the
  * guest off CPU 0. */
+#ifdef _WIN32
 typedef BOOL (WINAPI *GetSystemCpuSetInformation_t)(PVOID, ULONG, PULONG, HANDLE, ULONG);
 
 static DWORD_PTR fastest_core_mask(DWORD_PTR proc)
@@ -892,9 +893,12 @@ static DWORD_PTR guest_cpu_mask(void)
     return mask;
 }
 
+#endif /* _WIN32: CPU affinity is optional, not a macOS correctness primitive. */
+
 void xbox_GuestLiftedEnter(void)
 {
     LONG n;
+#ifdef _WIN32
     {
         static RECOMP_TLS int pinned;
         if (!pinned) {
@@ -904,6 +908,7 @@ void xbox_GuestLiftedEnter(void)
                 SetThreadAffinityMask(GetCurrentThread(), m);
         }
     }
+#endif
     park_enter();
     if (!xbox_GuestConcurrencyOn())
         return;
@@ -2070,6 +2075,13 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
      * addresses upward until we find a free region.
      */
     {
+#ifdef __APPLE__
+        void *arena = w32_guest_arena_reserve((SIZE_T)0x100000000ull);
+        if (arena)
+            g_memory_base = MapViewOfFileEx(g_mapping_handle, FILE_MAP_ALL_ACCESS,
+                                            0, 0, g_memory_size, arena);
+        if (!g_memory_base) w32_guest_arena_release();
+#else
         static const uintptr_t try_bases[] = {
             XBOX_BASE_ADDRESS,      /* 0x00010000 - original Xbox address */
             0x00800000,             /* 8 MB - above typical PEB/TEB region */
@@ -2079,7 +2091,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
             0,                      /* sentinel - let OS choose */
         };
 
-        for (int i = 0; try_bases[i] != 0 || i == 0; i++) {
+        for (size_t i = 0; i < sizeof(try_bases) / sizeof(try_bases[0]); i++) {
             LPVOID hint = try_bases[i] ? (LPVOID)try_bases[i] : NULL;
             g_memory_base = MapViewOfFileEx(
                 g_mapping_handle,
@@ -2098,6 +2110,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
                 break;
             }
         }
+    #endif
     }
 
     if (!g_memory_base) {
@@ -2609,12 +2622,16 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
      */
     {
         uintptr_t nv2a_native = XBOX_NV2A_BASE + g_memory_offset;
+#ifdef __APPLE__
+        g_nv2a_memory = w32_guest_mmio_map((LPVOID)nv2a_native, XBOX_NV2A_SIZE);
+#else
         g_nv2a_memory = VirtualAlloc(
             (LPVOID)nv2a_native,
             XBOX_NV2A_SIZE,
             MEM_RESERVE | MEM_COMMIT,
             PAGE_READWRITE
         );
+#endif
         /* The pushbuffer survey rides on the same poll, so either
          * variable arms it. */
         s_nv2a_trace = getenv("RECOMP_NV2A_TRACE") != NULL
@@ -2682,12 +2699,16 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
      */
     {
         uintptr_t mcpx_native = XBOX_MCPX_BASE + g_memory_offset;
+#ifdef __APPLE__
+        g_mcpx_memory = w32_guest_mmio_map((LPVOID)mcpx_native, XBOX_MCPX_SIZE);
+#else
         g_mcpx_memory = VirtualAlloc(
             (LPVOID)mcpx_native,
             XBOX_MCPX_SIZE,
             MEM_RESERVE | MEM_COMMIT,
             PAGE_READWRITE
         );
+#endif
         g_mcpx_regs = g_mcpx_memory;
         if (g_mcpx_memory) {
             /* AC'97 codec ready.
@@ -3107,6 +3128,9 @@ void xbox_MemoryLayoutShutdown(void)
         CloseHandle(g_mapping_handle);
         g_mapping_handle = NULL;
     }
+#ifdef __APPLE__
+    w32_guest_arena_release();
+#endif
     fprintf(stderr, "xbox_MemoryLayoutShutdown: released\n");
 }
 

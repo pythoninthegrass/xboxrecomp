@@ -3002,8 +3002,10 @@ static DWORD WINAPI kernel_timer_thread(LPVOID unused)
         HANDLE hires = CreateWaitableTimerExW(NULL, NULL,
                                               0x00000002 /* CREATE_WAITABLE_TIMER_HIGH_RESOLUTION */,
                                               TIMER_ALL_ACCESS);
+#ifdef _WIN32
         if (!hires && vblank_clock_wait_us() >= 0)
             timeBeginPeriod(1);
+#endif
 
         for (;;) {
             long long now;
@@ -3628,7 +3630,8 @@ static void bridge_NtCreateFile(void)
         uint32_t _e = g_eax ? xbox_LastFileError() : 0u;
         /* What was asked, as well as what came back: a failure on an existing
          * file is a bug only if the disposition should have opened it. */
-        if (g_eax)
+        if (g_eax) {
+#ifdef _WIN32
             fprintf(stderr, "  [FILE] -> 0x%08X FAILED (win32 err=%u%s; access 0x%08X "
                             "share %u disposition %u options 0x%X)\n",
                     g_eax, _e,
@@ -3638,6 +3641,12 @@ static void bridge_NtCreateFile(void)
                   : _e == 80u ? " ERROR_FILE_EXISTS"
                   : _e == 183u ? " ERROR_ALREADY_EXISTS" : "",
                     access, share, disposition, options);
+#else
+            fprintf(stderr, "  [FILE] -> 0x%08X FAILED (POSIX errno=%u; access 0x%08X "
+                            "share %u disposition %u options 0x%X)\n",
+                    g_eax, _e, access, share, disposition, options);
+#endif
+        }
         else
             fprintf(stderr, "  [FILE] -> 0x%08X\n", g_eax);
     }

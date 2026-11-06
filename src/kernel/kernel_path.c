@@ -535,6 +535,7 @@ translate:
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <fcntl.h>
 
 static char s_game_dir[MAX_PATH];
 static char s_save_dir[MAX_PATH];
@@ -567,6 +568,57 @@ static void mkdir_p(const char* path)
     }
     if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
         xbox_log(XBOX_LOG_WARN, XBOX_LOG_PATH, "mkdir %s: %s", tmp, strerror(errno));
+}
+
+/* Same retail disk geometry as the Windows path. Files are sparse and live
+ * strictly under the configured save directory. Existing data is preserved. */
+static void posix_partition_images(void)
+{
+    static const uint32_t sectors[6] = {0, 0x465400, 0xFA000, 0x177000, 0x177000, 0x177000};
+    static const struct { const char *name; uint32_t start, size; } parts[] = {
+        {"XBOX_PART_X", 0x400, 0x177000}, {"XBOX_PART_Y", 0x177400, 0x177000},
+        {"XBOX_PART_Z", 0x2EE400, 0x177000}, {"XBOX_PART_C", 0x465400, 0xFA000},
+        {"XBOX_PART_E", 0x55F400, 0x465400}
+    };
+    mkdir_p(s_save_dir);
+    for (unsigned p = 0; p < 6; p++) {
+        char path[MAX_PATH];
+        if (snprintf(path, sizeof path, "%s/Partition%u.img", s_save_dir, p) >= (int)sizeof path) continue;
+        int fd = open(path, O_CREAT | O_EXCL | O_RDWR, 0600);
+        if (fd < 0) {
+            if (errno != EEXIST) fprintf(stderr, "[PATH] Cannot create %s: %s\n", path, strerror(errno));
+            continue;
+        }
+        int ok;
+        if (p) {
+            ok = ftruncate(fd, (off_t)sectors[p] * 512) == 0;
+        } else {
+            unsigned char sector[512] = {0};
+            memcpy(sector, "****PARTINFO****", 16);
+            for (unsigned i = 0; i < 5; i++) {
+                unsigned char *e = sector + 48 + i * 32;
+                memset(e, ' ', 16); memcpy(e, parts[i].name, strlen(parts[i].name));
+                uint32_t fields[4] = {0x80000000u, parts[i].start, parts[i].size, 0};
+                /* Xbox and Apple Silicon are little endian; spell out the disk format. */
+                for (unsigned f = 0; f < 4; f++) for (unsigned b = 0; b < 4; b++)
+                    e[16 + f * 4 + b] = (unsigned char)(fields[f] >> (b * 8));
+            }
+            ok = pwrite(fd, sector, sizeof sector, 0x800) == sizeof sector;
+        }
+        if (!ok) fprintf(stderr, "[PATH] Could not initialize %s: %s\n", path, strerror(errno));
+        close(fd);
+    }
+}
+
+static BOOL posix_partition_path(const char *guest, char *out, DWORD capacity)
+{
+    int n = match_prefix(guest, "\\Device\\Harddisk0\\Partition");
+    if (!n || guest[n] < '0' || guest[n] > '5') return FALSE;
+    const char *rest = guest + n + 1;
+    if (*rest == '\\' || *rest == '/') rest++;
+    if (*rest) return FALSE;
+    int written = snprintf(out, capacity, "%s/Partition%c.img", s_save_dir, guest[n]);
+    return written >= 0 && (DWORD)written < capacity;
 }
 
 void xbox_path_init(const char* game_dir, const char* save_dir)
@@ -613,6 +665,7 @@ void xbox_path_init(const char* game_dir, const char* save_dir)
     strip_trailing_slash(s_game_dir);
     strip_trailing_slash(s_save_dir);
 
+    posix_partition_images();
     s_initialized = TRUE;
     xbox_log(XBOX_LOG_INFO, XBOX_LOG_PATH, "Path init: game=%s, save=%s",
              s_game_dir, s_save_dir);
@@ -639,6 +692,8 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
         if (resolve_symlink(xbox_path, linked, sizeof(linked)))
             return xbox_translate_path(linked, host_path_buf, buf_size);
     }
+
+    if (posix_partition_path(xbox_path, host_path_buf, buf_size)) return TRUE;
 
     for (int i = 0; i < PATH_RULE_COUNT; i++) {
         skip = match_path_rule(xbox_path, s_rules[i].prefix);

@@ -83,12 +83,19 @@ endif()
 
 # Core game sources
 set(GAME_SOURCES
-    src/main.c
     src/recomp_manual.c
     # Add game-specific sources here, e.g.:
     # src/asset_loader.c
     # src/custom_renderer.c
 )
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    list(APPEND GAME_SOURCES "${TSFP_NATIVE_DIR}/main.c" "${TSFP_NATIVE_DIR}/mmio.c")
+elseif(WIN32)
+    list(APPEND GAME_SOURCES src/main.c)
+else()
+    message(FATAL_ERROR "This title needs TSFP_NATIVE_DIR on macOS, or a Windows host")
+endif()
 
 # The recomp pipeline also generates a dispatch header and function declarations.
 # These are included by the generated .c files:
@@ -129,6 +136,7 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
 endif()
 
 # Windows SDK libraries needed at link time
+if(WIN32)
 target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d11
     dxgi
@@ -139,6 +147,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     # function's symbol, i.e. to the guest function that faulted.
     dbghelp
 )
+endif()
 
 # MSVC-specific: large address aware, increase section limit for big generated files
 if(MSVC)
@@ -201,4 +210,19 @@ if(TSFP_PC_CONTROLS_DIR)
     add_executable(tsfp_pc_display_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_display.c" "${TSFP_PC_CONTROLS_DIR}/pc_display.c")
     target_include_directories(tsfp_pc_display_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
     target_link_libraries(tsfp_pc_display_test PRIVATE user32)
+endif()
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    enable_testing()
+    set(TSFP_TESTS "${TSFP_NATIVE_DIR}/../../tests")
+    add_executable(tsfp_native_platform_test "${TSFP_TESTS}/native_platform.c")
+    target_link_libraries(tsfp_native_platform_test PRIVATE platform)
+    add_test(NAME native_platform COMMAND tsfp_native_platform_test)
+    add_executable(tsfp_native_mmio_test "${TSFP_TESTS}/native_mmio.c" "${TSFP_NATIVE_DIR}/mmio.c")
+    target_include_directories(tsfp_native_mmio_test PRIVATE "${TSFP_NATIVE_DIR}" "${XBOXRECOMP_DIR}/include")
+    target_link_libraries(tsfp_native_mmio_test PRIVATE platform)
+    add_test(NAME native_mmio COMMAND tsfp_native_mmio_test)
+    add_executable(tsfp_native_paths_test "${TSFP_TESTS}/native_paths.c")
+    target_link_libraries(tsfp_native_paths_test PRIVATE xboxrecomp)
+    add_test(NAME native_paths COMMAND tsfp_native_paths_test "${CMAKE_BINARY_DIR}/path-tests")
 endif()

@@ -25,7 +25,12 @@
 #include "d3d8_fvf.h"
 
 #include <SDL3/SDL.h>
+#ifdef __APPLE__
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl3.h>
+#else
 #include <epoxy/gl.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>

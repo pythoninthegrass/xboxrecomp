@@ -27,6 +27,8 @@
 #include <sys/statvfs.h>
 #include <dirent.h>
 #include <fnmatch.h>
+#include <wchar.h>
+#include <stdlib.h>
 #endif
 
 /* Get the ANSI path from OBJECT_ATTRIBUTES (platform-independent). */
@@ -790,6 +792,11 @@ NTSTATUS __stdcall xbox_NtQueryDirectoryFile(
 
 /* ======================================================================== */
 #else /* !_WIN32 */
+static XBOX_THREAD_LOCAL uint32_t s_last_file_error;
+static XBOX_THREAD_LOCAL wchar_t s_last_host_path[MAX_PATH];
+uint32_t xbox_LastFileError(void) { return s_last_file_error; }
+const wchar_t *xbox_LastHostPath(void) { return s_last_host_path; }
+
 /* ====================  POSIX backend  =================================== */
 /* ======================================================================== */
 
@@ -857,17 +864,46 @@ NTSTATUS __stdcall xbox_NtCreateFile(
     ULONG CreateDisposition, ULONG CreateOptions)
 {
     char host_path[MAX_PATH];
+    s_last_file_error = 0;
+    s_last_host_path[0] = 0;
     (void)AllocationSize; (void)FileAttributes; (void)ShareAccess;
 
     if (!FileHandle || !ObjectAttributes)
         return STATUS_INVALID_PARAMETER;
 
     const char* xbox_path = get_xbox_path(ObjectAttributes);
-    if (!xbox_path || !xbox_translate_path(xbox_path, host_path, MAX_PATH)) {
+    BOOL translated = FALSE;
+    if (xbox_path && ObjectAttributes->RootDirectory && xbox_path[0] != '\\' &&
+        xbox_path[0] != '/' && !(xbox_path[0] && xbox_path[1] == ':')) {
+        const char *parent = w32_handle_path(ObjectAttributes->RootDirectory);
+        if (parent) {
+            int n = snprintf(host_path, sizeof host_path, "%s/%s", parent, xbox_path);
+            translated = n >= 0 && n < (int)sizeof host_path;
+            xbox_path_normalize(host_path);
+        }
+    } else if (xbox_path) {
+        translated = xbox_translate_path(xbox_path, host_path, MAX_PATH);
+    }
+    if (!translated) {
         xbox_log(XBOX_LOG_ERROR, XBOX_LOG_FILE, "NtCreateFile: path translation failed");
         return STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
+    struct stat attrs;
+    if (stat(host_path, &attrs) == 0) {
+        if ((CreateOptions & XBOX_FILE_DIRECTORY_FILE) && S_ISREG(attrs.st_mode)) {
+            /* A partition device opened for a volume query needs its parent. */
+            const char *leaf = strrchr(host_path, '/');
+            if (leaf && strncmp(leaf + 1, "Partition", 9) == 0 && strlen(leaf + 1) == 14 &&
+                leaf[10] >= '0' && leaf[10] <= '5' && strcmp(leaf + 11, ".img") == 0)
+                host_path[leaf - host_path] = 0;
+        } else if (S_ISDIR(attrs.st_mode)) {
+            CreateOptions |= XBOX_FILE_DIRECTORY_FILE;
+        }
+    }
+    if (mbstowcs(s_last_host_path, host_path, MAX_PATH) == (size_t)-1)
+        s_last_host_path[0] = 0;
+    s_last_host_path[MAX_PATH - 1] = 0;
     int fd;
     if (CreateOptions & XBOX_FILE_DIRECTORY_FILE) {
         if (CreateDisposition == XBOX_FILE_CREATE || CreateDisposition == XBOX_FILE_OPEN_IF)
@@ -879,6 +915,8 @@ NTSTATUS __stdcall xbox_NtCreateFile(
 
     if (fd < 0) {
         int e = errno;
+        s_last_file_error = (uint32_t)e;
+        fprintf(stderr, "[POSIX-FILE] open %s failed: %s (errno %d)\n", host_path, strerror(e), e);
         XBOX_TRACE(XBOX_LOG_FILE, "NtCreateFile FAILED: %s (errno=%d)", host_path, e);
         if (IoStatusBlock) {
             IoStatusBlock->Status = STATUS_OBJECT_NAME_NOT_FOUND;

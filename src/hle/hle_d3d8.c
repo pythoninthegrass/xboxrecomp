@@ -71,6 +71,8 @@
 #include "pc_controls.h"
 #endif
 
+static unsigned long g_shadow_swaps; /* Guest frame counter, all hosts. */
+
 #ifdef _WIN32
 #include "d3d8_xbox.h"
 #include "d3d8_vsh.h"
@@ -135,7 +137,7 @@ static DWORD              g_shadow_create_thread;
 static DWORD              g_shadow_swap_thread;
 static int                g_shadow_thread_notes;
 static unsigned long      g_shadow_clears;
-static unsigned long      g_shadow_swaps;
+
 /* The video overlay's state, from EnableOverlay and UpdateOverlay. */
 static int                g_overlay_enabled, g_overlay_updated;
 /* Where the playing movie's surface keeps its texels (hle_xmv_play.c), and
@@ -1863,6 +1865,9 @@ HLE_EXPORT(Direct3D_CreateDevice)
      * exists. */
     mirror_gpu_time_fence();
     HLE_CALL_ORIGINAL(Direct3D_CreateDevice);
+#ifndef _WIN32
+    fprintf(stderr, "[NATIVE-GUEST] graphics initialization returned 0x%08X\n", g_eax);
+#endif
     mirror_swap_throttle();
 #ifdef _WIN32
     g_in_create_device = 0;
@@ -1973,6 +1978,7 @@ static void swap_timing_report(void)
  */
 /* The overlay's line, and whether it is shown: kept here so an in-between
  * frame (hle_d3d8_interp.c) carries the same line as the frames around it. */
+#ifdef _WIN32
 static int  g_overlay_shown;
 static char g_overlay_line[96];
 
@@ -2080,6 +2086,8 @@ static void overlay_frame(void)
     if (enabled)
         d3d8_overlay_draw(line);
 }
+
+#endif /* Windows overlay and hotkeys */
 
 /* HRESULT D3DDevice_Swap(DWORD Flags)                                       */
 #ifdef _WIN32
@@ -2276,6 +2284,11 @@ HLE_EXPORT(D3DDevice_Swap)
         xbox_Nv2aFlipGateArm();
         QueryPerformanceCounter(&t1);
         HLE_CALL_ORIGINAL(D3DDevice_Swap);
+#ifndef _WIN32
+        g_shadow_swaps++;
+        if (g_shadow_swaps == 1 || g_shadow_swaps % 300 == 0)
+            fprintf(stderr, "[NATIVE-GUEST] completed frame %lu (host rendering not connected)\n", g_shadow_swaps);
+#endif
         QueryPerformanceCounter(&t2);
         g_swap_gate_ticks += t1.QuadPart - t0.QuadPart;
         g_swap_body_ticks += t2.QuadPart - t1.QuadPart;
@@ -2856,8 +2869,8 @@ static void shadow_track_vertex_shader(uint32_t guest, int has_function,
         if (slot >= 0 && slot == g_shadow_vs_slot)
             g_shadow_vs_kind = kind;
     }
-#endif
 }
+#endif
 
 /* void D3DDevice_LoadVertexShaderProgram(const DWORD *pFunction, DWORD Address)
  * Xbox-only: copy a compiled program (the same X_VSH_SHADER_HEADER form

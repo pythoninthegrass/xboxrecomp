@@ -1,3 +1,4 @@
+#include <stdint.h>
 /**
  * Frame rate, measured at the one place every configuration shares.
  *

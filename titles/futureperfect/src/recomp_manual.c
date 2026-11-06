@@ -1,3 +1,4 @@
+#include <stddef.h>
 /**
  * Manual function overrides and ICALL diagnostics
  *

@@ -133,10 +133,15 @@ HANDLE CreateEventA(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, BOOL initialStat
 HANDLE CreateEventW(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, BOOL initialState, LPCWSTR name);
 BOOL   SetEvent(HANDLE h);
 
-/* Waitable timers, as far as the kernel bridge uses them: created for
- * NtCreateTimer and cancelled for NtCancelTimer, never armed. There is
- * deliberately no SetWaitableTimer, so a future caller fails to build here
- * instead of getting a timer that silently never fires. */
+/* Waitable timers use monotonic deadlines for relative waits. APC callbacks
+ * and wake-from-suspend are explicitly unsupported on this host. */
+#define TIMER_ALL_ACCESS 0x001F0003u
+#define CREATE_WAITABLE_TIMER_MANUAL_RESET 0x00000001u
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002u
+typedef VOID (WINAPI *PTIMERAPCROUTINE)(LPVOID, DWORD, DWORD);
+HANDLE CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES sa, LPCWSTR name, DWORD flags, DWORD access);
+BOOL SetWaitableTimer(HANDLE h, const LARGE_INTEGER *due, LONG period,
+                      PTIMERAPCROUTINE callback, LPVOID arg, BOOL resume);
 HANDLE CreateWaitableTimerW(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, LPCWSTR name);
 BOOL   CancelWaitableTimer(HANDLE h);
 BOOL   ResetEvent(HANDLE h);
@@ -506,6 +511,15 @@ LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access,
                        DWORD offHigh, DWORD offLow, SIZE_T count, LPVOID baseAddr);
 BOOL   UnmapViewOfFile(LPCVOID baseAddr);
 #define CreateFileMapping CreateFileMappingA
+
+#ifdef __APPLE__
+/* Own one address-space reservation; fixed maps may replace only unused pages
+ * within it. This never overwrites unrelated host allocations. */
+LPVOID w32_guest_arena_reserve(SIZE_T size);
+BOOL w32_guest_arena_release(void);
+LPVOID w32_guest_mmio_map(LPVOID address, SIZE_T size);
+LPVOID w32_guest_mmio_alias(LPCVOID address, SIZE_T size);
+#endif
 
 /* ---- Aligned allocation ---------------------------------------------- */
 void *_aligned_malloc(SIZE_T size, SIZE_T alignment);

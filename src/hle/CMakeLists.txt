@@ -29,6 +29,7 @@ add_library(xbox_hle STATIC
     hle_xmv.c
     hle_xmv_play.c
     input_model.c
+    input_host.c
 )
 
 # Host backends. XAudio2 and XInput exist only on Windows. A POSIX host needs
@@ -39,8 +40,11 @@ add_library(xbox_hle STATIC
 if(WIN32)
     target_sources(xbox_hle PRIVATE
         audio_output_xaudio2.cpp
-        input_host.c
     )
+endif()
+if(APPLE AND TSFP_NATIVE_DIR)
+    target_sources(xbox_hle PRIVATE "${TSFP_NATIVE_DIR}/audio_sdl.c")
+    target_link_libraries(xbox_hle PRIVATE SDL3::SDL3)
 endif()
 target_include_directories(xbox_hle PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(xbox_hle PUBLIC xbox_config)

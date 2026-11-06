@@ -247,7 +247,7 @@ VOID WakeAllConditionVariable(PCONDITION_VARIABLE cv)
 /* ===================================================================== */
 
 typedef enum { K_EVENT, K_SEM, K_MUTEX, K_THREAD, K_TIMER, K_HEAP,
-               K_FILEMAP, K_FILE } w32_kind;
+               K_FILEMAP, K_FILE, K_WAITABLE_TIMER } w32_kind;
 
 #define W32_MAX_APC 16
 
@@ -290,6 +290,11 @@ typedef struct w32_object {
     DWORD           timer_period;
     WAITORTIMERCALLBACK timer_cb;
     PVOID           timer_param;
+
+    /* Waitable timer, protected by lock; no per-timer helper thread. */
+    int             armed;
+    uint64_t        deadline_ns;
+    uint64_t        period_ns;
 
     /* file mapping / fd-backed file handle */
     int             fd;
@@ -421,6 +426,25 @@ static int drain_apcs(void)
     return run;
 }
 
+static uint64_t monotonic_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+
+/* Called with the object's lock held. Periodic signals coalesce, as on Win32. */
+static void timer_update(w32_object *o, uint64_t now)
+{
+    if (o->armed && now >= o->deadline_ns) {
+        o->signaled = 1;
+        if (o->period_ns)
+            o->deadline_ns += ((now - o->deadline_ns) / o->period_ns + 1) * o->period_ns;
+        else
+            o->armed = 0;
+    }
+}
+
 /*
  * Wait on a single object. The object lock must NOT be held.
  * Returns WAIT_OBJECT_0 / WAIT_TIMEOUT.
@@ -430,6 +454,7 @@ static DWORD wait_single(w32_object *o, DWORD ms)
     struct timespec ts;
     int timed = (ms != INFINITE);
     if (timed) deadline_from_ms(ms, &ts);
+    uint64_t wait_end = timed ? monotonic_ns() + (uint64_t)ms * 1000000ull : UINT64_MAX;
 
     pthread_mutex_lock(&o->lock);
     DWORD result = WAIT_OBJECT_0;
@@ -437,6 +462,10 @@ static DWORD wait_single(w32_object *o, DWORD ms)
     for (;;) {
         int ready = 0;
         switch (o->kind) {
+        case K_WAITABLE_TIMER:
+            timer_update(o, monotonic_ns());
+            ready = o->signaled;
+            break;
         case K_EVENT:  ready = o->signaled; break;
         case K_THREAD: ready = o->exited;   break;
         case K_SEM:    ready = (o->sem_count > 0); break;
@@ -447,6 +476,28 @@ static DWORD wait_single(w32_object *o, DWORD ms)
         }
         if (ready) break;
 
+        if (o->kind == K_WAITABLE_TIMER) {
+            uint64_t now = monotonic_ns();
+            if (timed && now >= wait_end) { result = WAIT_TIMEOUT; break; }
+            uint64_t end = o->armed && o->deadline_ns < wait_end ? o->deadline_ns : wait_end;
+            if (end == UINT64_MAX) {
+                pthread_cond_wait(&o->cond, &o->lock);
+            } else {
+                uint64_t ns = end > now ? end - now : 0;
+                struct timespec delay = {(time_t)(ns / 1000000000ull), (long)(ns % 1000000000ull)};
+#ifdef __APPLE__
+                pthread_cond_timedwait_relative_np(&o->cond, &o->lock, &delay);
+#else
+                struct timespec absolute;
+                clock_gettime(CLOCK_REALTIME, &absolute);
+                absolute.tv_sec += delay.tv_sec;
+                absolute.tv_nsec += delay.tv_nsec;
+                if (absolute.tv_nsec >= 1000000000L) { absolute.tv_sec++; absolute.tv_nsec -= 1000000000L; }
+                pthread_cond_timedwait(&o->cond, &o->lock, &absolute);
+#endif
+            }
+            continue; /* Recheck the signal and both deadlines after every wake. */
+        }
         int rc = timed ? pthread_cond_timedwait(&o->cond, &o->lock, &ts)
                        : pthread_cond_wait(&o->cond, &o->lock);
         if (rc == ETIMEDOUT) { result = WAIT_TIMEOUT; break; }
@@ -454,6 +505,7 @@ static DWORD wait_single(w32_object *o, DWORD ms)
 
     if (result == WAIT_OBJECT_0) {
         switch (o->kind) {
+        case K_WAITABLE_TIMER:
         case K_EVENT: if (!o->manual_reset) o->signaled = 0; break;
         case K_SEM:   o->sem_count--; break;
         case K_MUTEX: o->mtx_owner = GetCurrentThreadId(); o->mtx_recursion++; break;
@@ -579,21 +631,64 @@ HANDLE CreateEventW(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, BOOL initialStat
     return CreateEventA(sa, manualReset, initialState, NULL);
 }
 
-/* A waitable timer that is never armed is never signalled, which is exactly an
- * event nobody sets. That is the whole of what the kernel bridge needs: it
- * creates one for NtCreateTimer and cancels it for NtCancelTimer, and nothing
- * calls SetWaitableTimer. */
-HANDLE CreateWaitableTimerW(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, LPCWSTR name)
+HANDLE CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES sa, LPCWSTR name, DWORD flags, DWORD access)
 {
-    (void)name;
-    return CreateEventA(sa, manualReset, FALSE, NULL);
+    (void)sa; (void)access;
+    if (name || (flags & ~3u)) { SetLastError(ERROR_INVALID_PARAMETER); return NULL; }
+    w32_object *o = obj_alloc(K_WAITABLE_TIMER);
+    o->manual_reset = (flags & CREATE_WAITABLE_TIMER_MANUAL_RESET) != 0;
+    return (HANDLE)o;
 }
 
-/* On Windows, cancelling a timer leaves its signal state alone. */
+HANDLE CreateWaitableTimerW(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, LPCWSTR name)
+{
+    return CreateWaitableTimerExW(sa, name, manualReset ? 1u : 0u, TIMER_ALL_ACCESS);
+}
+
+BOOL SetWaitableTimer(HANDLE h, const LARGE_INTEGER *due, LONG period,
+                      PTIMERAPCROUTINE callback, LPVOID arg, BOOL resume)
+{
+    (void)arg;
+    w32_object *o = (w32_object *)h;
+    if (!o || o->kind != K_WAITABLE_TIMER || !due || period < 0 || callback || resume) {
+        SetLastError(ERROR_INVALID_PARAMETER); return FALSE;
+    }
+    uint64_t delay;
+    if (due->QuadPart < 0) {
+        /* Avoid signed overflow on INT64_MIN and reject nanosecond overflow. */
+        uint64_t ticks = (uint64_t)(-(due->QuadPart + 1)) + 1;
+        if (ticks > UINT64_MAX / 100u) { SetLastError(ERROR_INVALID_PARAMETER); return FALSE; }
+        delay = ticks * 100u;
+    } else {
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        uint64_t now = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+        uint64_t ticks = (uint64_t)due->QuadPart > now ? (uint64_t)due->QuadPart - now : 0;
+        if (ticks > UINT64_MAX / 100u) { SetLastError(ERROR_INVALID_PARAMETER); return FALSE; }
+        delay = ticks * 100u;
+    }
+    uint64_t now = monotonic_ns();
+    if (delay > UINT64_MAX - now) { SetLastError(ERROR_INVALID_PARAMETER); return FALSE; }
+    pthread_mutex_lock(&o->lock);
+    o->deadline_ns = now + delay;
+    o->period_ns = (uint64_t)period * 1000000ull;
+    o->signaled = 0;
+    o->armed = 1;
+    pthread_cond_broadcast(&o->cond);
+    pthread_mutex_unlock(&o->lock);
+    return TRUE;
+}
+
 BOOL CancelWaitableTimer(HANDLE h)
 {
     w32_object *o = (w32_object *)h;
-    return (o && o->kind == K_EVENT) ? TRUE : FALSE;
+    if (!o || o->kind != K_WAITABLE_TIMER) return FALSE;
+    pthread_mutex_lock(&o->lock);
+    timer_update(o, monotonic_ns());
+    o->armed = 0; /* Cancellation preserves an already-signalled timer. */
+    pthread_cond_broadcast(&o->cond);
+    pthread_mutex_unlock(&o->lock);
+    return TRUE;
 }
 
 BOOL SetEvent(HANDLE h)
@@ -1026,10 +1121,91 @@ static int prot_from_page(DWORD protect)
     }
 }
 
+#ifdef __APPLE__
+typedef struct { uintptr_t base; size_t size; } arena_view;
+static void mmio_aliases_release(void);
+static uintptr_t s_arena;
+static size_t s_arena_size;
+static arena_view s_arena_views[512];
+static pthread_mutex_t s_arena_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int arena_contains(const void *address, size_t size)
+{
+    uintptr_t a = (uintptr_t)address;
+    return s_arena && a >= s_arena && size <= s_arena_size && a - s_arena <= s_arena_size - size;
+}
+
+LPVOID w32_guest_arena_reserve(SIZE_T size)
+{
+    pthread_mutex_lock(&s_arena_lock);
+    if (s_arena) { pthread_mutex_unlock(&s_arena_lock); return NULL; }
+    void *p = mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (p != MAP_FAILED) { s_arena = (uintptr_t)p; s_arena_size = size; }
+    pthread_mutex_unlock(&s_arena_lock);
+    return p == MAP_FAILED ? NULL : p;
+}
+
+BOOL w32_guest_arena_release(void)
+{
+    mmio_aliases_release();
+    pthread_mutex_lock(&s_arena_lock);
+    int ok = !s_arena || munmap((void *)s_arena, s_arena_size) == 0;
+    if (ok) { s_arena = 0; s_arena_size = 0; memset(s_arena_views, 0, sizeof s_arena_views); }
+    pthread_mutex_unlock(&s_arena_lock);
+    return ok;
+}
+
+static void *arena_map(void *address, size_t size, int prot, int flags, int fd, off_t offset)
+{
+    size_t page = (size_t)getpagesize();
+    uintptr_t a = (uintptr_t)address;
+    if (!size || size > SIZE_MAX - (page - 1) || a % page) return NULL;
+    size = (size + page - 1) & ~(page - 1);
+    pthread_mutex_lock(&s_arena_lock);
+    int slot = -1;
+    if (!arena_contains(address, size)) goto fail;
+    for (int i = 0; i < 512; i++) {
+        arena_view v = s_arena_views[i];
+        if (!v.base) { slot = i; continue; }
+        if (a < v.base + v.size && v.base < a + size) goto fail;
+    }
+    if (slot < 0) goto fail;
+    void *p = mmap(address, size, prot, flags | MAP_FIXED, fd, offset);
+    if (p == MAP_FAILED) goto fail;
+    s_arena_views[slot] = (arena_view){a, size};
+    pthread_mutex_unlock(&s_arena_lock);
+    return p;
+fail:
+    pthread_mutex_unlock(&s_arena_lock);
+    SetLastError(ERROR_INVALID_ADDRESS);
+    return NULL;
+}
+
+static BOOL arena_unmap(const void *address)
+{
+    pthread_mutex_lock(&s_arena_lock);
+    for (int i = 0; i < 512; i++) {
+        arena_view *v = &s_arena_views[i];
+        if (v->base != (uintptr_t)address) continue;
+        void *p = mmap((void *)v->base, v->size, PROT_NONE,
+                       MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (p != MAP_FAILED) memset(v, 0, sizeof *v);
+        pthread_mutex_unlock(&s_arena_lock);
+        return p != MAP_FAILED;
+    }
+    pthread_mutex_unlock(&s_arena_lock);
+    return FALSE;
+}
+#endif
+
 LPVOID VirtualAlloc(LPVOID address, SIZE_T size, DWORD allocationType, DWORD protect)
 {
     int prot  = prot_from_page(protect);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#ifdef __APPLE__
+    if (arena_contains(address, size) && (allocationType & MEM_RESERVE))
+        return arena_map(address, size, prot, flags, -1, 0);
+#endif
 
     /* MEM_COMMIT on a region already reserved by a prior VirtualAlloc:
      * just adjust protection. */
@@ -1065,6 +1241,9 @@ LPVOID VirtualAlloc(LPVOID address, SIZE_T size, DWORD allocationType, DWORD pro
 BOOL VirtualFree(LPVOID address, SIZE_T size, DWORD freeType)
 {
     if (freeType & MEM_RELEASE) {
+#ifdef __APPLE__
+        if (arena_contains(address, size)) return arena_unmap(address);
+#endif
         /* Win32 MEM_RELEASE passes size 0; we can't know the length, so this
          * path is only safe when callers pass the real size. */
         if (size == 0) return TRUE;
@@ -1542,6 +1721,13 @@ LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow
     if (baseAddr) flags |= MAP_FIXED_NOREPLACE;
 #endif
 
+#ifdef __APPLE__
+    if (arena_contains(baseAddr, len)) {
+        void *owned = arena_map(baseAddr, len, prot, MAP_SHARED, o->fd, off);
+        if (owned) view_register(owned, len);
+        return owned;
+    }
+#endif
     void *p = mmap(baseAddr, len, prot, flags, o->fd, off);
     if (p == MAP_FAILED) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return NULL; }
     if (baseAddr && p != baseAddr) {
@@ -1565,8 +1751,52 @@ BOOL UnmapViewOfFile(LPCVOID baseAddr)
 {
     size_t len = view_take(baseAddr);
     if (len == 0) return FALSE;
+#ifdef __APPLE__
+    if (arena_contains(baseAddr, len)) return arena_unmap(baseAddr);
+#endif
     return munmap((void *)baseAddr, len) == 0;
 }
+
+#ifdef __APPLE__
+/* MMIO guest pages can stay protected while handlers write through an alias.
+ * Setup precedes guest threads. Lookup is read-only and signal-handler safe. */
+static struct { uintptr_t guest; size_t size; void *alias; } s_mmio_aliases[2];
+static void mmio_aliases_release(void)
+{
+    for (unsigned i = 0; i < 2; i++) {
+        if (s_mmio_aliases[i].alias) UnmapViewOfFile(s_mmio_aliases[i].alias);
+        if (s_mmio_aliases[i].guest) UnmapViewOfFile((void *)s_mmio_aliases[i].guest);
+        memset(&s_mmio_aliases[i], 0, sizeof s_mmio_aliases[i]);
+    }
+}
+LPVOID w32_guest_mmio_map(LPVOID address, SIZE_T size)
+{
+    unsigned slot;
+    for (slot = 0; slot < 2 && s_mmio_aliases[slot].guest; slot++) {}
+    if (slot == 2 || size > UINT32_MAX) return NULL;
+    HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, (DWORD)size, NULL);
+    if (!h) return NULL;
+    void *guest = MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, size, address);
+    void *alias = guest ? MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, size) : NULL;
+    CloseHandle(h);
+    if (!alias) { if (guest) UnmapViewOfFile(guest); return NULL; }
+    s_mmio_aliases[slot].guest = (uintptr_t)guest;
+    s_mmio_aliases[slot].size = size;
+    s_mmio_aliases[slot].alias = alias;
+    return guest;
+}
+LPVOID w32_guest_mmio_alias(LPCVOID address, SIZE_T size)
+{
+    uintptr_t a = (uintptr_t)address;
+    for (unsigned i = 0; i < 2; i++) {
+        uintptr_t g = s_mmio_aliases[i].guest;
+        size_t n = s_mmio_aliases[i].size;
+        if (g && a >= g && size <= n && a - g <= n - size)
+            return (uint8_t *)s_mmio_aliases[i].alias + (a - g);
+    }
+    return NULL;
+}
+#endif
 
 /* ===================================================================== */
 /* VirtualQuery                                                           */
