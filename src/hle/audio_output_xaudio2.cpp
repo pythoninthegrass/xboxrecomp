@@ -6,6 +6,7 @@
  * RECOMP_AUDIO_GAIN uses the shared output headroom here rather than muted.
  */
 #include "audio_output.h"
+#include "gameplay/pc_spatial_audio.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -41,6 +42,7 @@ struct OutputVoice {
     PcmBuffer buffers[kQueueSize];
     uint32_t sample_rate, channels, bits_per_sample;
     uint32_t front, queued;
+    float original_matrix[4];
 };
 
 std::atomic<HRESULT> critical_error{S_OK};
@@ -58,6 +60,20 @@ EngineCallback callback;
 IXAudio2 *engine;
 IXAudio2MasteringVoice *master;
 OutputVoice voices[kVoiceCount];
+struct Spatial { float pan; int enabled; } spatial[kVoiceCount];
+void routeVoice(uint32_t slot)
+{
+    OutputVoice &voice=voices[slot];
+    if(!voice.source)return;
+    float matrix[4];
+    std::memcpy(matrix,voice.original_matrix,sizeof matrix);
+    if(spatial[slot].enabled) {
+        float left,right;recomp_spatial_gains(spatial[slot].pan,&left,&right);
+        if(voice.channels==1) {matrix[0]=left;matrix[1]=right;}
+        else {matrix[0]*=left;matrix[1]*=left;matrix[2]*=right;matrix[3]*=right;}
+    }
+    voice.source->SetOutputMatrix(master,voice.channels,2,matrix);
+}
 bool reported_nonzero[kVoiceCount];
 bool attempted, com_initialized, callback_registered, summary_printed;
 unsigned long long submitted_buffers, submitted_bytes, nonzero_buffers;
@@ -171,7 +187,7 @@ extern "C" void recomp_audio_output_initialize(void)
         return;
     }
     callback_registered = true;
-    error = engine->CreateMasteringVoice(&master);
+    error = engine->CreateMasteringVoice(&master, 2);
     if (FAILED(error)) {
         disableOutput("CreateMasteringVoice", error);
         return;
@@ -212,7 +228,15 @@ extern "C" void recomp_audio_output_shutdown(void)
 extern "C" void recomp_audio_output_reset_voice(uint32_t slot)
 {
     checkCriticalError();
-    if (slot < kVoiceCount) destroyVoice(voices[slot]);
+    if (slot < kVoiceCount) { destroyVoice(voices[slot]);spatial[slot]={}; }
+}
+
+extern "C" void recomp_audio_output_set_spatial(uint32_t slot,float pan,int enabled)
+{
+    if(slot>=kVoiceCount)return;
+    pan=std::isfinite(pan)?std::fmax(-1.f,std::fmin(1.f,pan)):0.f;
+    if(spatial[slot].pan==pan && spatial[slot].enabled==!!enabled)return;
+    spatial[slot]={pan,!!enabled};routeVoice(slot);
 }
 
 extern "C" int recomp_audio_output_position(uint32_t slot, uint64_t *played_bytes,
@@ -322,6 +346,8 @@ extern "C" int recomp_audio_output_submit(
         voice.sample_rate = sample_rate;
         voice.channels = channels;
         voice.bits_per_sample = bits_per_sample;
+        voice.source->GetOutputMatrix(master,channels,2,voice.original_matrix);
+        routeVoice(slot);
         error = voice.source->Start();
         if (FAILED(error)) {
             dropBuffer(slot, "start-voice");

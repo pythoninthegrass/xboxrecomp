@@ -105,6 +105,8 @@ typedef struct Stream {
     uint32_t callback, context;      /* LPFNXMEDIAOBJECTCALLBACK, its context */
     int      output;                 /* the host can play this format */
     int32_t  volume;
+    float pan;
+    int spatial;
     int      paused;
     Packet   packets[MAX_PACKETS];
     int      head, count;
@@ -497,6 +499,7 @@ static void pump(Stream *s, uint64_t now)
           * stepping over the refusal would delete that sound from the stream
           * and leave everything after it late by its length. */
         s->level = stream_level(s);
+        recomp_audio_output_set_spatial(slot_of(s),s->pan,s->spatial);
         if (!recomp_audio_output_submit(slot_of(s), pcm, bytes, play_rate(s), s->channels,
                                         out_bits(s), s->level))
             break;
@@ -530,6 +533,19 @@ static void tick(Stream *s, uint64_t now)
         if (level != s->level && recomp_audio_output_set_volume(slot_of(s), level))
             s->level = level;
     }
+}
+
+void hle_dsound_stream_spatial(uint32_t settings,float pan,int enabled)
+{
+    lock();
+    for(unsigned i=0;i<MAX_STREAMS;i++) {
+        Stream *s=&g_streams[i];
+        if(s->object && guest_readable(s->object+0x14u,4u) && HLE_MEM32(s->object+0x14u)==settings) {
+            s->pan=pan;s->spatial=enabled;
+            recomp_audio_output_set_spatial(slot_of(s),pan,enabled);
+        }
+    }
+    unlock();
 }
 
 void hle_dsound_stream_tick(uint64_t now)

@@ -50,6 +50,7 @@
 #include "dsound_buffer_model.h"
 #include "xbox_adpcm.h"
 #include "audio_output.h"
+#include "gameplay/pc_spatial_audio.h"
 
 void hle_dsound_stream_tick(uint64_t now);   /* hle_dsound_stream.c */
 
@@ -90,6 +91,8 @@ typedef struct Buffer {
     uint64_t play_us;
     int      fed;
     int32_t  level;              /* the volume last sent, hundredths of a dB */
+    float pan;
+    int spatial;
 } Buffer;
 
 static Buffer g_buffers[SLOTS];
@@ -485,6 +488,7 @@ static void pump(Buffer *b, uint64_t now)
     if (b->fed && recomp_audio_output_position(slot_of(b), NULL, &queued) && queued == 0u)
         g_stat.underruns++;
     b->level = buffer_level(b, &is3d);
+    recomp_audio_output_set_spatial(slot_of(b),b->pan,b->spatial);
     if (!recomp_audio_output_submit(slot_of(b), pcm, bytes, out->sample_rate,
                                     channels, bits, b->level))
         return;
@@ -1466,6 +1470,34 @@ HLE_EXPORT(CMcpxVoiceClient_Commit3dSettings_0)
     HLE_MEM32(params) = 0u;
     HLE_MEM32(params + 0x7Cu) = 0u;
     HLE_MEM32(vdata) = 0u;
+    /* US Calculate3D (0040897B): source/listener positions are +8 and
+       listener front/up are +20/+2C. Read those inputs: the selected 2D XDK
+       helper only writes X/Z of its cached relative vector at params+5C.
+       Distance/cone attenuation still comes from the original calculator. */
+    {
+        float relative[3],front[3],up[3];
+        unsigned mode=HLE_MEM32(params+0x40u);
+        memcpy(relative,HLE_PTR(params+8u),sizeof relative);
+        if(mode!=1) {
+            float listener[3];memcpy(listener,HLE_PTR(ds+0x38u),sizeof listener);
+            for(unsigned axis=0;axis<3;axis++)relative[axis]-=listener[axis];
+        }
+        memcpy(front,HLE_PTR(ds+0x50u),sizeof front);
+        memcpy(up,HLE_PTR(ds+0x5Cu),sizeof up);
+        float pan=recomp_spatial_pan(relative,front,up,mode);
+        lock();
+        for(unsigned i=0;i<SLOTS;i++) {
+            Buffer *b=&g_buffers[i];
+            if(b->iface && guest_readable(b->iface-0xCu,4u) &&
+               HLE_MEM32(b->iface-0xCu)==settings) {
+                b->pan=pan;b->spatial=mode<2;
+                recomp_audio_output_set_spatial(i,pan,b->spatial);
+            }
+        }
+        unlock();
+        extern void hle_dsound_stream_spatial(uint32_t,float,int);
+        hle_dsound_stream_spatial(settings,pan,mode<2);
+    }
     commit_note(client, settings, params, vdata);
     g_stat.commits_3d++;
 }
