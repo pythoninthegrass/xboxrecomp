@@ -123,6 +123,9 @@ extern RECOMP_MANUAL_TLS uint32_t g_ebx, g_edi;
 extern void sub_003533F0_gen(void);
 void sub_003533F0(void)
 { pc_network_bots_guest_score_network(sub_003533F0_gen); }
+extern void sub_001BB5C0_gen(void);
+void sub_001BB5C0(void)
+{ pc_network_bots_guest_shot(sub_001BB5C0_gen); }
 extern void sub_000BB6C0_gen(void);
 void sub_000BB6C0(void)
 { pc_network_bots_guest_damage(sub_000BB6C0_gen); }
