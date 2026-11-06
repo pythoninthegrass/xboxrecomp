@@ -353,6 +353,26 @@ static int d_device_create(const RhiDeviceDesc *dd)
         g_ctx = NULL;
         return -1;
     }
+    /* The host owns borderless fullscreen, including Alt+Enter. DXGI's
+     * default handler would also enter exclusive fullscreen, where our
+     * ALLOW_TEARING presents fail with DXGI_ERROR_INVALID_CALL.
+     * Use this swap chain's factory, not a separately created factory. */
+    {
+        IDXGIFactory *factory = NULL;
+        hr = IDXGISwapChain_GetParent(g_swap, &IID_IDXGIFactory, (void **)&factory);
+        if (SUCCEEDED(hr)) {
+            hr = IDXGIFactory_MakeWindowAssociation(factory, scd.OutputWindow,
+                    DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER);
+            IDXGIFactory_Release(factory);
+        }
+        if (FAILED(hr)) {
+            fprintf(stderr, "[RHI] ERROR: d3d11 could not disable automatic fullscreen: 0x%08lX\n", hr);
+            IDXGISwapChain_Release(g_swap); g_swap = NULL;
+            ID3D11DeviceContext_Release(g_ctx); g_ctx = NULL;
+            ID3D11Device_Release(g_dev); g_dev = NULL;
+            return -1;
+        }
+    }
     if (make_back_buffer_view() != 0) {
         fprintf(stderr, "D3D8: the swap chain's back buffer has no render-target view\n");
         return -1;
@@ -426,7 +446,21 @@ static int32_t d_present(uint32_t interval)
 {
     UINT flags = (interval == 0 && g_vrr && g_tearing) ? DXGI_PRESENT_ALLOW_TEARING : 0;
 
-    return g_swap ? (int32_t)IDXGISwapChain_Present(g_swap, interval, flags) : -1;
+    HRESULT hr;
+    static HRESULT last = S_OK;
+
+    if (!g_swap)
+        return -1;
+    hr = IDXGISwapChain_Present(g_swap, interval, flags);
+    /* Report a new failure once, rather than silently freezing or flooding
+     * the log every frame while the same presentation error persists. */
+    if (FAILED(hr) && hr != last) {
+        fprintf(stderr, "[RHI] ERROR: d3d11 Present failed: 0x%08lX (interval %u, flags %u)\n",
+                hr, interval, flags);
+        fflush(stderr);
+    }
+    last = hr;
+    return (int32_t)hr;
 }
 
 static int d_image_readback(RhiImage *img, uint32_t sub, void *dst, uint32_t dst_pitch);
