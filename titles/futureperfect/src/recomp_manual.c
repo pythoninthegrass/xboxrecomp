@@ -622,9 +622,24 @@ void sub_00151CF0(void)
 }
 
 
+
+/* Frontend hover/click: after final menu layout, before action dispatch. */
+extern void sub_00073750_gen(void);
+void sub_00073750(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_mouse(sub_00073750_gen);
+#else
+    sub_00073750_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
+#ifdef TSFP_PC_CONTROLS
+    pc_controls_menu_mode((int32_t)FP_MEM32(0x0079094Cu)>100);
+#endif
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
     pc_display_camera(sub_000C77C0_gen);
 #else
