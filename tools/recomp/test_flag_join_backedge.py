@@ -31,6 +31,7 @@ inheriting none, because the branch then looks right and goes the wrong way.
 
 import os
 import sys
+import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -63,7 +64,7 @@ def test_loop_head_inherits_flags_from_both_predecessors():
              b"\xEB\xFA"          # jmp -6 -> the jz
              b"\xC3")             # ret
     code = _translate(image)
-    assert "_flags" not in code.replace("int _flags = 0", ""), code
+    assert not re.search(r"\b_flags\b", code.replace("int _flags = 0", "")), code
     assert "CMP_EQ" in code or "== 0" in code, code
 
 

@@ -19,6 +19,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
     NOMINMAX
+    TSFP_RECORD_STATUS_FLAGS=1
 )
 
 # ── xboxrecomp toolkit ──────────────────────────────────────────
