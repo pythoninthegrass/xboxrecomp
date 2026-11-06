@@ -228,6 +228,16 @@ void sub_003578A0(void)
     pc_network_guest_scores(sub_003578A0_gen);
 }
 
+extern void sub_002CBAF0_gen(void);
+void sub_002CBAF0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_rewards_page(sub_002CBAF0_gen);
+#else
+    sub_002CBAF0_gen();
+#endif
+}
+
 extern void sub_00060310_gen(void);
 void sub_00060310(void)
 {
