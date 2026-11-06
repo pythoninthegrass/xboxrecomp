@@ -119,6 +119,7 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 #include "pc_network_guest.inc"
 extern RECOMP_MANUAL_TLS uint32_t g_ecx;
 extern RECOMP_MANUAL_TLS uint32_t g_ebx, g_edi;
+extern RECOMP_MANUAL_TLS uint32_t g_esi;
 #include "pc_network_bots_guest.inc"
 extern void sub_003533F0_gen(void);
 void sub_003533F0(void)
@@ -126,6 +127,9 @@ void sub_003533F0(void)
 extern void sub_001BB5C0_gen(void);
 void sub_001BB5C0(void)
 { pc_network_bots_guest_shot(sub_001BB5C0_gen); }
+extern void sub_0009EAB0_gen(void);
+void sub_0009EAB0(void)
+{ pc_network_bots_guest_bounds(sub_0009EAB0_gen); }
 extern void sub_000BB6C0_gen(void);
 void sub_000BB6C0(void)
 { pc_network_bots_guest_damage(sub_000BB6C0_gen); }
