@@ -404,6 +404,7 @@ void sub_0001EFB0(void)
 {
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
     uint32_t frame = g_esp, caller = FP_MEM32(frame);
+    if (pc_display_transition_overlay(sub_0001EFB0_gen)) return;
     if (pc_display_scope_mask(sub_0001EFB0_gen)) return;
     if (caller == 0x002D90EBu || caller == 0x002F3AEDu || caller == 0x002F3B0Fu) {
         pc_display_footer_background(sub_0001EFB0_gen);
