@@ -302,6 +302,16 @@ void sub_000C2090(void)
 #endif
 }
 
+extern void sub_000A2430_gen(void);
+void sub_000A2430(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_replica_clip(sub_000A2430_gen);
+#else
+    sub_000A2430_gen();
+#endif
+}
+
 extern void sub_0035BD70_gen(void);
 void sub_0035BD70(void)
 {
