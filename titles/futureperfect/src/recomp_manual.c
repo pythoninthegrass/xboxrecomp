@@ -141,6 +141,9 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 #include "pc_native_timing_guest.inc"
 extern void sub_001538C0_gen(void);
 void sub_001538C0(void) { pc_native_timing_guest(sub_001538C0_gen); }
+extern void sub_0018FF70_gen(void);
+void sub_0018FF70(void) { pc_native_input_guest(sub_0018FF70_gen); }
+
 
 /* PC System Link: public XNet API boundary, US 45410066. */
 #include "pc_network_guest.inc"
