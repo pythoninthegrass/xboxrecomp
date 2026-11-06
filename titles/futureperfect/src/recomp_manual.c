@@ -272,6 +272,26 @@ void sub_000D4BE0(void)
 #endif
 }
 
+extern void sub_00218910_gen(void);
+void sub_00218910(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_handoff(sub_00218910_gen);
+#else
+    sub_00218910_gen();
+#endif
+}
+
+extern void sub_0021B540_gen(void);
+void sub_0021B540(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_handoff(sub_0021B540_gen);
+#else
+    sub_0021B540_gen();
+#endif
+}
+
 extern void sub_001BA2B0_gen(void);
 void sub_001BA2B0(void)
 {
