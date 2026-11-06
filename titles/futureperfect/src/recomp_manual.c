@@ -142,6 +142,18 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 extern void sub_001538C0_gen(void);
 void sub_001538C0(void) { pc_native_timing_guest(sub_001538C0_gen); }
 
+/* Per-owner procedural wind, preserving the original registration and caller. */
+#include "pc_native_wind_guest.inc"
+extern void sub_000A5CE0_gen(void);
+extern void sub_001DDF10_gen(void);
+extern void sub_000AB050(void);
+void sub_000A5CE0(void)
+{ pc_native_wind_register_guest(sub_000A5CE0_gen); }
+void sub_001DDF10(void)
+{ pc_native_wind_callback_guest(sub_001DDF10_gen); }
+void pc_native_wind_step(void)
+{ pc_native_wind_oscillator_guest(sub_000AB050); }
+
 /* Recorded-input wait/exit clocks retain native elapsed time. */
 #include "pc_native_demo_guest.inc"
 extern void sub_00043220_gen(void);
