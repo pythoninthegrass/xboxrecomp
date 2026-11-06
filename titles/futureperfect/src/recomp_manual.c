@@ -272,6 +272,36 @@ void sub_000D4BE0(void)
 #endif
 }
 
+extern void sub_0035BD70_gen(void);
+void sub_0035BD70(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_network_player_payload(sub_0035BD70_gen);
+#else
+    sub_0035BD70_gen();
+#endif
+}
+
+extern void sub_0035DB60_gen(void);
+void sub_0035DB60(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_network_player_payload(sub_0035DB60_gen);
+#else
+    sub_0035DB60_gen();
+#endif
+}
+
+extern void sub_00065940_gen(void);
+void sub_00065940(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_stage_builder(sub_00065940_gen);
+#else
+    sub_00065940_gen();
+#endif
+}
+
 extern void sub_00216230_gen(void);
 void sub_00216230(void)
 {
