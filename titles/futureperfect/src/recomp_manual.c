@@ -121,6 +121,16 @@ extern RECOMP_MANUAL_TLS uint32_t g_ecx;
 extern RECOMP_MANUAL_TLS uint32_t g_ebx, g_edi;
 extern RECOMP_MANUAL_TLS uint32_t g_esi;
 #include "pc_network_bots_guest.inc"
+extern void sub_000CF060_gen(void);
+void sub_000CF060(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_spawn_pad(sub_000CF060_gen);
+#else
+    sub_000CF060_gen();
+#endif
+}
+
 extern void sub_001986A0_gen(void);
 void sub_001986A0(void)
 {
