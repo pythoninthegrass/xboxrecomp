@@ -915,8 +915,10 @@ extern void sub_003533F0_gen(void);
 void sub_003533F0(void)
 { pc_network_bots_guest_score_network(sub_003533F0_gen); }
 extern void sub_001BB5C0_gen(void);
+static void pc_native_npc_weapon_event(void)
+{ pc_native_weapon_fire_guest(sub_001BB5C0_gen); }
 void sub_001BB5C0(void)
-{ pc_network_bots_guest_shot(sub_001BB5C0_gen); }
+{ pc_network_bots_guest_shot(pc_native_npc_weapon_event); }
 extern void sub_0009EAB0_gen(void);
 void sub_0009EAB0(void)
 { pc_network_bots_guest_bounds(sub_0009EAB0_gen); }
