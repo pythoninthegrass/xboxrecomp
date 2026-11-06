@@ -528,6 +528,8 @@ static void capture_crash_guest(PcCrashGuest *out)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow)
 {
+    extern int pc_game_restart_bootstrap(int,char **);
+    if(!pc_game_restart_bootstrap(0,NULL))return 1;
     void *xbe_data = NULL;
     size_t xbe_size = 0;
 
