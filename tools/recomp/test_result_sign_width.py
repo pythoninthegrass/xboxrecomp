@@ -39,6 +39,8 @@ def test_result_sign_uses_operand_width():
     if not cc:
         pytest.skip('C compiler unavailable')
     code = '''#include <stdint.h>
+/* Isolated functions use the runtime default: no title-specific fast entry. */
+#define RECOMP_FAST_ENTRY(site) 0
 #include <stdio.h>
 static uint32_t eax,esp;
 #define LO8(v) ((uint8_t)(v))

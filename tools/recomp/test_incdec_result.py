@@ -13,6 +13,8 @@ def test_saved_incdec_result_compiled():
     if not cc and Path(r'C:\Program Files\LLVM\bin\clang.exe').exists(): cc=r'C:\Program Files\LLVM\bin\clang.exe'
     if not cc: pytest.skip('C compiler unavailable')
     code='''#include <stdint.h>
+/* Isolated functions use the runtime default: no title-specific fast entry. */
+#define RECOMP_FAST_ENTRY(site) 0
 #include <stdio.h>
 static uint32_t eax,esp;
 #define LO8(v) ((uint8_t)(v))

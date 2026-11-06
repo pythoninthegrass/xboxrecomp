@@ -52,6 +52,8 @@ FIXTURES = {
 
 PRELUDE = r"""
 #include <stdint.h>
+/* Isolated functions use the runtime default: no title-specific fast entry. */
+#define RECOMP_FAST_ENTRY(site) 0
 #include <stdio.h>
 #include <string.h>
 static uint32_t eax, ecx, esi, edi, esp;

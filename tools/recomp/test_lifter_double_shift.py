@@ -35,7 +35,8 @@ _VALUES = (0x00000000, 0x00000001, 0x80000000, 0xFFFFFFFF,
 
 _PRELUDE = '''#include <stdint.h>
 #include <stdio.h>
-static uint32_t eax, edx, ecx;
+static uint32_t eax, edx, ecx, _fa;
+static int32_t _fas;
 #define LO8(v) ((uint8_t)(v))
 '''
 

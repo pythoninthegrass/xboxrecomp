@@ -75,7 +75,7 @@ typedef void (*recomp_func_t)(void);
 volatile uint32_t g_icall_trace[ICALL_TRACE_SIZE], g_icall_trace_idx;
 volatile uint64_t g_icall_count;
 uint32_t g_xbox_code_lo = 0x00010000u, g_xbox_code_hi = 0x00020000u;
-uint32_t g_esp, eax;
+uint32_t g_esp, eax, g_icall_saved_esp, g_icall_dispatch_form;
 #define esp g_esp
 #define PUSH32(sp, v) do { (sp) -= 4; } while (0)
 #define RECOMP_ICALL_OBSERVE(va, flags) ((void)0)
@@ -95,7 +95,9 @@ recomp_func_t recomp_lookup(uint32_t va) {
 }
 recomp_func_t recomp_lookup_kernel(uint32_t va) { (void)va; return 0; }
 void recomp_icall_fail_log(uint32_t va) { (void)va; fails++; }
-void recomp_icall_not_code_log(uint32_t va) { (void)va; fails++; }
+void recomp_icall_not_code_log(uint32_t va, uint32_t saved_esp) {
+    (void)va; (void)saved_esp; fails++;
+}
 IS_CODE
 SAFE_AT
 static void site(void) {

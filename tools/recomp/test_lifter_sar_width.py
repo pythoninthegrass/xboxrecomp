@@ -200,7 +200,7 @@ class SarWidthTest(unittest.TestCase):
     def test_sar_al_1_on_0x80(self):
         """The measured case, pinned on its own: 0x80 >> 1 is 0xC0, not 0x40."""
         stmt = _sar(Operand(type="reg", reg="al"), Operand(type="imm", imm=1))
-        self.assertIn("(int8_t)LO8(eax)", stmt)
+        self.assertRegex(stmt, r"\(int8_t\)\s*\(?LO8\(eax\)")
         src = PRELUDE + (
             "int main(void){ uint32_t eax = 0xAAAAAA80u; " + stmt +
             " printf(\"%02X\\n\", LO8(eax)); return 0; }")

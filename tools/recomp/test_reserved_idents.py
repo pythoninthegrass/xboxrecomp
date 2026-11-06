@@ -91,6 +91,11 @@ class ReservedIdentTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(name, _FUNC_RESERVED_IDENT,
                               f"{name} is missing from the reserved set")
+                # onexit remains reserved for Windows portability; the positive
+                # mangling sweep covers it on every host, but only Windows
+                # headers declare it and supply this negative-control premise.
+                if name == "onexit" and os.name != "nt":
+                    continue
                 rc, _ = _compile(f"void {name}(void);\nvoid {name}(void) {{ }}")
                 self.assertNotEqual(
                     rc, 0,
