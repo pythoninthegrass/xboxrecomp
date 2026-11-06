@@ -34,6 +34,12 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_combiners.h"
+#include "graphics/combiner_constants.h"
+static PcCombinerConstants g_float_constants;
+void d3d8_combiners_set_float_constant(unsigned bank,unsigned stage,const float *value)
+{pc_combiner_constant_set(&g_float_constants,bank,stage,value);}
+int d3d8_combiners_get_float_constant(unsigned bank,unsigned stage,float *value)
+{return pc_combiner_constant_get(&g_float_constants,bank,stage,value);}
 #include <string.h>
 #include <stdio.h>
 #ifdef TSFP_PC_DISPLAY
@@ -1383,6 +1389,7 @@ HRESULT d3d8_combiners_init(void)
 {
     RhiBufferDesc cbd;
 
+    pc_combiner_constants_reset(&g_float_constants);
     memset(g_cache, 0, sizeof(g_cache));
     memset(&g_combiner_state, 0, sizeof(g_combiner_state));
     g_ps_token = 0;
@@ -1549,6 +1556,8 @@ BOOL d3d8_combiners_prepare_draw(void)
         for (i = 0; i < NV2A_MAX_COMBINER_STAGES; i++) {
             d3dcolor_to_float4(g_combiner_state.c0[i], cb->c0[i]);
             d3dcolor_to_float4(g_combiner_state.c1[i], cb->c1[i]);
+            pc_combiner_constant_get(&g_float_constants,0,i,cb->c0[i]);
+            pc_combiner_constant_get(&g_float_constants,1,i,cb->c1[i]);
         }
 
         /* Final combiner constants */

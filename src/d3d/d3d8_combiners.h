@@ -428,8 +428,13 @@ DWORD d3d8_combiners_get_pixel_shader(void);
  */
 BOOL d3d8_combiners_active(void);
 
+/* Optional host float constants, independent of packed guest state. NULL clears. */
+void d3d8_combiners_set_float_constant(unsigned bank,unsigned stage,const float *value);
+int d3d8_combiners_get_float_constant(unsigned bank,unsigned stage,float *value);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* XBOXRECOMP_D3D8_COMBINERS_H */
+

@@ -64,6 +64,9 @@ HLE_IMPORT_VAR(D3D_g_DeferredTextureState);
 #if defined(_WIN32) || defined(__APPLE__)
 #include "d3d8_xbox.h"
 #include "hle_d3d8_record.h"
+#include "pc_surface_bias.h"
+static float g_surface_bias_step=-1;
+void hle_d3d8_surface_bias_step(float delta){g_surface_bias_step=delta;}
 
 #define XRS_COUNT        167         /* X_D3DRS_DONOTCULLUNCOMPRESSED + 1 */
 #define XRS_REMOVED      154         /* X_D3DRS_MULTISAMPLETYPE */
@@ -586,6 +589,18 @@ static int      g_ps_def_seen, g_ps_dirty;
  * Until then nothing here is trusted, because a title whose objects are laid
  * out differently would otherwise have every draw quietly demoted. */
 static int      g_ps_def_ok;
+static void forward_surface_bias(uint32_t shader)
+{
+    static int last_enabled;
+    static float last_value;
+    int enabled=shader==0x4bbf10u && g_surface_bias_step>0 && g_surface_bias_step<1;
+    float value=enabled?pc_surface_bias(g_surface_bias_step):0;
+    if(enabled!=last_enabled || (enabled && value!=last_value)) {
+        const float color[4]={0,value,0,0};
+        host_combiners_set_float_constant(1,6,enabled?color:NULL);
+        last_enabled=enabled;last_value=value;
+    }
+}
 static int      g_state_dumped;
 static int g_state_dump_wanted = -1;
 
@@ -744,6 +759,7 @@ static void forward_pixel_shader(IDirect3DDevice8 *dev)
 
     if (g_ps_def_ok && !g_ps_def) {
         /* The title turned its pixel shader off. */
+        forward_surface_bias(0);
         host_combiners_set_pixel_shader(0);
         ps_count_draw(0);
         return;
@@ -795,6 +811,7 @@ static void forward_pixel_shader(IDirect3DDevice8 *dev)
      * switched the combiner path on over a combiner state of all zeros: with
      * no stage sampling anything, every model came out a flat white
      * silhouette. */
+    forward_surface_bias(g_ps_def);
     token = count & 0xFu;
     g_ps_dirty = 0;
     host_combiners_set_pixel_shader(token);

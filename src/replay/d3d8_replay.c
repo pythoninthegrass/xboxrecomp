@@ -1,3 +1,4 @@
+#include <math.h>
 /*
  * d3d8_replay.c -- replay one captured frame into the host renderer.
  *
@@ -1287,6 +1288,17 @@ static void replay_chunk(Replay *r, const D3D8CapChunk *c)
     case D3D8CAP_SET_RENDER_TARGET:
         do_set_render_target(r, c);
         break;
+    case D3D8CAP_PS_FLOAT_CONSTANT: {
+        const D3D8CapPsFloatConstant *p=c->data;
+        if(c->bytes<sizeof *p || p->bank>=2 || p->stage>=8 || p->enabled>1) {
+            r->malformed++;break;
+        }
+        int valid=1;
+        if(p->enabled)for(unsigned i=0;i<4;i++)if(!isfinite(p->value[i]))valid=0;
+        if(!valid){r->malformed++;break;}
+        d3d8_combiners_set_float_constant(p->bank,p->stage,p->enabled?p->value:NULL);
+        break;
+    }
     case D3D8CAP_PS_TOKEN: {
         const D3D8CapPsToken *p = c->data;
 

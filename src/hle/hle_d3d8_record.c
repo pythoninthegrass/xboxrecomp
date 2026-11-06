@@ -1,3 +1,4 @@
+#include <math.h>
 /*
  * hle_d3d8_record.c -- shadow mode's host boundary, and frame capture at it.
  *
@@ -438,6 +439,13 @@ static void rec_vs_vertex_data(int reg, const float value[4])
     chunk(D3D8CAP_VS_VERTEX_DATA, &c, sizeof c, NULL, 0, NULL, 0);
 }
 
+static void rec_ps_float_constant(unsigned bank,unsigned stage,const float *value)
+{
+    D3D8CapPsFloatConstant c={0};c.bank=bank;c.stage=stage;c.enabled=value!=NULL;
+    if(value)memcpy(c.value,value,sizeof c.value);
+    chunk(D3D8CAP_PS_FLOAT_CONSTANT,&c,sizeof c,NULL,0,NULL,0);
+}
+
 static void rec_ps_token(DWORD token)
 {
     D3D8CapPsToken c;
@@ -535,6 +543,10 @@ static void capture_snapshot(IDirect3DDevice8 *dev)
         rec_vs_vertex_data(i, value);
     }
     rec_ps_token(d3d8_combiners_get_pixel_shader());
+    for(unsigned bank=0;bank<2;bank++)for(unsigned stage=0;stage<8;stage++) {
+        float value[4];int enabled=d3d8_combiners_get_float_constant(bank,stage,value);
+        rec_ps_float_constant(bank,stage,enabled?value:NULL);
+    }
 
     dev->lpVtbl->GetVertexShader(dev, &vs);
     rec_set_vertex_shader(vs);
@@ -1789,6 +1801,12 @@ static void op_vsh_vertex_data(const void *arg)
     host_vsh_set_vertex_data(p->reg, p->v);
 }
 
+static void op_ps_float_constant(const void *arg)
+{
+    const D3D8CapPsFloatConstant *p=arg;
+    host_combiners_set_float_constant(p->bank,p->stage,p->enabled?p->value:NULL);
+}
+
 static void op_ps_token(const void *arg)
 {
     host_combiners_set_pixel_shader(*(const DWORD *)arg);
@@ -1918,6 +1936,20 @@ void host_vsh_set_vertex_data(int reg, const float value[4])
     if (g_cap && value)
         rec_vs_vertex_data(reg, value);
     d3d8_vsh_set_vertex_data(reg, value);
+}
+
+void host_combiners_set_float_constant(unsigned bank,unsigned stage,const float *value)
+{
+    if(bank>=2 || stage>=8)return;
+    if(value)for(unsigned c=0;c<4;c++)if(!isfinite(value[c]))return;
+    D3D8CapPsFloatConstant p={0};p.bank=bank;p.stage=stage;p.enabled=value!=NULL;
+    if(value)memcpy(p.value,value,sizeof p.value);
+    if(hle_d3d8_defer_recording()) {
+        hle_d3d8_defer_op(op_ps_float_constant,&p,sizeof p);return;
+    }
+    if(hle_d3d8_interp_rec)hle_d3d8_interp_op(op_ps_float_constant,&p,sizeof p);
+    if(g_cap)rec_ps_float_constant(bank,stage,value);
+    d3d8_combiners_set_float_constant(bank,stage,value);
 }
 
 void host_combiners_set_pixel_shader(DWORD token)
