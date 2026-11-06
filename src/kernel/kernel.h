@@ -564,29 +564,6 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
 /* Guest pool imports use the original guest allocation provider. */
 
 /* ============================================================================
- * Runtime Library (kernel_rtl.c)
- * ============================================================================ */
-
-/* Name contended CRT locks by index instead of by address. */
-void xbox_SetCrtLockTable(uint32_t table_va, uint32_t count);
-
-VOID    __stdcall xbox_RtlEnterCriticalSection(PRTL_CRITICAL_SECTION CriticalSection);
-VOID    __stdcall xbox_RtlLeaveCriticalSection(PRTL_CRITICAL_SECTION CriticalSection);
-VOID    __stdcall xbox_RtlInitializeCriticalSection(PRTL_CRITICAL_SECTION CriticalSection);
-
-ULONG   __stdcall xbox_RtlNtStatusToDosError(NTSTATUS Status);
-
-
-VOID    __stdcall xbox_RtlUnwind(PVOID TargetFrame, PVOID TargetIp, PVOID ExceptionRecord, PVOID ReturnValue);
-VOID    __stdcall xbox_RtlRaiseException(PVOID ExceptionRecord);
-VOID    __stdcall xbox_RtlRip(PCHAR ApiName, PCHAR Expression, PCHAR Message);
-
-int     __cdecl   xbox_RtlSnprintf(char* buffer, size_t count, const char* format, ...);
-int     __cdecl   xbox_RtlSprintf(char* buffer, const char* format, ...);
-int     __cdecl   xbox_RtlVsnprintf(char* buffer, size_t count, const char* format, va_list argptr);
-int     __cdecl   xbox_RtlVsprintf(char* buffer, const char* format, va_list argptr);
-
-/* ============================================================================
  * Memory Management (kernel_memory.c)
  * ============================================================================ */
 
