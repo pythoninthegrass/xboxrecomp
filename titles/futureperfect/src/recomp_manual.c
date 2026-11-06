@@ -315,12 +315,14 @@ void sub_0013AB60(void)
         adjusted = pc_objectives_scale(scale,left,top,right,bottom,x,y,
                         FP_MEM32(0x00790950u),FP_MEM32(player + 4u));
         memcpy(FP_GUEST(frame + 16u), &adjusted, sizeof adjusted);
-        sub_0013AB60_gen();
+        pc_display_health(sub_0013AB60_gen);
         FP_MEM32(frame + 16u) = saved;
         return;
     }
-#endif
+    pc_display_health(sub_0013AB60_gen);
+#else
     sub_0013AB60_gen();
+#endif
 }
 
 /* US 45410066: adapt only the two cinematic matte pairs to the display.
@@ -484,15 +486,6 @@ void sub_001409C0(void)
     pc_display_ui(sub_001409C0_gen,0x001409C0u);
 #else
     sub_001409C0_gen();
-#endif
-}
-extern void sub_0013AB60_gen(void);
-void sub_0013AB60(void)
-{
-#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
-    pc_display_health(sub_0013AB60_gen);
-#else
-    sub_0013AB60_gen();
 #endif
 }
 extern void sub_00018EA0_gen(void);
