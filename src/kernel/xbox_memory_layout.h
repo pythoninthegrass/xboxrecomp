@@ -24,6 +24,8 @@
 
 #include "platform/xbox_winnt.h"
 #include <stdint.h>
+struct tsfp_guest_vm;
+void xbox_GetGuestVirtualMemory(struct tsfp_guest_vm *context);
 
 #ifdef __cplusplus
 extern "C" {

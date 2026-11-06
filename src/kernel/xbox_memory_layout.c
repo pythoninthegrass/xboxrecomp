@@ -16,6 +16,8 @@
 #include "guest_image.h"
 #include "guest_allocation.h"
 #include "guest_thread_memory.h"
+#include "guest_virtual_memory.h"
+#include "pc_guest_memory.h"
 #include "kernel.h"
 #include "recomp_config.h"
 #include "xbox_watchpoint.h"
@@ -2523,6 +2525,71 @@ void xbox_MemoryLayoutShutdown(void)
 #endif
     fprintf(stderr, "xbox_MemoryLayoutShutdown: released\n");
 }
+
+/* Project guest VM adapter: only known guest RAM views are admitted. */
+static int guest_vm_window(uintptr_t address, uint32_t bytes, const void *base, size_t size)
+{
+    uintptr_t begin = (uintptr_t)base;
+    return base && address >= begin && address - begin <= size &&
+        bytes <= size - (address - begin);
+}
+static void *guest_vm_resolve(void *host, uint32_t address, uint32_t bytes, int access)
+{
+    uintptr_t native, cursor, end;
+    int mapped = 0;
+    (void)host;
+    if (!address || !bytes || (uint64_t)address + bytes > UINT64_C(0x100000000) ||
+        (uintptr_t)g_memory_offset > UINTPTR_MAX - address) return NULL;
+    native = (uintptr_t)g_memory_offset + address;
+    if (native > UINTPTR_MAX - bytes) return NULL;
+    mapped = guest_vm_window(native, bytes, g_memory_base, g_memory_size) ||
+        guest_vm_window(native, bytes, g_contig_memory, XBOX_CONTIG_SIZE) ||
+        guest_vm_window(native, bytes, g_tiled_view, xbox_TiledApertureSize()) ||
+        guest_vm_window(native, bytes, g_kernel_memory, 4096);
+    for (int i = 0; !mapped && i < XBOX_NUM_MIRRORS; ++i)
+        mapped = guest_vm_window(native, bytes, g_mirror_views[i], g_memory_size);
+    if (!mapped) return NULL;
+    /* Mapped-only admission permits restoring access. The host mapping owner
+     * keeps these windows alive; no guest reads occur in that case. */
+    if (access < 0) return (void *)native;
+    cursor = native; end = native + bytes;
+    while (cursor < end) {
+        size_t available = pc_guest_region(cursor, access != 0);
+        size_t required = (size_t)(end - cursor);
+        if (!available) return NULL;
+        cursor += available < required ? available : required;
+    }
+    return (void *)native;
+}
+static int guest_vm_protect(void *host, uint32_t address, uint32_t bytes,
+                            uint32_t protection, uint32_t *previous)
+{
+    DWORD old = 0;
+    void *p = guest_vm_resolve(host, address, bytes, -1);
+    if (!p || !VirtualProtect(p, bytes, (DWORD)protection, &old)) return 0;
+    *previous = (uint32_t)old;
+    return 1;
+}
+void xbox_GetGuestVirtualMemory(tsfp_guest_vm *context)
+{
+#ifdef _WIN32
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    uint32_t page_size = (uint32_t)info.dwPageSize;
+#else
+    long native_page = sysconf(_SC_PAGESIZE);
+    uint32_t page_size = native_page > 0 && (uint64_t)native_page <= UINT32_MAX
+        ? (uint32_t)native_page : 0;
+#endif
+    context->allocations = &g_guest_allocations;
+    context->host = NULL;
+    context->resolve = guest_vm_resolve;
+    context->protect = guest_vm_protect;
+    context->code_begin = g_xbox_code_lo;
+    context->ram_size = XBOX_TOTAL_RAM;
+    context->host_page_size = page_size;
+}
+/* End project guest VM adapter. */
 
 BOOL xbox_IsXboxAddress(uintptr_t address)
 {

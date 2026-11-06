@@ -10,6 +10,7 @@
  */
 
 #include "kernel.h"
+#include "host_virtual_memory.h"
 #if defined(_WIN32)
 /* _aligned_malloc/_aligned_free; POSIX gets them from win32_compat.h */
 #include <malloc.h>
@@ -19,19 +20,9 @@
  * Helper: Xbox protect flags → Win32 protect flags
  * ============================================================================ */
 
-static DWORD xbox_protect_to_win32(ULONG xbox_protect)
+static DWORD xbox_protect_to_win32(ULONG protection)
 {
-    /* Xbox uses the same PAGE_* constants as Windows NT */
-    switch (xbox_protect & 0xFF) {
-        case 0x01: return PAGE_NOACCESS;
-        case 0x02: return PAGE_READONLY;
-        case 0x04: return PAGE_READWRITE;
-        case 0x08: return PAGE_WRITECOPY;
-        case 0x10: return PAGE_EXECUTE;
-        case 0x20: return PAGE_EXECUTE_READ;
-        case 0x40: return PAGE_EXECUTE_READWRITE;
-        default:   return PAGE_READWRITE;
-    }
+    return (DWORD)tsfp_host_vm_protection((uint32_t)protection);
 }
 
 /* ============================================================================
@@ -251,76 +242,44 @@ VOID __stdcall xbox_MmDeleteKernelStack(PVOID StackBase, PVOID StackLimit)
  * Virtual Memory (Nt API)
  * ============================================================================ */
 
-NTSTATUS __stdcall xbox_NtAllocateVirtualMemory(
-    PVOID* BaseAddress,
-    ULONG_PTR ZeroBits,
-    PSIZE_T RegionSize,
-    ULONG AllocationType,
-    ULONG Protect)
+/* Project native VM boundary: pointer and size_t widths stay native. */
+static void *native_vm_allocate(void *host, void *hint, size_t size,
+                                uint32_t type, uint32_t protection)
 {
-    if (!BaseAddress || !RegionSize)
-        return STATUS_INVALID_PARAMETER;
+    (void)host;
+    return VirtualAlloc(hint, size, (DWORD)type, (DWORD)protection);
+}
+static int native_vm_release(void *host, void *address, size_t size, uint32_t type)
+{
+    (void)host;
+    return VirtualFree(address, size, (DWORD)type) != 0;
+}
+static size_t native_vm_query(void *host, const void *address, void *record, size_t size)
+{
+    (void)host;
+    return VirtualQuery(address, (MEMORY_BASIC_INFORMATION *)record, size);
+}
+static const tsfp_host_vm native_vm = { NULL, native_vm_allocate, native_vm_release, native_vm_query };
+/* End project native VM boundary. */
 
-    PVOID result = VirtualAlloc(*BaseAddress, *RegionSize,
-                                AllocationType, xbox_protect_to_win32(Protect));
-    if (!result) {
-        xbox_log(XBOX_LOG_WARN, XBOX_LOG_MEM,
-            "NtAllocateVirtualMemory failed: base=%p size=%u type=0x%X err=%u",
-            *BaseAddress, (ULONG)*RegionSize, AllocationType, GetLastError());
-        return STATUS_NO_MEMORY;
-    }
-
-    *BaseAddress = result;
-    XBOX_TRACE(XBOX_LOG_MEM, "NtAllocateVirtualMemory(%p, %u) = %p",
-        *BaseAddress, (ULONG)*RegionSize, result);
-    return STATUS_SUCCESS;
+NTSTATUS __stdcall xbox_NtAllocateVirtualMemory(PVOID *base, ULONG_PTR zero_bits,
+    PSIZE_T size, ULONG type, ULONG protection)
+{
+    return (NTSTATUS)tsfp_host_vm_allocate(&native_vm, base, zero_bits, size, type, protection);
 }
 
-NTSTATUS __stdcall xbox_NtFreeVirtualMemory(
-    PVOID* BaseAddress,
-    PSIZE_T RegionSize,
-    ULONG FreeType)
+NTSTATUS __stdcall xbox_NtFreeVirtualMemory(PVOID *base, PSIZE_T size, ULONG type)
 {
-    if (!BaseAddress || !*BaseAddress)
-        return STATUS_INVALID_PARAMETER;
-
-    SIZE_T size = (FreeType & MEM_RELEASE) ? 0 : (RegionSize ? *RegionSize : 0);
-
-    if (!VirtualFree(*BaseAddress, size, FreeType)) {
-        xbox_log(XBOX_LOG_WARN, XBOX_LOG_MEM,
-            "NtFreeVirtualMemory failed: base=%p type=0x%X err=%u",
-            *BaseAddress, FreeType, GetLastError());
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    XBOX_TRACE(XBOX_LOG_MEM, "NtFreeVirtualMemory(%p, 0x%X)", *BaseAddress, FreeType);
-
-    if (FreeType & MEM_RELEASE)
-        *BaseAddress = NULL;
-
-    return STATUS_SUCCESS;
+    return (NTSTATUS)tsfp_host_vm_free(&native_vm, base, size, type);
 }
 
-NTSTATUS __stdcall xbox_NtQueryVirtualMemory(
-    PVOID BaseAddress,
-    PVOID MemoryInformation,
-    ULONG MemoryInformationLength,
-    PULONG ReturnLength)
+NTSTATUS __stdcall xbox_NtQueryVirtualMemory(PVOID address, PVOID information,
+    ULONG length, PULONG returned)
 {
-    MEMORY_BASIC_INFORMATION mbi;
-
-    if (!VirtualQuery(BaseAddress, &mbi, sizeof(mbi)))
-        return STATUS_INVALID_PARAMETER;
-
-    /*
-     * Xbox NtQueryVirtualMemory returns a MEMORY_BASIC_INFORMATION-like struct.
-     * Copy what fits into the caller's buffer.
-     */
-    ULONG copy_size = (MemoryInformationLength < sizeof(mbi)) ? MemoryInformationLength : (ULONG)sizeof(mbi);
-    memcpy(MemoryInformation, &mbi, copy_size);
-
-    if (ReturnLength)
-        *ReturnLength = copy_size;
-
-    return STATUS_SUCCESS;
+    MEMORY_BASIC_INFORMATION scratch;
+    uint32_t copied = 0;
+    uint32_t status = tsfp_host_vm_query(&native_vm, address, information, length,
+        &copied, &scratch, sizeof(scratch));
+    if (!status && returned) *returned = (ULONG)copied;
+    return (NTSTATUS)status;
 }
