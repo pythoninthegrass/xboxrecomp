@@ -270,6 +270,13 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
         return E_FAIL;
     }
 
+    /* Preserve untouched destination pixels, and sample the latest source
+     * coverage rather than an older resolved texture. These views use mip 0. */
+    if (!d3d8_msaa_image_read(dst_image,0) ||
+        (source && !d3d8_msaa_image_read(rhi_view_image(source),0))) {
+        rhi_view_destroy(rtv);
+        return E_FAIL;
+    }
     rhi_output_save(&saved);
     if (!source) probe_source(&saved, tex, back_w, back_h);
 
@@ -343,6 +350,7 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     }
     rhi_output_restore(&saved);
     rhi_view_destroy(rtv);
+    if (!d3d8_msaa_image_written(dst_image,0)) return E_FAIL;
     g.copies++;
     /* A draw sampling this is re-presenting the frame, and has to cover
      * the whole of it; see d3d8_draw_escapes_squeeze. */

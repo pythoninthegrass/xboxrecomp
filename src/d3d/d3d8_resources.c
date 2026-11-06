@@ -1176,14 +1176,14 @@ int d3d8_surface_msaa_resolve(D3D8Surface *sf)
 /* Surface wrappers may alias the same texture subresource. Synchronize by
  * image identity, not by the wrapper used for LockRect or upload. All callers
  * execute on the serialized renderer thread. */
-static int msaa_image_read(RhiImage *image,unsigned subresource)
+int d3d8_msaa_image_read(RhiImage *image,unsigned subresource)
 {
     for(D3D8Surface *sf=g_msaa_surfaces;sf;sf=sf->msaa_next)
         if(sf->image==image && sf->subresource==subresource &&
            !d3d8_surface_msaa_resolve(sf))return 0;
     return 1;
 }
-static int msaa_image_written(RhiImage *image,unsigned subresource)
+int d3d8_msaa_image_written(RhiImage *image,unsigned subresource)
 {
     for(D3D8Surface *sf=g_msaa_surfaces;sf;sf=sf->msaa_next)
         if(sf->image==image && sf->subresource==subresource && sf->msaa_active &&
@@ -1329,7 +1329,7 @@ static HRESULT __stdcall sf_LockRect(IDirect3DSurface8 *self, D3DLOCKED_RECT *pL
 
     full = (BYTE *)malloc((size_t)full_pitch * full_rows);
     if (!full) return E_OUTOFMEMORY;
-    if (!msaa_image_read(sf->image,sf->subresource) ||
+    if (!d3d8_msaa_image_read(sf->image,sf->subresource) ||
         rhi_image_readback(sf->image, sf->subresource, full, full_pitch) != 0) {
         free(full);
         return E_FAIL;
@@ -1409,7 +1409,7 @@ static HRESULT __stdcall sf_UnlockRect(IDirect3DSurface8 *self)
                          sf->locked_bits, (uint32_t)sf->locked_pitch, 0);
         /* The bound coverage image must see this CPU edit before the next
          * draw or resolve. Read-only locks leave its samples untouched. */
-        if (!msaa_image_written(sf->image,sf->subresource)) result = E_FAIL;
+        if (!d3d8_msaa_image_written(sf->image,sf->subresource)) result = E_FAIL;
     }
 
     free(sf->locked_bits);
@@ -1571,7 +1571,7 @@ static void d3d8_upload_mip_level(RhiImage *image, D3DFORMAT fmt,
     }
 
     rhi_image_update(image, subresource, NULL, upload_data, upload_pitch, upload_pitch * rows);
-    if(!msaa_image_written(image,subresource))
+    if(!d3d8_msaa_image_written(image,subresource))
         fprintf(stderr,"D3D8: MSAA upload synchronization failed\n");
 
     if (linear) free(linear);

@@ -229,6 +229,8 @@ typedef struct D3D8Surface {
 
 RhiView *d3d8_surface_msaa_prepare(D3D8Surface *surface,unsigned samples);
 int d3d8_surface_msaa_resolve(D3D8Surface *surface);
+int d3d8_msaa_image_read(RhiImage *image,unsigned subresource);
+int d3d8_msaa_image_written(RhiImage *image,unsigned subresource);
 RhiView *d3d8_surface_draw_view(D3D8Surface *surface);
 
 /* 2D texture. See tex_* implementation.
