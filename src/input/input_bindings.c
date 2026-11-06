@@ -1047,6 +1047,9 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     }
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     pc_input_normalize_movement(&out->sThumbLX, &out->sThumbLY);
+    if(port==0 && (c->device==DEV_KEYBOARD || c->has_key) && pc_controls_terminal_click())
+        out->bAnalogButtons[XBOX_BUTTON_A]=255;
+    /* The left-button binding is suppressed only while used for selection. */
 #endif
 #ifdef TSFP_NATIVE_INPUT
     if(port==0 && c->device==DEV_KEYBOARD)tsfp_native_mouse_sample(out);
