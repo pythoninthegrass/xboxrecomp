@@ -167,6 +167,7 @@ void sub_00431968(void) { pc_network_guest(0x00431968u,sub_00431968_gen); }
 /* Shared text sizing and rendering: translate controller prompt tokens
  * before either pass so alignment, wrapping, and displayed text agree. */
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+#include "pc_controls.h"
 #include "pc_prompt_guest.inc"
 #endif
 extern void sub_0003FCF0_gen(void);
@@ -237,7 +238,7 @@ void sub_000245C0(void)
 extern void sub_000D2B80_gen(void);
 void sub_000D2B80(void)
 {
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
     pc_controls_apply_mouse(FP_MEM32(0x007B0C7Cu), FP_MEM32(0x007B0CC0u), g_xbox_mem_offset);
 #endif
     sub_000D2B80_gen();
