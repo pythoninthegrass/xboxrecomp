@@ -867,6 +867,46 @@ void sub_0037A9D0(void)
 #endif
 }
 
+extern void sub_00137F00_gen(void);
+void sub_00137F00(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_effect_scope(sub_00137F00_gen);
+#else
+    sub_00137F00_gen();
+#endif
+}
+
+extern void sub_0001F090_gen(void);
+void sub_0001F090(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_weapon_effect(sub_0001F090_gen,0);
+#else
+    sub_0001F090_gen();
+#endif
+}
+
+extern void sub_000167B0_gen(void);
+void sub_000167B0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_weapon_effect(sub_000167B0_gen,1);
+#else
+    sub_000167B0_gen();
+#endif
+}
+
+extern void sub_0001A6F0_gen(void);
+void sub_0001A6F0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_weapon_effect(sub_0001A6F0_gen,2);
+#else
+    sub_0001A6F0_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
