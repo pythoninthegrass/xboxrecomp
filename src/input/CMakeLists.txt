@@ -70,3 +70,8 @@ if(APPLE AND TSFP_NATIVE_DIR)
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}")
     target_compile_definitions(xbox_input PRIVATE TSFP_NATIVE_INPUT)
 endif()
+
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_discord.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/pc_discord_model.c")
+endif()

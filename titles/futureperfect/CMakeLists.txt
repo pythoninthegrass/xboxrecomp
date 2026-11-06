@@ -262,3 +262,11 @@ if(APPLE AND TSFP_NATIVE_DIR)
     target_include_directories(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/..")
     target_compile_definitions(${PROJECT_NAME} PRIVATE TSFP_NATIVE_DISPLAY TSFP_NATIVE_PROMPTS)
 endif()
+
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    set_property(SOURCE "${TSFP_PC_CONTROLS_DIR}/pc_display_menu.c" APPEND PROPERTY
+        COMPILE_DEFINITIONS TSFP_PC_DISCORD)
+    add_executable(tsfp_pc_discord_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_discord.c"
+        "${TSFP_PC_CONTROLS_DIR}/pc_discord_model.c")
+    target_include_directories(tsfp_pc_discord_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
+endif()
