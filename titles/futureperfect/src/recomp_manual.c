@@ -166,13 +166,13 @@ void sub_00431968(void) { pc_network_guest(0x00431968u,sub_00431968_gen); }
 
 /* Shared text sizing and rendering: translate controller prompt tokens
  * before either pass so alignment, wrapping, and displayed text agree. */
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
 #include "pc_prompt_guest.inc"
 #endif
 extern void sub_0003FCF0_gen(void);
 void sub_0003FCF0(void)
 {
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
     pc_prompt_guest(sub_0003FCF0_gen,3,4);
 #else
     sub_0003FCF0_gen();
@@ -181,7 +181,7 @@ void sub_0003FCF0(void)
 extern void sub_00040FA0_gen(void);
 void sub_00040FA0(void)
 {
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
     pc_prompt_guest(sub_00040FA0_gen,4,6);
 #else
     sub_00040FA0_gen();

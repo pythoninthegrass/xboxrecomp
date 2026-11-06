@@ -60,7 +60,8 @@ if(APPLE AND TSFP_NATIVE_DIR)
     target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c"
                                       "${TSFP_NATIVE_DIR}/../pc_input.c"
                                       "${TSFP_NATIVE_DIR}/config_files.c"
-                                      "${TSFP_NATIVE_DIR}/settings_macos.m")
+                                      "${TSFP_NATIVE_DIR}/settings_macos.m"
+                                      "${TSFP_NATIVE_DIR}/../pc_prompts.c")
     enable_language(OBJC)
     set_source_files_properties("${TSFP_NATIVE_DIR}/settings_macos.m" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     target_link_libraries(xbox_input PUBLIC "-framework Cocoa")

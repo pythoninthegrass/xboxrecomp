@@ -21,6 +21,7 @@
 #include "recomp_pad.h"
 #ifdef TSFP_NATIVE_INPUT
 #include "input_sdl.h"
+#include "pc_prompts.h"
 #include "platform/win32_compat.h"
 #include "pc_input.h"
 #include <pthread.h>
@@ -975,6 +976,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
                 have_pad=1;auto_pad=slot;break;
             }
         if(have_pad)defaults_for(&pad_defaults,1);
+        pc_prompts_controller(&pad,have_pad);
     }
 #endif
 
