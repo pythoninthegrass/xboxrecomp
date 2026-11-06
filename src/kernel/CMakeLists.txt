@@ -97,3 +97,8 @@ target_sources(xbox_kernel PRIVATE
     "${TSFP_SHARED_SOURCE}/runtime/guest_memory_services.c"
     "${TSFP_SHARED_SOURCE}/runtime/memory_statistics.c"
     "${TSFP_SHARED_SOURCE}/native/host_memory_stats.c")
+
+# Native NT host operations and original reservation ownership.
+target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/native_reservations.c"
+    "${TSFP_SHARED_SOURCE}/native/native_vm_host.c")

@@ -3,17 +3,9 @@
 
 #include "kernel.h"
 #include "host_virtual_memory.h"
+#include "native_vm_host.h"
 #include "memory_statistics.h"
 #include "host_memory_stats.h"
-
-/* ============================================================================
- * Helper: Xbox protect flags → Win32 protect flags
- * ============================================================================ */
-
-static DWORD xbox_protect_to_win32(ULONG protection)
-{
-    return (DWORD)tsfp_host_vm_protection((uint32_t)protection);
-}
 
 /* ============================================================================
  * Contiguous Memory (GPU-accessible on Xbox)
@@ -172,7 +164,7 @@ ULONG __stdcall xbox_MmQueryAddressProtect(PVOID address)
 
 VOID __stdcall xbox_MmSetAddressProtect(PVOID address,ULONG bytes,ULONG protection)
 {
-    (void)tsfp_host_pages_protect(address,bytes,tsfp_host_vm_protection(protection));
+    (void)tsfp_native_vm_protect(address,bytes,tsfp_host_vm_protection(protection));
 }
 
 ULONG __stdcall xbox_MmQueryAllocationSize(PVOID address)
@@ -222,21 +214,32 @@ VOID __stdcall xbox_MmDeleteKernelStack(PVOID top,PVOID limit)
  * ============================================================================ */
 
 /* Project native VM boundary: pointer and size_t widths stay native. */
-static void *native_vm_allocate(void *host, void *hint, size_t size,
-                                uint32_t type, uint32_t protection)
+static void *native_vm_allocate(void *host,void *hint,size_t bytes,
+    uint32_t type,uint32_t protection)
 {
-    (void)host;
-    return VirtualAlloc(hint, size, (DWORD)type, xbox_protect_to_win32((ULONG)protection));
+    (void)host;return tsfp_native_vm_allocate(hint,bytes,type,protection);
 }
-static int native_vm_release(void *host, void *address, size_t size, uint32_t type)
+static int native_vm_release(void *host,void *address,size_t bytes,uint32_t type)
 {
-    (void)host;
-    return VirtualFree(address, size, (DWORD)type) != 0;
+    (void)host;return tsfp_native_vm_release(address,bytes,type);
 }
-static size_t native_vm_query(void *host, const void *address, void *record, size_t size)
+static size_t native_vm_query(void *host,const void *address,void *record,size_t bytes)
 {
+    tsfp_native_vm_region region;
+    MEMORY_BASIC_INFORMATION native;
     (void)host;
-    return VirtualQuery(address, (MEMORY_BASIC_INFORMATION *)record, size);
+    if(!record || bytes<sizeof(native) || !tsfp_native_vm_query(address,&region))return 0;
+    memset(&native,0,sizeof(native));
+    native.BaseAddress=(PVOID)region.base;
+    native.AllocationBase=(PVOID)region.allocation_base;
+    native.AllocationProtect=(DWORD)region.allocation_protection;
+#if defined(_WIN32)
+    native.PartitionId=region.partition_id;
+#endif
+    native.RegionSize=region.bytes;
+    native.State=(DWORD)region.state;native.Protect=(DWORD)region.protection;
+    native.Type=(DWORD)region.type;
+    memcpy(record,&native,sizeof(native));return sizeof(native);
 }
 static const tsfp_host_vm native_vm = { NULL, native_vm_allocate, native_vm_release, native_vm_query };
 /* End project native VM boundary. */
