@@ -265,6 +265,20 @@ void sub_00040FA0(void)
 #endif
 }
 
+/* US outlined label: four outline passes and the foreground draw use the
+ * same text/stack mappings synchronously. Discard read facts at return. */
+extern void sub_00041E30_gen(void);
+void sub_00041E30(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_prompts_layout_begin();
+    sub_00041E30_gen();
+    pc_prompts_layout_end();
+#else
+    sub_00041E30_gen();
+#endif
+}
+
 /* -- Future Perfect: the MMX memcpy at 0x000245C0 ----------------------- */
 
 /*
