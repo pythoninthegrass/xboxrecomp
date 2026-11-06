@@ -78,6 +78,12 @@ endif()
 # and provides the 'xboxrecomp' umbrella target to link against.
 add_subdirectory(${XBOXRECOMP_DIR} ${CMAKE_BINARY_DIR}/xboxrecomp)
 
+# Reused dependency trees must read settings headers from this source worktree,
+# ahead of the runtime's legacy checkout-relative include directory.
+if(TSFP_SHARED_SOURCE)
+    target_include_directories(xbox_config BEFORE PRIVATE "${TSFP_SHARED_SOURCE}")
+endif()
+
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
     add_executable(tsfp_pc_debug_test "${TSFP_PC_CONTROLS_DIR}/../tests/diagnostics/pc_debug.c")
     target_link_libraries(tsfp_pc_debug_test PRIVATE xbox_input)
