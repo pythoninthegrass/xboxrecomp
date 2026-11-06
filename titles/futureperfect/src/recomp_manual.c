@@ -117,6 +117,38 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 
 /* PC System Link: public XNet API boundary, US 45410066. */
 #include "pc_network_guest.inc"
+extern RECOMP_MANUAL_TLS uint32_t g_ecx;
+#include "pc_network_bots_guest.inc"
+extern void sub_00356490_gen(void);
+void sub_00356490(void)
+{ pc_network_bots_guest_config(sub_00356490_gen); }
+extern void sub_000658D0_gen(void);
+void sub_000658D0(void)
+{ pc_network_bots_guest_config(sub_000658D0_gen); }
+extern void sub_002C78F0_gen(void);
+void sub_002C78F0(void)
+{ pc_network_bots_menu(sub_002C78F0_gen); }
+extern void sub_002D5E70_gen(void);
+void sub_002D5E70(void)
+{ pc_network_bots_menu(sub_002D5E70_gen); }
+extern void sub_002C8370_gen(void);
+void sub_002C8370(void)
+{ pc_network_bots_menu(sub_002C8370_gen); }
+extern void sub_003568C0_gen(void);
+void sub_003568C0(void)
+{ pc_network_bots_guest_active(sub_003568C0_gen); }
+extern void sub_003593D0_gen(void);
+void sub_003593D0(void)
+{ pc_network_bots_guest_serializable(sub_003593D0_gen); }
+extern void sub_00359400_gen(void);
+void sub_00359400(void)
+{ pc_network_bots_guest_encode(sub_00359400_gen); }
+extern void sub_003594B0_gen(void);
+void sub_003594B0(void)
+{ pc_network_bots_guest_decode(sub_003594B0_gen); }
+extern void sub_003559A0_gen(void);
+void sub_003559A0(void)
+{ pc_network_bots_guest_frame(sub_003559A0_gen); }
 /* Keep the original network pump and ABI; sample PC movement every guest tick. */
 extern void sub_003544B0_gen(void);
 void sub_003544B0(void)
