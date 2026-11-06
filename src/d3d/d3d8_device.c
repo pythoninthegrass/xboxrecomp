@@ -2475,6 +2475,9 @@ BOOL xbox_D3D8InterpBegin(void)
     if(g_interp_saved_rt)IDirect3DSurface8_AddRef(&g_interp_saved_rt->iface);
     if(g_interp_saved_ds)IDirect3DSurface8_AddRef(&g_interp_saved_ds->iface);
     interp_target_swap();
+#if defined(_WIN32) && defined(TSFP_PC_DISPLAY)
+    { extern void tsfp_d3d11_profile_begin(void); tsfp_d3d11_profile_begin(); }
+#endif
     return TRUE;
 }
 

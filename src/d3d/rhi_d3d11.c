@@ -153,6 +153,13 @@ static ID3D11DeviceContext *g_ctx;
 static IDXGISwapChain      *g_swap;
 static ID3D11RenderTargetView *g_present_rtv;
 static RhiView             *g_present_view;
+#ifdef TSFP_PC_DISPLAY
+#include "pc_gpu_timing.inc"
+#else
+#define pc_gpu_close() ((void)0)
+#define pc_gpu_before_present() ((void)0)
+#define pc_gpu_after_present(hr) ((void)0)
+#endif
 
 int rhi_d3d11_adopt(void *device, void *context)
 {
@@ -382,6 +389,7 @@ static int d_device_create(const RhiDeviceDesc *dd)
 
 static void d_device_destroy(void)
 {
+    pc_gpu_close();
     staging_release();
     release_back_buffer_view();
     if (g_swap) { IDXGISwapChain_Release(g_swap); g_swap = NULL; }
@@ -451,7 +459,9 @@ static int32_t d_present(uint32_t interval)
 
     if (!g_swap)
         return -1;
+    pc_gpu_before_present();
     hr = IDXGISwapChain_Present(g_swap, interval, flags);
+    pc_gpu_after_present(hr);
     /* Report a new failure once, rather than silently freezing or flooding
      * the log every frame while the same presentation error persists. */
     if (FAILED(hr) && hr != last) {
