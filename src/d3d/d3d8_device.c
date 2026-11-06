@@ -354,9 +354,9 @@ static BOOL two_d_squeeze(float *k_out, float *cx_out)
 #endif
     k = ((float)g_device_state.width * 9.0f) /
         ((float)g_device_state.height * 16.0f);
-    if (!(k > 0.0f && k < 1.0f))
+    if (!(k > 0.0f) || k == 1.0f)
         return FALSE;
-    *k_out = k;
+    *k_out = k < 1.f ? k : 1.f;
     if (g_2d_anchor == XBOX_D3D8_2D_LEFT)
         *cx_out = 0.0f;
     else if (g_2d_anchor == XBOX_D3D8_2D_RIGHT)
@@ -364,6 +364,15 @@ static BOOL two_d_squeeze(float *k_out, float *cx_out)
     else
         *cx_out = (float)g_device_state.width * 0.5f;
     return TRUE;
+}
+
+static float two_d_vertical_scale(void)
+{
+#ifdef TSFP_PC_DISPLAY
+    if(g_2d_squeeze && !g_cur_rt && pc_display_current().width)
+        return pc_ui_scale_y(pc_display_hud_scale());
+#endif
+    return 1.f;
 }
 
 /* Put the scene on the back buffer, immediately before presenting it.
@@ -455,7 +464,7 @@ BOOL d3d8_GetScissor(RhiRect *out)
     if (out) {
         float sx = rt_scale_x(), sy = rt_scale_y();
         float left = g_scissor.left * sx, right = g_scissor.right * sx;
-        float k, cx;
+        float k, cx, ky=two_d_vertical_scale(), cy=g_device_state.height*.5f;
 
         /* Stored as the title gave them, converted here, so the stored
          * rectangle stays comparable with anything else in guest pixels
@@ -465,9 +474,9 @@ BOOL d3d8_GetScissor(RhiRect *out)
             right = cx + (right - cx) * k;
         }
         out->left   = (int32_t)left;
-        out->top    = (int32_t)(g_scissor.top    * sy);
+        out->top    = (int32_t)(cy+(g_scissor.top*sy-cy)*ky);
         out->right  = (int32_t)right;
-        out->bottom = (int32_t)(g_scissor.bottom * sy);
+        out->bottom = (int32_t)(cy+(g_scissor.bottom*sy-cy)*ky);
     }
     return g_scissor_enabled;
 }
@@ -1719,6 +1728,8 @@ static void apply_host_viewport(void)
         hv.width *= k;
     }
 
+    { float ky=two_d_vertical_scale(),cy=g_device_state.height*.5f;
+      hv.y=cy+(hv.y-cy)*ky;hv.height*=ky; }
     rhi_set_viewports(1, &hv);
 }
 
