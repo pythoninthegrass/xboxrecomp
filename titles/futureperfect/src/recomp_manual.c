@@ -121,6 +121,60 @@ extern RECOMP_MANUAL_TLS uint32_t g_ecx;
 extern RECOMP_MANUAL_TLS uint32_t g_ebx, g_edi;
 extern RECOMP_MANUAL_TLS uint32_t g_esi;
 #include "pc_network_bots_guest.inc"
+extern void sub_00067450_gen(void);
+void sub_00067450(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_failure_trace(sub_00067450_gen,0x00067450u);
+#else
+    sub_00067450_gen();
+#endif
+}
+extern void sub_00066FC0_gen(void);
+void sub_00066FC0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_failure_trace(sub_00066FC0_gen,0x00066FC0u);
+#else
+    sub_00066FC0_gen();
+#endif
+}
+extern void sub_000681C0_gen(void);
+void sub_000681C0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_frame(sub_000681C0_gen);
+#else
+    sub_000681C0_gen();
+#endif
+}
+extern void sub_000D2FD0_gen(void);
+void sub_000D2FD0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_failure_trace(sub_000D2FD0_gen,0x000D2FD0u);
+#else
+    sub_000D2FD0_gen();
+#endif
+}
+extern void sub_000D3C50_gen(void);
+void sub_000D3C50(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_failure_trace(sub_000D3C50_gen,0x000D3C50u);
+#else
+    sub_000D3C50_gen();
+#endif
+}
+extern void sub_000D2CE0_gen(void);
+void sub_000D2CE0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_failure_trace(sub_000D2CE0_gen,0x000D2CE0u);
+#else
+    sub_000D2CE0_gen();
+#endif
+}
 extern void sub_003533F0_gen(void);
 void sub_003533F0(void)
 { pc_network_bots_guest_score_network(sub_003533F0_gen); }
