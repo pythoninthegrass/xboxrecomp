@@ -23,9 +23,33 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
+import sys
 
 from .disasm import Instruction, Operand
 from .lifter import Lifter, _fmt_operand_read, _fmt_operand_write
+
+# The project consumer bridge has already selected the project tools. Use its
+# compiler adapter so these sweeps also execute outside a VS developer shell.
+from translation_operands import __file__ as _operand_source
+sys.path.insert(0, str(Path(_operand_source).resolve().parents[1] / "tests"))
+from native_compiler import native_compiler
+
+_COMPILER = None
+
+def _compile_c(source, executable, optimize=True):
+    global _COMPILER
+    if _COMPILER is None:
+        _COMPILER = native_compiler(Path(source).parent)
+    compiler, environment = _COMPILER
+    if os.name == "nt":
+        command = [compiler, "/nologo", "/std:c11", "/O2" if optimize else "/Od",
+                   source, f"/Fe:{executable}"]
+    else:
+        command = [compiler, "-w", "-O2" if optimize else "-O0", source, "-o", executable]
+    return subprocess.run(command, cwd=Path(source).parent, env=environment,
+                          capture_output=True, text=True, timeout=60)
+
 
 
 def _sar(dst, cnt):
@@ -33,9 +57,7 @@ def _sar(dst, cnt):
     insn = Instruction(0, 2, "sar", "", "00")
     insn.operands = [dst, cnt]
     lifted = Lifter().lift_instruction(insn)
-    # The project emitter includes declarations and a masked-count guard.
-    # Compile every emitted statement, including the result snapshot.
-    assert lifted, lifted
+    # Execute the complete emitted block; its statement count is not an ABI.
     return " ".join(lifted)
 
 
@@ -146,20 +168,18 @@ class SarWidthTest(unittest.TestCase):
                 "        0xFFFFFFFFu, 0xFFFFFF80u, 0xDEADBEEFu, 0x40000000u};\n"
                 "    for (unsigned vi = 0; vi < sizeof(VS)/sizeof(VS[0]); vi++) {\n"
                 "        const uint32_t v = VS[vi];")
-        cc = _find_cc()
         with tempfile.TemporaryDirectory() as tmp:
             c = os.path.join(tmp, "t.c")
             with open(c, "w") as f:
                 f.write(src)
             exe = os.path.join(tmp, "t.exe")
-            r = subprocess.run([cc, "-w", "-O2", c, "-o", exe],
-                               capture_output=True, text=True)
+            r = _compile_c(c, exe)
             self.assertEqual(r.returncode, 0, r.stderr[-1500:] + "\n" + src)
             r = subprocess.run([exe], capture_output=True, text=True)
             return r.returncode, r.stdout + r.stderr
 
     def setUp(self):
-        if not _find_cc():
+        if os.name != "nt" and not _find_cc():
             self.skipTest("no C compiler on PATH")
 
     def test_sar_matches_x86_at_every_width(self):
@@ -199,18 +219,15 @@ class SarWidthTest(unittest.TestCase):
     def test_sar_al_1_on_0x80(self):
         """The measured case, pinned on its own: 0x80 >> 1 is 0xC0, not 0x40."""
         stmt = _sar(Operand(type="reg", reg="al"), Operand(type="imm", imm=1))
-        # The compiled C0 result accepts equivalent signed or unsigned sign fill.
         src = PRELUDE + (
             "int main(void){ uint32_t eax = 0xAAAAAA80u; " + stmt +
             " printf(\"%02X\\n\", LO8(eax)); return 0; }")
-        cc = _find_cc()
         with tempfile.TemporaryDirectory() as tmp:
             c = os.path.join(tmp, "t.c")
             with open(c, "w") as f:
                 f.write(src)
             exe = os.path.join(tmp, "t.exe")
-            r = subprocess.run([cc, "-w", c, "-o", exe],
-                               capture_output=True, text=True)
+            r = _compile_c(c, exe, optimize=False)
             self.assertEqual(r.returncode, 0, r.stderr[-1500:])
             r = subprocess.run([exe], capture_output=True, text=True)
             self.assertEqual(r.stdout.strip(), "C0", r.stdout + r.stderr)

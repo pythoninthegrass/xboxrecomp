@@ -23,6 +23,7 @@ from .config import is_code_address, is_data_address, va_to_file_offset
 import translation_moves as _project_moves
 import translation_integer as _project_integer
 import translation_bits as _project_bits
+import translation_product as _project_product
 
 # Function export names of the Windows libraries the host exe links
 # (kernel32/user32/gdi32/advapi32/winmm/ws2_32/ole32/dbghelp/...). A guest
@@ -160,7 +161,7 @@ COND_MAP = {
 # Instructions that set arithmetic flags (primary set, fully handled)
 FLAG_SETTERS = frozenset({
     "cmp", "test", "sub", "add", "and", "or", "xor",
-    "inc", "dec", "neg", "shl", "shr", "sar", "imul", "adc", "sbb",
+    "inc", "dec", "neg", "shl", "shr", "sar", "imul", "mul", "adc", "sbb",
     "comiss", "comisd", "ucomiss", "ucomisd",  # SSE float compare
 })
 
@@ -218,7 +219,7 @@ _EFLAGS_SETTERS = frozenset({
 
 # Instructions with undefined/unpredictable flags (clear tracking)
 _FLAGS_UNDEFINED = frozenset({
-    "mul", "div", "idiv",  # Flags partially undefined
+    "div", "idiv",  # Division flags are undefined
     "rdtsc", "cpuid",      # Special instructions
     # "lock xadd" was here, described as complex flag behaviour. It is not:
     # LOCK only makes the read-modify-write atomic and leaves xadd's flags
@@ -371,6 +372,14 @@ def _make_condition(jcc, flag_setter, flag_ops):
     if not cond_info:
         return None
     cmp_macro, test_macro, desc = cond_info
+
+    # Own multiplication records its only defined flags: CF and OF agree.
+    if flag_setter in ("mul", "imul"):
+        if jcc in ("jb", "jnae", "jc", "jo"):
+            return "_cf", desc
+        if jcc in ("jae", "jnb", "jnc", "jno"):
+            return "!_cf", desc
+        return None  # Do not synthesize undefined ZF/SF/PF conditions.
 
     # Only the zero flag is proven at a mixed-operation/width join. SETcc,
     # CMOVcc and LOOPcc also use this decoder, preserving their polarity.
@@ -1823,49 +1832,9 @@ class Lifter:
 
     _lift_shrd = _project_bits.shrd
 
-    def _lift_imul(self, insn, ops):
-        nops = len(ops)
-        if nops == 1:
-            # One operand: edx:eax = eax * ops[0]
-            src = _fmt_operand_read(ops[0])
-            return [
-                f"{{ int64_t _r = (int64_t)(int32_t)eax * (int64_t)(int32_t){src};",
-                f"  eax = (uint32_t)_r; edx = (uint32_t)(_r >> 32); }}"
-            ]
-        elif nops == 2:
-            # Two operand: dst = dst * src
-            dst = _fmt_operand_read(ops[0])
-            src = _fmt_operand_read(ops[1])
-            return [_fmt_operand_write(ops[0], f"(uint32_t)((int32_t){dst} * (int32_t){src})")]
-        elif nops == 3:
-            # Three operand: dst = src1 * imm
-            src = _fmt_operand_read(ops[1])
-            imm = _fmt_operand_read(ops[2])
-            return [_fmt_operand_write(ops[0], f"(uint32_t)((int32_t){src} * (int32_t){imm})")]
-        return ["/* imul: unexpected form */"]
+    _lift_imul = _project_product.imul
 
-    def _lift_muldiv(self, insn, ops, m):
-        if len(ops) < 1:
-            return [f"/* {m}: no operand */"]
-        src = _fmt_operand_read(ops[0])
-        if m == "mul":
-            return [
-                f"{{ uint64_t _r = (uint64_t)eax * (uint64_t){src};",
-                f"  eax = (uint32_t)_r; edx = (uint32_t)(_r >> 32); }}"
-            ]
-        elif m == "div":
-            return [
-                f"{{ uint64_t _dividend = ((uint64_t)edx << 32) | eax;",
-                f"  eax = (uint32_t)(_dividend / (uint32_t){src});",
-                f"  edx = (uint32_t)(_dividend % (uint32_t){src}); }}"
-            ]
-        elif m == "idiv":
-            return [
-                f"{{ int64_t _dividend = ((int64_t)(int32_t)edx << 32) | eax;",
-                f"  eax = (uint32_t)((int32_t)(_dividend / (int32_t){src}));",
-                f"  edx = (uint32_t)((int32_t)(_dividend % (int32_t){src})); }}"
-            ]
-        return [f"/* {m}: unhandled */"]
+    _lift_muldiv = _project_product.muldiv
 
     _lift_shift = _project_bits.shift
 
@@ -3698,7 +3667,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
 
         if (curr.mnemonic in ("sete", "setne", "setb", "setae", "setbe",
                               "seta", "setl", "setge", "setle", "setg",
-                              "sets", "setns")
+                              "sets", "setns", "seto", "setno")
                 and last_flag_setter and len(curr.operands) >= 1):
             cond = _make_setcc_value(
                 curr.mnemonic, last_flag_setter, last_flag_ops)
@@ -3724,7 +3693,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
 
         if (curr.mnemonic in ("cmove", "cmovne", "cmovb", "cmovae",
                               "cmovbe", "cmova", "cmovl", "cmovge",
-                              "cmovle", "cmovg", "cmovs", "cmovns")
+                              "cmovle", "cmovg", "cmovs", "cmovns", "cmovo", "cmovno")
                 and last_flag_setter and len(curr.operands) >= 2):
             cond = _make_cmovcc_cond(
                 curr.mnemonic, last_flag_setter, last_flag_ops)

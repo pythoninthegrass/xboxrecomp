@@ -48,6 +48,15 @@
 #include <stddef.h>
 #include <string.h>
 
+/* Project fatal divide-error boundary; result registers have not been written.
+ * Guest exception dispatch is not implemented by this diagnostic adapter. */
+#if defined(_MSC_VER)
+__declspec(noreturn)
+#else
+__attribute__((noreturn))
+#endif
+void tsfp_guest_divide_error(uint32_t site, unsigned reason);
+
 /* Optional title numeric policy. The generic runtime retains x86 conversion
  * semantics; a title can supply a separate header without baking its addresses
  * into the instruction lifter. Memory operands are evaluated only once. */

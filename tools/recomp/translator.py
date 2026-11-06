@@ -892,8 +892,8 @@ class FunctionTranslator:
 
         last_setter = None
         for insn in instructions:
-            if insn.mnemonic in ("rcl", "rcr"):
-                return True  # Emitted C references carry even behind a zero-count guard.
+            if insn.mnemonic in ("rcl", "rcr", "mul", "imul"):
+                return True  # Own carry rotates and products publish/read carry.
             if _constant_bit_noop(insn):
                 continue
             m = insn.mnemonic
@@ -1082,6 +1082,8 @@ class FunctionTranslator:
 
         # Determine which registers are used
         used_regs = self._find_used_registers(instructions)
+        if any(insn.mnemonic in ("div", "idiv") for insn in instructions):
+            used_regs.add("ebp")  # Publish the local frame only on a divide fault.
         used_xmm = self._find_used_xmm(instructions)
         has_prologue = self._func_has_prologue(instructions)
         has_fpu = any(insn.mnemonic.startswith("f") for insn in instructions)

@@ -114,9 +114,11 @@ if(TSFP_PC_CONTROLS_DIR OR TSFP_NATIVE_DIR)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         RECOMP_NUMERIC_POLICY_HEADER="pc_native_numeric.h")
     if(TSFP_PC_CONTROLS_DIR)
-        target_sources(${PROJECT_NAME} PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_model_transform_guest.c")
+        target_sources(${PROJECT_NAME} PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_model_transform_guest.c"
+            "${TSFP_PC_CONTROLS_DIR}/guest_integer_fault.c")
     else()
-        target_sources(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/../pc_model_transform_guest.c")
+        target_sources(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/../pc_model_transform_guest.c"
+            "${TSFP_NATIVE_DIR}/../guest_integer_fault.c")
     endif()
 endif()
 
