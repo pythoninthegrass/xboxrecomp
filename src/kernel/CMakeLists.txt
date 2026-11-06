@@ -5,7 +5,6 @@ cmake_minimum_required(VERSION 3.20)
 # Memory layout, file I/O, threading, synchronization, crypto, HAL.
 
 set(KERNEL_SOURCES
-    kernel_path.c
     kernel_pool.c
     kernel_rtl.c
     kernel_memory.c
@@ -32,6 +31,8 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_storage.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_kernel_storage.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_paths.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_symlinks.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_kernel_symlinks.c"
