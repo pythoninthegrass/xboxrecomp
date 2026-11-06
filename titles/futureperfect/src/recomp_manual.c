@@ -655,6 +655,26 @@ void sub_00151CF0(void)
 
 
 /* Frontend hover/click: after final menu layout, before action dispatch. */
+extern void sub_002C3500_gen(void);
+void sub_002C3500(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_audio_draw(sub_002C3500_gen,0);
+#else
+    sub_002C3500_gen();
+#endif
+}
+
+extern void sub_002C3610_gen(void);
+void sub_002C3610(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_audio_draw(sub_002C3610_gen,1);
+#else
+    sub_002C3610_gen();
+#endif
+}
+
 extern void sub_00073750_gen(void);
 void sub_00073750(void)
 {
