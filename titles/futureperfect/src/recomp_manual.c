@@ -222,6 +222,12 @@ void sub_00357540(void)
 #endif
 }
 
+extern void sub_003578A0_gen(void);
+void sub_003578A0(void)
+{
+    pc_network_guest_scores(sub_003578A0_gen);
+}
+
 extern void sub_00060310_gen(void);
 void sub_00060310(void)
 {
