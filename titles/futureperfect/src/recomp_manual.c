@@ -432,6 +432,46 @@ void sub_000A2430(void)
 #endif
 }
 
+extern void sub_000EDD40_gen(void);
+void sub_000EDD40(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_blast_start(sub_000EDD40_gen);
+#else
+    sub_000EDD40_gen();
+#endif
+}
+
+extern void sub_00186480_gen(void);
+void sub_00186480(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_blast_cells(sub_00186480_gen);
+#else
+    sub_00186480_gen();
+#endif
+}
+
+extern void sub_000EFF90_gen(void);
+void sub_000EFF90(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_blast_update(sub_000EFF90_gen);
+#else
+    sub_000EFF90_gen();
+#endif
+}
+
+extern void sub_0035AF40_gen(void);
+void sub_0035AF40(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_blast_source(sub_0035AF40_gen);
+#else
+    sub_0035AF40_gen();
+#endif
+}
+
 extern void sub_0035BD70_gen(void);
 void sub_0035BD70(void)
 {
