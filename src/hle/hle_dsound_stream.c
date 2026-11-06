@@ -122,6 +122,7 @@ typedef struct Stream {
      * the voice and moves this. */
     uint64_t play_origin;
     int      play_anchored;          /* the host clock has been read at least once */
+    int      output_lost;           /* reanchor retries until a new voice accepts PCM */
     int      host_clock;             /* consumed_base is a device snapshot */
     /* This stream's own drift (see g_drift_ms) and how often its host voice
      * ran dry while it still had sound to play: each dry spell is a gap the
@@ -269,6 +270,12 @@ static void sync_to_host(Stream *s, uint64_t now)
 
     if (!s->output || s->paused || !s->resumed_ms)
         return;
+    if (recomp_audio_output_take_discontinuity(slot_of(s))) {
+        s->host_clock = 0;
+        s->play_anchored = 0;
+        s->output_lost = 1;
+    }
+    if (s->output_lost) return; /* the old device cursor no longer exists */
     if (!recomp_audio_output_position(slot_of(s), &played, &queued)) {
         s->host_clock = 0;
         return;
@@ -426,6 +433,12 @@ static void pump(Stream *s, uint64_t now)
 
     if (!s->output || s->paused || s->flush_pending || !s->resumed_ms)
         return;
+    if (s->output_lost) {
+        /* Discard elapsed audio while disconnected. Refused retries do not
+         * pin a stale source offset or reuse the vanished device's origin. */
+        s->sent = consumed(s, now);
+        s->play_origin = s->sent;
+    }
     target = consumed(s, now) + ms_to_bytes(s, LEAD_MS);
     if (target > s->queued)
         target = s->queued;
@@ -507,6 +520,7 @@ static void pump(Stream *s, uint64_t now)
         if (!recomp_audio_output_submit(slot_of(s), pcm, bytes, play_rate(s), s->channels,
                                         out_bits(s), s->level))
             break;
+        s->output_lost = 0;
         s->sent += bytes;
     }
 }
@@ -518,6 +532,7 @@ static void refeed(Stream *s, uint64_t now)
     s->sent = consumed(s, now);
     s->play_origin = s->sent;
     s->play_anchored = 0;
+    s->output_lost = 0;
     s->host_clock = 0;
     pump(s, now);
 }
@@ -660,6 +675,7 @@ static void relayout(Stream *s, uint64_t now, uint32_t new_freq, uint32_t wfx)
     s->sent          = c;
     s->play_origin   = c;
     s->play_anchored = 0;
+    s->output_lost = 0;
     s->host_clock = 0;
     s->resumed_ms    = (!s->paused && s->count > 0) ? now : 0u;
     pump(s, now);
@@ -842,6 +858,7 @@ static void flush_stream(Stream *s)
     s->sent = s->queued;
     s->play_origin = s->queued;
     s->play_anchored = 0;
+    s->output_lost = 0;
     s->host_clock = 0;
     s->dry = 0;
     s->flush_pending = 0;

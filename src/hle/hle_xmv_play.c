@@ -67,6 +67,7 @@ typedef struct {
     uint8_t  adpcm_rest[72];
     uint32_t adpcm_rest_len;
     uint64_t pcm_submitted;
+    int      audio_recovering;
     int      logged_surface;
     uint32_t polls;
 } movie;
@@ -164,10 +165,22 @@ static void take_audio(movie *m)
     }
 }
 
+static uint32_t movie_clock(movie *m);
+
 static void feed_audio(movie *m)
 {
     uint32_t frame = m->channels * 2u;
 
+    if (recomp_audio_output_take_discontinuity(RECOMP_AUDIO_SLOT_MOVIE))
+        m->audio_recovering = 1;
+    if (m->audio_recovering) {
+        uint64_t due = (uint64_t)movie_clock(m) * m->rate / 1000u * frame;
+        uint64_t skip = due > m->pcm_submitted ? due - m->pcm_submitted : 0;
+        if (skip > m->pcm_len - m->pcm_off) skip = m->pcm_len - m->pcm_off;
+        skip -= skip % frame;
+        m->pcm_off += (uint32_t)skip;
+        m->pcm_submitted += skip;
+    }
     while (m->pcm_off < m->pcm_len) {
         uint32_t n = m->pcm_len - m->pcm_off;
         if (n > AUDIO_CHUNK)
@@ -176,6 +189,7 @@ static void feed_audio(movie *m)
         if (!n || !recomp_audio_output_submit(RECOMP_AUDIO_SLOT_MOVIE, m->pcm + m->pcm_off, n,
                                               m->rate, m->channels, 16, 0))
             return;                      /* offered again next poll */
+        m->audio_recovering = 0;
         m->pcm_off += n;
         m->pcm_submitted += n;
     }

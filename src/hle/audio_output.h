@@ -15,12 +15,13 @@
 extern "C" {
 #endif
 
-/* Initialization is attempted once per process; an unavailable device or
-   shutdown leaves guest audio timing unchanged. RECOMP_AUDIO_GAIN is the host
+/* Transient device failures retry at bounded intervals; explicit mute and
+   shutdown stay disabled. RECOMP_AUDIO_GAIN is the host
    master gain (0..1); absent uses the shared default below. Zero opens no device. */
 /* -6.02 dB at the output: preserve the game's Music/Sound slider curves and
  * balance, with a quieter 100% level. Explicit host gain overrides stay exact. */
 #define RECOMP_AUDIO_DEFAULT_GAIN 0.5f
+#define RECOMP_AUDIO_RETRY_MS 1000u
 #define RECOMP_AUDIO_SLOT_MOVIE 272u
 
 void recomp_audio_output_initialize(void);
@@ -32,6 +33,10 @@ void recomp_audio_output_set_spatial(uint32_t slot, float pan, int enabled);
 /* Environmental obstruction (0..1) and bounded early-reflection send. */
 void recomp_audio_output_set_acoustics(uint32_t slot,float obstruction,float room);
 void recomp_audio_output_set_ambience(uint32_t slot,int enabled);
+/* Consume a notification that the host discarded a voice unexpectedly.
+   Explicit reset clears it. Call before reading/submitting a continuous
+   timeline, then reanchor to its current clock before feeding a new voice. */
+int recomp_audio_output_take_discontinuity(uint32_t slot);
 
 /* Copies PCM before returning; never retains a guest-memory pointer.
    Slots: 0..255 for buffers, 256..271 for streams, 272
