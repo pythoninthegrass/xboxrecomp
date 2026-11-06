@@ -466,6 +466,17 @@ void sub_0013FC50(void)
 #endif
 }
 
+/* Keep the complete Arcade RANK widget at its authored left inset. */
+extern void sub_0012E3F0_gen(void);
+void sub_0012E3F0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_0012E3F0_gen,0x0012E3F0u);
+#else
+    sub_0012E3F0_gen();
+#endif
+}
+
 extern void sub_001334D0_gen(void);
 void sub_001334D0(void)
 {
