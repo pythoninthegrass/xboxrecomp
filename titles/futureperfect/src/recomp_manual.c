@@ -687,6 +687,16 @@ void sub_00151CF0(void)
 
 
 /* Frontend hover/click: after final menu layout, before action dispatch. */
+extern void sub_002C4D20_gen(void);
+void sub_002C4D20(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_character_draw(sub_002C4D20_gen);
+#else
+    sub_002C4D20_gen();
+#endif
+}
+
 extern void sub_002E4E90_gen(void);
 void sub_002E4E90(void)
 {
