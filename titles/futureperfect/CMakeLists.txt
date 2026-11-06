@@ -213,6 +213,9 @@ if(TSFP_PC_CONTROLS_DIR)
 endif()
 
 if(APPLE AND TSFP_NATIVE_DIR)
+    # Keep debug symbols, but remove interpreter-style lifted-code overhead.
+    # Protected MMIO is decoded by the scalar ARM64 fault handler.
+    target_compile_options(${PROJECT_NAME} PRIVATE -O2 -fno-vectorize -fno-slp-vectorize)
     enable_testing()
     set(TSFP_TESTS "${TSFP_NATIVE_DIR}/../../tests")
     add_executable(tsfp_native_platform_test "${TSFP_TESTS}/native_platform.c")

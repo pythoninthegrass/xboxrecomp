@@ -1150,6 +1150,21 @@ void xbox_Nv2aFlipGateArm(void)
         return;                                         /* no vblank has ever come */
     if (!g_flip_gate_event)
         return;
+#ifdef __APPLE__
+    /* A cinematic may already have waited for this vblank inside the title.
+     * Interpolation must not add another full tick and halve its simulation.
+     * A cheap frame still waits normally, lending time for its midpoint. */
+    static LONGLONG native_previous_gate;
+    LARGE_INTEGER native_now;
+    QueryPerformanceCounter(&native_now);
+    if (g_flip_gate_idle && native_previous_gate && g_flip_gate_period &&
+        native_now.QuadPart - native_previous_gate >= g_flip_gate_period * 9 / 10 &&
+        WaitForSingleObject(g_flip_gate_event, 0) == WAIT_OBJECT_0) {
+        native_previous_gate = native_now.QuadPart;
+        return;
+    }
+    native_previous_gate = g_flip_gate_last_vblank + g_flip_gate_period;
+#endif
     if (g_flip_gate_strict)
         ResetEvent(g_flip_gate_event);                  /* the next vblank, not a past one */
     /* Only while one Swap a vblank is the cadence: the release is then
