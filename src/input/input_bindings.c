@@ -1024,7 +1024,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     AcquireSRWLockShared(&g_pc_bindings_lock);
     if (port == 0 && c->device == DEV_KEYBOARD) {
         for (int other=1;other<PORTS;other++)
-            if (g_ctl[other].device==DEV_PAD && g_ctl[other].pad>=0)
+            if (g_ctl[other].device==DEV_PAD && g_ctl[other].pad>=0 && !(g_players_auto_ports&(1u<<other)))
                 reserved_pads |= 1u << g_ctl[other].pad;
     }
     ReleaseSRWLockShared(&g_pc_bindings_lock);
@@ -1035,7 +1035,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     if(port==0 && c->device==DEV_KEYBOARD) {
         AcquireSRWLockShared(&g_pc_bindings_lock);
         for(int other=1;other<PORTS;other++)
-            if(g_ctl[other].device==DEV_PAD && g_ctl[other].pad>=0)
+            if(g_ctl[other].device==DEV_PAD && g_ctl[other].pad>=0 && !(g_players_auto_ports&(1u<<other)))
                 reserved_pads |= 1u<<g_ctl[other].pad;
         ReleaseSRWLockShared(&g_pc_bindings_lock);
         for(int slot=0;slot<RECOMP_PAD_SLOTS;slot++)
@@ -1183,6 +1183,9 @@ unsigned recomp_bindings_present_mask(void)
     if (mask && now < next)
         return mask;
     next = now + 250;
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+    pc_settings_players_detect();
+#endif
     mask = 0;
     for (i = 0; i < PORTS; i++) {
         Controller *c = &g_ctl[i];
