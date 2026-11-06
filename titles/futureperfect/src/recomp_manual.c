@@ -119,6 +119,9 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 #include "pc_network_guest.inc"
 extern RECOMP_MANUAL_TLS uint32_t g_ecx;
 #include "pc_network_bots_guest.inc"
+extern void sub_000BB6C0_gen(void);
+void sub_000BB6C0(void)
+{ pc_network_bots_guest_damage(sub_000BB6C0_gen); }
 extern void sub_00356490_gen(void);
 void sub_00356490(void)
 { pc_network_bots_guest_config(sub_00356490_gen); }
