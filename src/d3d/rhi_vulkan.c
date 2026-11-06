@@ -810,11 +810,13 @@ static int recreate_swapchain(void)
     return create_swapchain(SC.extent.width, SC.extent.height);
 }
 
+static VkResult g_acquire_result;
 static int acquire(void)
 {
     VkResult r;
     int tries;
 
+    g_acquire_result=VK_NOT_READY;
     if (SC.acquired)
         return 1;
     if (!SC.sc)
@@ -827,6 +829,7 @@ static int acquire(void)
         cmd();
         r = vkAcquireNextImageKHR(V.dev, SC.sc, UINT64_MAX, V.frames[V.fi].acquire,
                                   VK_NULL_HANDLE, &SC.index);
+        g_acquire_result=r;
         if (r == VK_ERROR_OUT_OF_DATE_KHR) {
             SC.stale = 1;
             continue;
@@ -1652,7 +1655,7 @@ static int32_t v_present(uint32_t interval)
             if (V.recording)
                 submit(VK_NULL_HANDLE);
             next_frame();
-            return 0;
+            return g_acquire_result<0 && g_acquire_result!=VK_ERROR_OUT_OF_DATE_KHR ? (int32_t)g_acquire_result : 1; /* no presentation accepted */
         }
         end_rendering();
         memset(&black, 0, sizeof black);
@@ -1674,7 +1677,12 @@ static int32_t v_present(uint32_t interval)
         SC.stale = 1;
     SC.acquired = 0;
     next_frame();
-    return 0;
+    /* SUBOPTIMAL still presents; OUT_OF_DATE rejects this image and retries
+     * after recreation. Propagate other errors instead of counting a frame. */
+    if(r==VK_SUCCESS || r==VK_SUBOPTIMAL_KHR)return 0;
+    if(r==VK_ERROR_OUT_OF_DATE_KHR)return 1;
+    fprintf(stderr,"[RHI] vulkan: presentation failed: %d\n",(int)r);
+    return r<0 ? (int32_t)r : 1;
 }
 
 static int v_image_readback(RhiImage *img, uint32_t sub, void *dst, uint32_t dst_pitch);

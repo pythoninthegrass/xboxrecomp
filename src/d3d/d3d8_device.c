@@ -799,7 +799,7 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
     DWORD now = GetTickCount();
     if (last_tick == 0) last_tick = now;
     if (now - last_tick >= 2000) {
-        fprintf(stderr, "  [D3D] %.1fs: %u present (%.1f fps), %u begin, %u end, "
+        fprintf(stderr, "  [D3D] %.1fs: %u present calls (%.1f calls/s), %u begin, %u end, "
                 "%u clear, %u draw, %u xform, %u rs, %u tex\n",
                 (now - last_tick) / 1000.0, frame_count,
                 frame_count * 1000.0 / (now - last_tick),
@@ -819,7 +819,7 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
     rhi_pump_events();
 
     present_resolve();
-    return (HRESULT)rhi_present(1);
+    return (HRESULT)rhi_present_kind(1,RHI_PRESENT_GUEST);
 }
 
 static HRESULT __stdcall dev_GetBackBuffer(IDirect3DDevice8 *self, INT iBackBuffer, DWORD Type, IDirect3DSurface8 **ppSurface)
@@ -2344,7 +2344,7 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
     rhi_pump_events();
 
     present_resolve();
-    return (HRESULT)rhi_present(g_present_interval);
+    return (HRESULT)rhi_present_kind(g_present_interval,RHI_PRESENT_GUEST);
 }
 
 /* ================================================================
@@ -2438,13 +2438,13 @@ BOOL xbox_D3D8InterpBegin(void)
 
 /* The resolve and the present, without counting a frame: the title drew
  * none. */
-void xbox_D3D8InterpPresent(void)
+BOOL xbox_D3D8InterpPresent(void)
 {
     if (!g_interp_on || g_interp_depth.failed)
-        return;
+        return FALSE;
     follow_vrr();
     present_scene();
-    rhi_present(g_present_interval);
+    return rhi_present_kind(g_present_interval,RHI_PRESENT_INTERPOLATED)==0;
 }
 
 void xbox_D3D8InterpEnd(void)

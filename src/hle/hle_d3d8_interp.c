@@ -724,7 +724,7 @@ static void set_draw_registers(int i, double a)
 
 /* ---------------------------------------------------------- drawing it */
 
-static void redraw(double a)
+static int redraw(double a)
 {
     InterpList *cur = &g_list[g_cur];
     const float *c = hle_d3d8_interp_constants();
@@ -739,7 +739,7 @@ static void redraw(double a)
             fflush(stderr);
         }
         g_on = 0;
-        return;
+        return 0;
     }
     hle_d3d8_interp_rec = 0;                     /* what is drawn now is not kept */
     for (off = 0; off < cur->len; ) {
@@ -765,18 +765,17 @@ static void redraw(double a)
         d3d8_vsh_set_constant(g_aff_first, c + g_aff_first * 4, g_aff_count);
     hle_d3d8_overlay_redraw();
     {
-        /* The moment it goes to the screen. A present can then block --
-         * a Vulkan swap chain waits there for an image to draw the next
-         * frame into -- but this one is already on its way. */
+        /* CPU submission-start estimate for scheduling, not scanout time.
+         * The backend's result below decides whether to count this attempt. */
         LARGE_INTEGER t;
         QueryPerformanceCounter(&t);
         g_presented_at = t.QuadPart;
     }
-    xbox_D3D8InterpPresent();
+    int presented=xbox_D3D8InterpPresent();
     xbox_D3D8InterpEnd();
     hle_d3d8_interp_rec = rec;
-    g_presents_total++;
-    g_shown++;
+    if(presented) {g_presents_total++;g_shown++;}
+    return presented;
 }
 
 /* The gate's wait, lent (xbox_Nv2aFlipGateSetIdle). In-between frame k of
@@ -821,8 +820,14 @@ static long long gate_idle(long long now, long long release)
         if (alpha > 1.0)
             alpha = 1.0;
         QueryPerformanceCounter(&a);
-        redraw(alpha);
+        int presented=redraw(alpha);
         QueryPerformanceCounter(&b);
+        if(!presented) {
+            /* Never use an old timestamp after Begin/present failure or spin
+             * retrying a lost/minimized surface during this guest frame. */
+            g_slot=g_multiple;
+            return 0;
+        }
         /* What a redraw costs up to its present, followed slowly, and never
          * taken as more than a quarter of the period: a frame that stalled
          * (a pipeline built, a page fault) is not what the next one costs. */
@@ -837,7 +842,7 @@ static long long gate_idle(long long now, long long release)
         g_redraws++;
         if (ms > g_redraw_ms_max)
             g_redraw_ms_max = ms;
-        /* How far from its moment it reached the screen. */
+        /* How far CPU submission start was from its scheduled moment. */
         ms = fabs((double)(g_presented_at - due)) * 1000.0 / (double)g_qpf;
         g_off_ms_sum += ms;
         if (ms > g_off_ms_max)
@@ -963,10 +968,10 @@ void hle_d3d8_interp_report(void)
 
     if (!g_multiple)
         return;
-    fprintf(stderr, "[INTERP] %dx: %lu frames, %lu in-between shown, %lu late; held "
+    fprintf(stderr, "[INTERP] %dx: %lu frames, %lu in-between accepted, %lu late; held "
             "%lu (%lu no 3D, %lu matched too little, %lu cut, %lu other); matched "
-            "%.0f%% of 3D primitives; redraw %.2f ms average, %.2f worst; shown "
-            "%.2f ms from its moment on average, %.2f worst; blend %.2f average%s\n",
+            "%.0f%% of 3D primitives; redraw %.2f ms average, %.2f worst; submission start "
+            "%.2f ms from schedule on average, %.2f worst; blend %.2f average%s\n",
             g_multiple, g_frames, g_shown, g_late, held, g_held_2d, g_held_match,
             g_held_cut, g_held_other,
             g_matched_frames ? g_matched_sum * 100.0 / (double)g_matched_frames : 0.0,

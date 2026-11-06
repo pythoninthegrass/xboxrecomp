@@ -1282,7 +1282,7 @@ void          xbox_D3D8ScreenCopyShutdown(void);
    waits to be shown; Present shows it without counting a frame; End puts
    the scene target back. FALSE from Begin: no second image, draw nothing. */
 BOOL xbox_D3D8InterpBegin(void);
-void xbox_D3D8InterpPresent(void);
+BOOL xbox_D3D8InterpPresent(void);
 void xbox_D3D8InterpEnd(void);
 
 /* Which vertex shader constants hold the transforms frame interpolation

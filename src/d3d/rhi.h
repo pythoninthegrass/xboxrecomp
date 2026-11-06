@@ -343,9 +343,12 @@ RhiView    *rhi_swapchain_view(void);
 /* Follow the window: new back buffers of this size. 0 on success. */
 int         rhi_swapchain_resize(uint32_t width, uint32_t height);
 /* Show the back buffer. interval 0 must not block (vulkan-backend.md,
- * section 4.10). Returns the backend's status, 0 or positive on success
- * (D3D11 passes its HRESULT through). */
+ * section 4.10). D3D11 preserves its HRESULT. */
+/* 0: API accepted presentation; positive: skipped/status; negative: failure.
+ * API acceptance does not establish GPU completion or display scanout. */
 int32_t     rhi_present(uint32_t interval);
+enum { RHI_PRESENT_OTHER, RHI_PRESENT_GUEST, RHI_PRESENT_INTERPOLATED };
+int32_t     rhi_present_kind(uint32_t interval, uint32_t kind);
 /* The swap chain's back buffer as the next present will show it, as RGBA8
  * rows at dst_pitch, whatever the swap chain's own format (a BGRA swap
  * chain is swizzled on the way). dst NULL only reports the size. 0 on

@@ -8,6 +8,8 @@
  */
 
 #include "rhi_backend.h"
+#include "graphics/present_metrics.h"
+#include <time.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -155,7 +157,27 @@ void     rhi_device_destroy(void)                      { if (g_rhi) g_rhi->devic
 int      rhi_device_ready(void)                        { return g_rhi && g_rhi->device_ready(); }
 RhiView *rhi_swapchain_view(void)                      { return g_rhi ? g_rhi->swapchain_view() : NULL; }
 int      rhi_swapchain_resize(uint32_t w, uint32_t h)  { return g_rhi ? g_rhi->swapchain_resize(w, h) : -1; }
-int32_t  rhi_present(uint32_t interval)                { return g_rhi ? g_rhi->present(interval) : -1; }
+static TsfpPresentMetrics g_present_metrics;
+static uint64_t present_clock_ns(void)
+{
+#if defined(_WIN32)
+    LARGE_INTEGER now, frequency;
+    QueryPerformanceCounter(&now);QueryPerformanceFrequency(&frequency);
+    return (uint64_t)((double)now.QuadPart * 1e9 / (double)frequency.QuadPart);
+#else
+    struct timespec now;
+    if(clock_gettime(CLOCK_MONOTONIC,&now)!=0)return 0;
+    return (uint64_t)now.tv_sec*1000000000u+(uint64_t)now.tv_nsec;
+#endif
+}
+int32_t rhi_present_kind(uint32_t interval, uint32_t kind)
+{
+    uint64_t start=present_clock_ns();
+    int32_t result=g_rhi ? g_rhi->present(interval) : -1;
+    tsfp_present_record(&g_present_metrics,rhi_backend_name(),kind,result,start,present_clock_ns());
+    return result;
+}
+int32_t rhi_present(uint32_t interval) {return rhi_present_kind(interval,RHI_PRESENT_OTHER);}
 int      rhi_swapchain_readback(void *dst, uint32_t pitch, uint32_t *w, uint32_t *h)
 {
     return g_rhi ? g_rhi->swapchain_readback(dst, pitch, w, h) : -1;
