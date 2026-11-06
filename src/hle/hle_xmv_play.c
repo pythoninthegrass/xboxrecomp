@@ -30,6 +30,9 @@
 #include "xmv_demux.h"
 #include "xmv_decode.h"
 #include "d3d8_movie.h"
+#ifdef TSFP_PC_CONTROLS
+#include "pc_cutscene.h"
+#endif
 
 /* hle_d3d8.c: where the playing movie's surface keeps its texels, so a frame
  * that never samples them can have the picture drawn over it. 0 when none. */
@@ -48,6 +51,7 @@ typedef struct {
     xmv_video_decoder *dec;
     uint8_t *bgra;
     uint32_t w, h;
+    int      fill_width;
     int      started;
     LARGE_INTEGER start;
 
@@ -247,6 +251,9 @@ int xmv_play_open(uint32_t source_va, uint32_t *width, uint32_t *height)
         xmv_close(&m->dm);
         return 0;
     }
+#ifdef TSFP_PC_CONTROLS
+    m->fill_width = pc_cutscene_movie_fill_width(path);
+#endif
     m->w = m->dm.width;
     m->h = m->dm.height;
     m->bgra = (uint8_t *)calloc((size_t)m->w * m->h, 4);
@@ -421,7 +428,7 @@ uint32_t xmv_play_update(int handle, uint32_t surface_va, uint32_t *pts_ms)
         if (pts_ms)
             *pts_ms = shown_pts;
         write_surface(m, surface_va);
-        d3d8_movie_set_frame(m->bgra, m->w, m->h);
+        d3d8_movie_set_frame(m->bgra, m->w, m->h, m->fill_width);
         m->shown++;
         return 1u;
     }

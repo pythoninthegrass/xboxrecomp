@@ -22,7 +22,19 @@ extern "C" {
 
 /* Hands over a new frame: BGRA, top row first, width*height*4 bytes. Copied
  * before it returns. */
-void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height);
+void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height,
+                            int fill_width);
+
+/* Rect in clip space. Cinematic fill preserves the source's display aspect;
+ * excess height is clipped by the output viewport. Other movies fit intact. */
+static inline void d3d8_movie_rectangle(unsigned width, unsigned height,
+                                        int fill_width, float *w, float *h)
+{
+    float aspect = height ? (float)width / height : 4.f / 3.f;
+    const float source = 4.f / 3.f; /* Xbox non-square-pixel display aspect. */
+    *w = !fill_width && aspect > source ? 2.f * source / aspect : 2.f;
+    *h = fill_width || aspect < source ? 2.f * aspect / source : 2.f;
+}
 
 /* Draws the last frame handed over across the back buffer. Does nothing if
  * there is none. */

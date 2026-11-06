@@ -34,6 +34,7 @@ static struct {
     uint8_t        *frame;       /* latest frame, BGRA */
     uint32_t        frame_w, frame_h;
     int             dirty;       /* not uploaded yet */
+    int             fill_width;  /* title-selected cinematic presentation */
     int             have;        /* a frame to draw */
 } g = { 0, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, SRWLOCK_INIT };
 
@@ -171,7 +172,8 @@ static int movie_texture(uint32_t w, uint32_t h)
     return 1;
 }
 
-void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height)
+void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height,
+                            int fill_width)
 {
     size_t bytes = (size_t)width * height * 4u;
 
@@ -187,6 +189,7 @@ void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height)
     if (g.frame) {
         memcpy(g.frame, bgra, bytes);
         g.dirty = g.have = 1;
+        g.fill_width = fill_width;
     }
     ReleaseSRWLockExclusive(&g.lock);
 }
@@ -206,7 +209,7 @@ void d3d8_movie_draw(void)
     UINT bw = d3d8_GetBackBufferWidth(), bh = d3d8_GetBackBufferHeight();
     MovieConstants c;
     float blend_factor[4] = { 1, 1, 1, 1 }, black[4] = { 0, 0, 0, 1 };
-    float fa, ba;
+    int fill_width;
     uint32_t w, h;
     void *mapped;
 
@@ -216,6 +219,7 @@ void d3d8_movie_draw(void)
     AcquireSRWLockExclusive(&g.lock);
     w = g.frame_w;
     h = g.frame_h;
+    fill_width = g.fill_width;
     if (!g.have || !g.frame || !movie_texture(w, h)) {
         ReleaseSRWLockExclusive(&g.lock);
         return;
@@ -228,17 +232,13 @@ void d3d8_movie_draw(void)
 
     rhi_output_save(&saved);
 
-    /* The whole screen goes black first, then the picture at its own aspect:
-     * a 720x576 PAL movie and a 640x480 one both fill a 4:3 window, and
-     * neither is stretched to a wide one. Xbox movies are encoded for a 4:3
-     * screen whatever their pixel size, so 4:3 is the aspect used. */
+    /* Fit logos intact; fill cinematic movies across the output width with
+     * a proportional vertical crop. This also removes their encoded matte
+     * as the display becomes wider, without changing texture coordinates. */
     rhi_clear_color(rtv, black);
     if (!(mapped = rhi_buffer_map(g.cb, RHI_MAP_WRITE_DISCARD)))
         goto restore;
-    fa = 4.0f / 3.0f;
-    ba = (float)bw / (float)bh;
-    c.w = ba > fa ? 2.0f * fa / ba : 2.0f;
-    c.h = ba > fa ? 2.0f : 2.0f * ba / fa;
+    d3d8_movie_rectangle(bw, bh, fill_width, &c.w, &c.h);
     c.x = -c.w / 2.0f;
     c.y = c.h / 2.0f;
     c.tex_w = (float)w;
