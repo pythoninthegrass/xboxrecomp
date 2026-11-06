@@ -10,3 +10,6 @@ dev = ["pytest>=9.1.1,<10", "pytest-xdist>=3.8,<4"]
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["tests/support"]
