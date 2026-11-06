@@ -705,6 +705,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
      * silently inert, and the one diagnostic that tells a hang from slowness
      * does nothing while appearing to be set. */
     xbox_WatchdogStart();
+#ifdef TSFP_PC_CONTROLS
+    pc_crash_watchdog_start();
+#endif
 
     /* Step 7: Call the recompiled entry point */
     printf("\nStarting game...\n");
@@ -715,6 +718,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     printf("\nGame returned. Cleaning up...\n");
 
     /* Cleanup */
+#ifdef TSFP_PC_CONTROLS
+    pc_crash_watchdog_stop();
+#endif
     xbox_kernel_shutdown();
     xbox_MemoryLayoutShutdown();
     free(xbe_data);
