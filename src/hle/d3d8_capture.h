@@ -108,7 +108,8 @@ extern "C" {
  * filled from memory and the stage palettes P8 textures are expanded with. */
 /* Version 8 carries per-channel colour-clear flags; older captures still read. */
 /* Version 9 adds lossless host pixel constant overrides. */
-#define D3D8CAP_VERSION      9u
+/* Version 10 records the per-view AO camera snapshot. */
+#define D3D8CAP_VERSION      10u
 /* The oldest version the reader still accepts. A bump that only adds chunk
  * kinds leaves an older file a valid newer one that happens not to contain
  * them (version 6 added three; version 5 one), so it leaves this alone. A
@@ -156,7 +157,8 @@ enum {
     D3D8CAP_CUBE_LEVEL          = 29, /* D3D8CapCubeLevel + bytes (version 7) */
     D3D8CAP_PALETTE             = 30, /* D3D8CapPalette (version 7) */
     D3D8CAP_PS_FLOAT_CONSTANT   = 31, /* D3D8CapPsFloatConstant (version 9) */
-    D3D8CAP_CHUNK_KINDS         = 32  /* one past the last, for per-kind counters */
+    D3D8CAP_AMBIENT_OCCLUSION   = 32, /* float projection[16] (version 10) */
+    D3D8CAP_CHUNK_KINDS         = 33  /* one past the last, for per-kind counters */
 };
 
 typedef struct {

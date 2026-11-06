@@ -1258,6 +1258,8 @@ void host_AmbientOcclusion(const float projection[16])
     }
     if(hle_d3d8_interp_rec)
         hle_d3d8_interp_op(op_ambient_occlusion,projection,16*sizeof(float));
+    if(g_cap)
+        chunk(D3D8CAP_AMBIENT_OCCLUSION, projection, 16*sizeof(float), NULL, 0, NULL, 0);
     xbox_D3D8AmbientOcclusion(projection);
 }
 

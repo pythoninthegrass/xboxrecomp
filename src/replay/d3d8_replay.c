@@ -1132,6 +1132,17 @@ static void replay_chunk(Replay *r, const D3D8CapChunk *c)
         r->dev->lpVtbl->SetViewport(r->dev, &vp);
         break;
     }
+    case D3D8CAP_AMBIENT_OCCLUSION: {
+        extern void xbox_D3D8AmbientOcclusion(const float *projection);
+        float projection[16];
+        if(c->bytes != sizeof projection) {
+            r->malformed++;
+            break;
+        }
+        memcpy(projection,c->data,sizeof projection);
+        xbox_D3D8AmbientOcclusion(projection);
+        break;
+    }
     case D3D8CAP_TWOD_PLACEMENT: {
         const D3D8CapTwoDPlacement *p = c->data;
         int placement, k;
