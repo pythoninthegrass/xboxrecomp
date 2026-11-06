@@ -94,12 +94,12 @@ def _find_cc():
 
 class LogicAboveBelowTest(unittest.TestCase):
     def setUp(self):
-        if not _find_cc():
-            self.skipTest("no C compiler on PATH")
         self.ops = [Operand(type="reg", reg="eax"),
                     Operand(type="reg", reg="eax")]
 
     def _sweep(self, setter, jcc, cond):
+        if not _find_cc():
+            self.skipTest("no C compiler on PATH")
         src = (SOURCE
                .replace("OP", C_OP[setter])
                .replace("COND", cond)
@@ -168,14 +168,14 @@ class LogicAboveBelowTest(unittest.TestCase):
         to its write, rather than re-reading the destination at the branch.
         """
         self.assertEqual(
-            _make_condition("jbe", "sub", self.ops)[0], "(_cf || _fa == 0)")
+            _make_condition("jbe", "sub", self.ops)[0], "((_cf) || (!(_fa)))")
         self.assertEqual(
-            _make_condition("ja", "sub", self.ops)[0], "(!_cf && _fa != 0)")
+            _make_condition("ja", "sub", self.ops)[0], "((!_cf) && (!(!(_fa))))")
         for setter in SETTERS:
             self.assertEqual(
-                _make_condition("jbe", setter, self.ops)[0], "(_fa == 0)")
+                _make_condition("jbe", setter, self.ops)[0], "!(_fa)")
             self.assertEqual(
-                _make_condition("ja", setter, self.ops)[0], "(_fa != 0)")
+                _make_condition("ja", setter, self.ops)[0], "!(!(_fa))")
 
 
 if __name__ == "__main__":
