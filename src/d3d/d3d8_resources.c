@@ -1406,7 +1406,8 @@ IDirect3DSurface8 *d3d8_surface_create(RhiImage *image,
 
     memset(&vd, 0, sizeof(vd));
     vd.format = host;
-    vd.dim = is_array ? RHI_VIEW_DIM_2D_ARRAY : RHI_VIEW_DIM_2D;
+    vd.dim = id.samples > 1 && !is_array ? RHI_VIEW_DIM_2D_MS :
+        (is_array ? RHI_VIEW_DIM_2D_ARRAY : RHI_VIEW_DIM_2D);
     vd.base_mip = mip_slice;
     vd.base_layer = array_slice;
     vd.layer_count = 1;

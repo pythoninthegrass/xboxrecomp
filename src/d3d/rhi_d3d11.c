@@ -781,7 +781,7 @@ static RhiView *d_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *d
     if (typeless && !d) {
         memset(&whole, 0, sizeof whole);
         whole.format = img->desc.format;
-        whole.dim = RHI_VIEW_DIM_2D;
+        whole.dim = img->desc.samples > 1 ? RHI_VIEW_DIM_2D_MS : RHI_VIEW_DIM_2D;
         whole.mip_count = img->desc.mip_levels ? img->desc.mip_levels : 1;
         whole.layer_count = 1;
         d = &whole;
