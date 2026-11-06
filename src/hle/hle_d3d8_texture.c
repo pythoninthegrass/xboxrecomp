@@ -42,7 +42,7 @@
 #include <string.h>
 #include "hle.h"
 
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
 #include "d3d8_xbox.h"
 #include "d3d8_internal.h"
 #include "hle_d3d8_record.h"
@@ -1363,7 +1363,7 @@ static void report(void)
 
 HLE_ORIGINAL(D3DDevice_SetTexture);
 
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
 /* A frame can sample its own image before and after opaque geometry. The
  * old once-per-swap cache replayed the earlier background over the train.
  * Invalidate on a binding transition, while retaining a stable image for
@@ -1388,7 +1388,7 @@ HLE_EXPORT(D3DDevice_SetTexture)
 {
     static int seen;
     uint32_t stage = HLE_ARG(0);
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
     uint32_t texture = HLE_ARG(1);
 #endif
 
@@ -1401,7 +1401,7 @@ HLE_EXPORT(D3DDevice_SetTexture)
         HLE_RETURN(0x80004005u);
     }
     HLE_CALL_ORIGINAL(D3DDevice_SetTexture);
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
     /* Deferred (RECOMP_HLE_D3D8_DEFER), the host side runs when the frame is
      * executed, so the texels are read then -- as the NV2A reads them when it
      * reaches the draw, not when the title issued it. */
@@ -1416,7 +1416,7 @@ HLE_EXPORT(D3DDevice_SetTexture)
 #endif
 }
 
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
 /* One fresh pass per bind; no retained index or guest-content shortcut. */
 static texture_entry *bound_host_entry(IDirect3DTexture8 *host, int *framebuffer)
 {
@@ -1506,7 +1506,7 @@ static void shadow_set_texture(uint32_t stage, uint32_t texture)
  * hle_d3d8.c uses it for RECOMP_HLE_D3D8_SKIP_FULLSCREEN. */
 int hle_d3d8_stage0_is_framebuffer(void)
 {
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
     return g_stage0_framebuffer;
 #else
     return 0; /* No host framebuffer sampling on the POSIX renderer yet. */
@@ -1538,7 +1538,7 @@ HLE_ORIGINAL(D3DDevice_SetPalette);
 HLE_EXPORT(D3DDevice_SetPalette)
 {
     static int seen;
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
     uint32_t stage = HLE_ARG(0), palette_va = HLE_ARG(1);
 #endif
 
@@ -1554,7 +1554,7 @@ HLE_EXPORT(D3DDevice_SetPalette)
         return;
     }
     HLE_CALL_ORIGINAL(D3DDevice_SetPalette);
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
     {
         IDirect3DDevice8 *dev = hle_d3d8_shadow_device();
         uint32_t data;

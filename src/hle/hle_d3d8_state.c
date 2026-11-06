@@ -61,7 +61,7 @@ HLE_IMPORT_VAR(D3D_g_DeferredRenderState);
 HLE_IMPORT_VAR(D3D_g_ComplexRenderState);
 HLE_IMPORT_VAR(D3D_g_DeferredTextureState);
 
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
 #include "d3d8_xbox.h"
 #include "hle_d3d8_record.h"
 #include "pc_surface_bias.h"
