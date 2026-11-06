@@ -12,6 +12,7 @@ from .lifter import Lifter
 def classification_source():
     header=(Path(__file__).resolve().parents[2]/'templates/runtime/recomp_types.h').read_text()
     helper=re.search(r'static inline uint16_t recomp_fxam\(.*?\n}',header,re.S).group()
+    helper+='\n'+re.search(r'static inline uint32_t tsfp_guest_insert_bits\(.*?\n}',header,re.S).group()
     macros='\n'.join(line for line in header.splitlines() if line.startswith(('#define RECOMP_FCMP(', '#define RECOMP_FCMP_CC(', '#define SET_LO16(')))
     source='#include <stdint.h>\n#include <math.h>\n#include <string.h>\n'+helper+'\n'+macros+'''
 static double values[8];
