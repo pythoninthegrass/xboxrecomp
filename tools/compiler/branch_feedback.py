@@ -4,21 +4,6 @@ Observed flags and per-site targets accumulate across runs. Seed filtering is
 a separate output: a rejected candidate never erases its recorded observation.
 """
 
-# Direct-command imports share the repository's grouped helper paths.
-import sys as _layout_sys
-from pathlib import Path as _LayoutPath
-_layout_tools = _LayoutPath(__file__).resolve().parents[1]
-_layout_root = _layout_tools.parent
-if (_layout_tools / 'project_paths.py').is_file():
-    _layout_sys.path.insert(0, str(_layout_tools))
-    from project_paths import configure as _configure_paths, source_file as repo_file
-    _configure_paths()
-else:
-    # Standalone source fixtures retain their original flat-folder behavior.
-    _layout_root = _LayoutPath(__file__).resolve().parents[1]
-    def repo_file(root, area, name):
-        return _LayoutPath(root) / area / name
-
 from bisect import bisect_right
 from collections import Counter
 from pathlib import Path
@@ -30,7 +15,7 @@ from generation_output import write_if_changed
 
 SEEN_RESOLVED, SEEN_UNRESOLVED = 1, 2
 FLAG_NAMES = {1: 'resolved', 2: 'unresolved', 3: 'both'}
-_PIPELINE = _layout_root / 'private/pipeline'
+_PIPELINE = Path(__file__).resolve().parents[2] / 'private/pipeline'
 DEFAULT_DB = str(_PIPELINE / 'recomp/icall_targets.json')
 DEFAULT_SITES_DB = str(_PIPELINE / 'recomp/icall_sites.json')
 FUNCTIONS_PATH = str(_PIPELINE / 'disasm/functions.json')

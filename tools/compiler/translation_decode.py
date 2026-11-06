@@ -5,21 +5,6 @@ linear streams; reachable decoding follows direct branches and fall-through,
 never guesses indirect destinations or follows calls outside the function.
 """
 
-# Direct-command imports share the repository's grouped helper paths.
-import sys as _layout_sys
-from pathlib import Path as _LayoutPath
-_layout_tools = _LayoutPath(__file__).resolve().parents[1]
-_layout_root = _layout_tools.parent
-if (_layout_tools / 'project_paths.py').is_file():
-    _layout_sys.path.insert(0, str(_layout_tools))
-    from project_paths import configure as _configure_paths, source_file as repo_file
-    _configure_paths()
-else:
-    # Standalone source fixtures retain their original flat-folder behavior.
-    _layout_root = _LayoutPath(__file__).resolve().parents[1]
-    def repo_file(root, area, name):
-        return _LayoutPath(root) / area / name
-
 from dataclasses import dataclass, field
 
 from capstone import CS_OP_IMM, CS_OP_MEM, CS_OP_REG

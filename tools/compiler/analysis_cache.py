@@ -4,21 +4,6 @@ A receipt proves that inputs, options, implementation and output bytes all match
 Malformed or missing receipts are cache misses, never analysis success.
 """
 
-# Direct-command imports share the repository's grouped helper paths.
-import sys as _layout_sys
-from pathlib import Path as _LayoutPath
-_layout_tools = _LayoutPath(__file__).resolve().parents[1]
-_layout_root = _layout_tools.parent
-if (_layout_tools / 'project_paths.py').is_file():
-    _layout_sys.path.insert(0, str(_layout_tools))
-    from project_paths import configure as _configure_paths, source_file as repo_file
-    _configure_paths()
-else:
-    # Standalone source fixtures retain their original flat-folder behavior.
-    _layout_root = _LayoutPath(__file__).resolve().parents[1]
-    def repo_file(root, area, name):
-        return _LayoutPath(root) / area / name
-
 from hashlib import file_digest, sha256
 import json
 from pathlib import Path, PurePosixPath

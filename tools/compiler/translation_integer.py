@@ -4,21 +4,6 @@ Inputs are sampled once at operand width. Results feed the existing translator
 snapshot interface; conditional-branch lowering remains a separate component.
 """
 
-# Direct-command imports share the repository's grouped helper paths.
-import sys as _layout_sys
-from pathlib import Path as _LayoutPath
-_layout_tools = _LayoutPath(__file__).resolve().parents[1]
-_layout_root = _layout_tools.parent
-if (_layout_tools / 'project_paths.py').is_file():
-    _layout_sys.path.insert(0, str(_layout_tools))
-    from project_paths import configure as _configure_paths, source_file as repo_file
-    _configure_paths()
-else:
-    # Standalone source fixtures retain their original flat-folder behavior.
-    _layout_root = _LayoutPath(__file__).resolve().parents[1]
-    def repo_file(root, area, name):
-        return _LayoutPath(root) / area / name
-
 from translation_operands import (_operand_width, _fmt_operand_read,
                                   _fmt_operand_write, _GENERAL, _PARTS)
 
