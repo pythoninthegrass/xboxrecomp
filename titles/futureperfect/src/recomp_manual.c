@@ -413,7 +413,7 @@ void sub_0001EFB0(void)
     int top = caller == 0x0006F322u || caller == 0x0013972Eu;
     int story = caller == 0x0006F322u || caller == 0x0006F34Bu;
     if (story || caller == 0x0013970Eu || caller == 0x0013972Eu) {
-        PcDisplayMode mode = pc_display_current();
+        PcDisplayMode mode = pc_display_effective();
         int y1 = (int32_t)FP_MEM32(frame + 8u);
         int y2 = (int32_t)FP_MEM32(frame + 16u);
         int height, full, adjusted, side, view_top;

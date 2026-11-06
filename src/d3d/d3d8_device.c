@@ -359,7 +359,7 @@ static BOOL two_d_squeeze(float *k_out, float *cx_out)
     if (!g_2d_squeeze || !g_device_state.height || g_cur_rt)
         return FALSE;
 #ifdef TSFP_PC_DISPLAY
-    if(pc_display_current().width) k=pc_display_hud_scale();
+    if(pc_display_effective().width) k=pc_display_hud_scale();
     else
 #endif
     k = ((float)g_device_state.width * 9.0f) /
@@ -379,7 +379,7 @@ static BOOL two_d_squeeze(float *k_out, float *cx_out)
 static float two_d_vertical_scale(void)
 {
 #ifdef TSFP_PC_DISPLAY
-    if(g_2d_squeeze && !g_cur_rt && pc_display_current().width)
+    if(g_2d_squeeze && !g_cur_rt && pc_display_effective().width)
         return pc_ui_scale_y(pc_display_hud_scale());
 #endif
     return 1.f;
@@ -1869,7 +1869,7 @@ static BOOL draw_extent(const void *vertices, UINT stride, UINT count,
     /* Noise/tint textures are not framebuffer copies, but their complete
      * canvas quad must cover the output just like a fade. A clipped menu
      * panel must still follow the proportional widget canvas. */
-    if(pc_display_current().width &&
+    if(pc_display_effective().width &&
        (!g_scissor_enabled || (g_scissor.left<=0 && g_scissor.top<=0 &&
         g_scissor.right>=(LONG)d3d8_GetGuestWidth()-1 &&
         g_scissor.bottom>=(LONG)d3d8_GetGuestHeight()-1)))
@@ -1988,7 +1988,7 @@ BOOL d3d8_draw_escapes_squeeze(const void *vertices, UINT stride, UINT count)
      * of the picture in the middle of it. */
     if (d3d8_display_policy()->centre_2d
 #ifdef TSFP_PC_DISPLAY
-        || pc_display_current().width
+        || pc_display_effective().width
 #endif
        )
         return ((hi - lo) >= (float)guest_w * 0.98f &&

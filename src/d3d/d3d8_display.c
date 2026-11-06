@@ -111,7 +111,7 @@ void xbox_D3D8SetWideFrames(BOOL wide)
 int d3d8_display_wide_now(void)
 {
     #ifdef TSFP_PC_DISPLAY
-    if(pc_display_current().width) return pc_display_wide_now();
+    if(pc_display_effective().width) return pc_display_wide_now();
 #endif
     return d3d8_display_policy()->widescreen && !g_title_narrow;
 }
@@ -147,7 +147,7 @@ void d3d8_display_output_shape(UINT scene_w, UINT scene_h,
                                UINT *shape_w, UINT *shape_h)
 {
 #ifdef TSFP_PC_DISPLAY
-    if(pc_display_current().width) { pc_display_shape(shape_w,shape_h); return; }
+    if(pc_display_effective().width) { pc_display_shape(shape_w,shape_h); return; }
 #endif
     if (d3d8_display_wide_now()) {
         /* The frame is anamorphic: the title squeezed a 16:9 view into
