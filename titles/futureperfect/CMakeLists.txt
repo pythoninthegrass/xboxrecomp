@@ -104,8 +104,15 @@ set(GAME_SOURCES
     # src/custom_renderer.c
 )
 
-if(APPLE AND TSFP_NATIVE_DIR)
-    list(APPEND GAME_SOURCES "${TSFP_NATIVE_DIR}/main.c" "${TSFP_NATIVE_DIR}/mmio.c")
+if(UNIX AND TSFP_NATIVE_DIR)
+    list(APPEND GAME_SOURCES "${TSFP_NATIVE_DIR}/main.c")
+    if(APPLE)
+        list(APPEND GAME_SOURCES "${TSFP_NATIVE_DIR}/mmio.c")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+        list(APPEND GAME_SOURCES "${TSFP_NATIVE_DIR}/mmio_linux.c")
+    else()
+        message(FATAL_ERROR "Unsupported native CPU/OS")
+    endif()
 elseif(WIN32)
     list(APPEND GAME_SOURCES src/main.c)
 else()
@@ -288,7 +295,7 @@ if(APPLE AND TSFP_NATIVE_DIR)
     add_test(NAME native_paths COMMAND tsfp_native_paths_test "${CMAKE_BINARY_DIR}/path-tests")
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(UNIX AND TSFP_NATIVE_DIR)
     target_sources(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/../interface/pc_display_menu.c")
     set_source_files_properties("${TSFP_NATIVE_DIR}/../interface/pc_display_menu.c" PROPERTIES
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/gen")
@@ -304,7 +311,7 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
     target_include_directories(tsfp_pc_discord_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(UNIX AND TSFP_NATIVE_DIR)
     set_property(SOURCE "${TSFP_NATIVE_DIR}/../interface/pc_display_menu.c" APPEND PROPERTY
         COMPILE_DEFINITIONS TSFP_PC_DISCORD)
 endif()
@@ -320,4 +327,21 @@ if(APPLE AND TSFP_NATIVE_DIR)
         TSFP_ONLINE_MANIFEST="${CMAKE_BINARY_DIR}/generated/network-identity.json")
     target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/generated")
     target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3 "-framework Cocoa")
+endif()
+
+# Linux uses the same title, HLE, display, input and Vulkan frontend.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TSFP_NATIVE_DIR)
+    target_compile_options(${PROJECT_NAME} PRIVATE -O2 -fno-vectorize -fno-slp-vectorize)
+    target_link_options(${PROJECT_NAME} PRIVATE -no-pie)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_NATIVE_DIR}/../network/pc_network.c" "${TSFP_NATIVE_DIR}/online_linux.c")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE TSFP_NATIVE_NETWORK
+        TSFP_ONLINE_SOURCE_ROOT="${TSFP_NATIVE_DIR}/../.."
+        TSFP_ONLINE_MANIFEST="${CMAKE_BINARY_DIR}/generated/network-identity.json")
+    target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/generated")
+    target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
+    enable_testing()
+    add_executable(tsfp_native_mmio_test "${TSFP_NATIVE_DIR}/../../tests/gameplay/native_mmio_linux.c" "${TSFP_NATIVE_DIR}/mmio_linux.c")
+    target_include_directories(tsfp_native_mmio_test PRIVATE "${TSFP_NATIVE_DIR}" "${XBOXRECOMP_DIR}/include")
+    target_link_libraries(tsfp_native_mmio_test PRIVATE platform)
+    add_test(NAME native_mmio_linux COMMAND tsfp_native_mmio_test)
 endif()

@@ -55,18 +55,25 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
     target_link_libraries(xbox_input PUBLIC shell32)
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(UNIX AND TSFP_NATIVE_DIR)
     # Compile the same portable input model used by the Windows adapter.
     target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c"
                                       "${TSFP_NATIVE_DIR}/../input/pc_input.c"
                                       "${TSFP_NATIVE_DIR}/config_files.c"
-                                      "${TSFP_NATIVE_DIR}/text_bitmap_macos.m"
-                                      "${TSFP_NATIVE_DIR}/settings_macos.m"
                                       "${TSFP_NATIVE_DIR}/../input/pc_prompts.c"
                                       "${TSFP_NATIVE_DIR}/../diagnostics/pc_debug.c")
-    enable_language(OBJC)
-    set_source_files_properties("${TSFP_NATIVE_DIR}/settings_macos.m" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    target_link_libraries(xbox_input PUBLIC "-framework Cocoa" "-framework CoreText")
+    if(APPLE)
+        enable_language(OBJC)
+        target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/text_bitmap_macos.m" "${TSFP_NATIVE_DIR}/settings_macos.m")
+        set_source_files_properties("${TSFP_NATIVE_DIR}/settings_macos.m" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+        target_link_libraries(xbox_input PUBLIC "-framework Cocoa" "-framework CoreText")
+    else()
+        find_package(Freetype REQUIRED)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+        target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/text_bitmap_linux.c" "${TSFP_NATIVE_DIR}/settings_linux.c")
+        target_link_libraries(xbox_input PUBLIC Freetype::Freetype PkgConfig::FONTCONFIG)
+    endif()
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/..")
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}")
     target_compile_definitions(xbox_input PRIVATE TSFP_NATIVE_INPUT)
@@ -80,9 +87,13 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
                                       "${TSFP_PC_CONTROLS_DIR}/network/pc_discord_model.c")
 endif()
 
-if(APPLE AND TSFP_NATIVE_DIR)
+if(UNIX AND TSFP_NATIVE_DIR)
     target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/../network/pc_discord.c"
         "${TSFP_NATIVE_DIR}/../network/pc_discord_model.c" "${TSFP_NATIVE_DIR}/crash_posix.c")
-    target_link_libraries(xbox_input PUBLIC "-framework CoreGraphics" "-framework CoreFoundation")
+    if(APPLE)
+        target_link_libraries(xbox_input PUBLIC "-framework CoreGraphics" "-framework CoreFoundation")
+    else()
+        target_link_libraries(xbox_input PUBLIC OpenSSL::Crypto ${CMAKE_DL_LIBS})
+    endif()
 endif()
 
