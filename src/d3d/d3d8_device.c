@@ -840,7 +840,7 @@ static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3
 
     /* Clear the currently bound targets. With no depth surface bound there
      * is no depth to clear (SetRenderTarget). */
-    RhiView *rtv = g_cur_rt ? g_cur_rt->rtv : g_device_state.rhi_default_rtv;
+    RhiView *rtv = g_cur_rt ? d3d8_surface_draw_view(g_cur_rt) : g_device_state.rhi_default_rtv;
     RhiView *dsv = draw_depth_view(g_cur_ds);
 
     if ((Flags & (D3DCLEAR_TARGET | D3DCLEAR_CHANNEL_MASK)) && rtv) {
@@ -1657,6 +1657,20 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
     }
     dsv = draw_depth_view(ds);
     if(ds && !dsv)return E_FAIL;
+    RhiImageDesc color_desc,depth_desc;
+    rhi_image_get_desc(rt?rt->image:g_device_state.rhi_scene_image,&color_desc);
+    unsigned samples=color_desc.samples?color_desc.samples:1;
+    if(dsv){
+        rhi_image_get_desc(rhi_view_image(dsv),&depth_desc);
+        samples=depth_desc.samples?depth_desc.samples:1;
+    }
+    /* Never submit mismatched attachments. Single-sample guest color textures
+     * can acquire a companion matching their persistent depth surface. */
+    if((!rt || color_desc.samples>1) && samples!=(color_desc.samples?color_desc.samples:1))return E_INVALIDARG;
+    if(!d3d8_surface_msaa_resolve(g_cur_rt))return E_FAIL;
+    rtv=rt ? (color_desc.samples>1 ? rt->rtv : d3d8_surface_msaa_prepare(rt,samples))
+           : g_device_state.rhi_default_rtv;
+    if(!rtv)return E_FAIL;
     if (rt) IDirect3DSurface8_AddRef(pRenderTarget);
     if (ds) IDirect3DSurface8_AddRef(pZStencilSurface);
     if (g_cur_rt) IDirect3DSurface8_Release(&g_cur_rt->iface);
@@ -1664,7 +1678,6 @@ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *self, IDirect3DSu
     g_cur_rt = rt;
     g_cur_ds = ds;
 
-    rtv = rt ? rt->rtv : g_device_state.rhi_default_rtv;
     rhi_set_render_target(rtv, dsv);
     rebind_stage_srvs(rt ? rt->image : NULL);
     return S_OK;
@@ -1689,6 +1702,7 @@ static void prepare_feedback(void)
         }
     }
     if (!mask) return;
+    if(!d3d8_surface_msaa_resolve(g_cur_rt))return;
     if (g_feedback_copy) {
         D3D8Texture *copy = (D3D8Texture *)g_feedback_copy;
         if (copy->width != w || copy->height != h || copy->d3d8_format != fmt) {
@@ -2385,7 +2399,7 @@ static void interp_target_swap(void)
     g_interp_resolved = resolved;
     g_interp_rtv = rtv;
     g_interp_srv = srv;
-    rhi_set_render_target(g_cur_rt ? g_cur_rt->rtv : s->rhi_default_rtv, draw_depth_view(g_cur_ds));
+    rhi_set_render_target(g_cur_rt ? d3d8_surface_draw_view(g_cur_rt) : s->rhi_default_rtv, draw_depth_view(g_cur_ds));
 }
 
 BOOL xbox_D3D8InterpCanPredict(void)

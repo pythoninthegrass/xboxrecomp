@@ -1171,6 +1171,11 @@ int d3d8_surface_msaa_resolve(D3D8Surface *sf)
 {
     return !sf || !sf->msaa_active || !sf->msaa_color || !sf->msaa_color->image || tsfp_msaa_color_resolve(sf->msaa_color);
 }
+RhiView *d3d8_surface_draw_view(D3D8Surface *sf)
+{
+    if(!sf)return NULL;
+    return sf->msaa_active && sf->msaa_color ? sf->msaa_color->rtv : sf->rtv;
+}
 RhiView *d3d8_surface_msaa_prepare(D3D8Surface *sf,unsigned samples)
 {
     if(!sf || !sf->rtv || sf->locked)return NULL;
