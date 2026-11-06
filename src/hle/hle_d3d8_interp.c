@@ -126,7 +126,7 @@ static int        g_multiple;                    /* frames shown a frame drawn; 
 static int        g_on;
 static int g_target, g_replayed;
 static HleFrameClock g_clock;
-static LONGLONG g_release;
+static LONGLONG g_release, g_retry_after;
 static unsigned long g_suppressed;
 
 unsigned long hle_d3d8_interp_suppressed(void) { return g_suppressed; }
@@ -907,18 +907,27 @@ static int redraw(double a)
     size_t off;
     InterpCapture capture;
 
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
     capture_begin(&capture); /* guest N, before switching to the replay target */
-    if (!xbox_D3D8InterpBegin()) {
-        static int said;
-        if (!said++) {
-            fprintf(stderr, "[INTERP] the renderer has no second target; frame "
-                    "interpolation off\n");
-            fflush(stderr);
-        }
-        g_on = 0;
+    if (g_target && now.QuadPart < g_retry_after) {
         capture_finish(&capture, a, 0);
         return 0;
     }
+    if (!xbox_D3D8InterpBegin()) {
+        static int said;
+        if (!said++) {
+            fprintf(stderr, "[INTERP] the renderer has no second target; %s\n",
+                    g_target ? "using guest frames; retrying at most once per second" : "frame interpolation off");
+            fflush(stderr);
+        }
+        if (g_target) g_retry_after = now.QuadPart + g_qpf;
+        else g_on = 0;
+        g_frame_ok = g_idle_ok = 0;
+        capture_finish(&capture, a, 0);
+        return 0;
+    }
+    g_retry_after = 0;
     g_pair_trace = capture.requested && getenv("RECOMP_INTERP_DEBUG") != NULL;
     hle_d3d8_interp_rec = 0;                     /* what is drawn now is not kept */
     for (off = 0; off < cur->len; ) {
@@ -1118,7 +1127,7 @@ void hle_d3d8_interp_finish(void)
     }
     QueryPerformanceCounter(&now);
     if (now.QuadPart + g_redraw_est > due + g_qpf / 1000) return;
-    redraw(alpha);
+    if (!redraw(alpha)) return;
     cost = g_presented_at - now.QuadPart;
     if (cost > span / 4) cost = span / 4;
     g_redraw_est = (g_redraw_est * 7 + cost) / 8;
@@ -1193,9 +1202,15 @@ static void guest_idle(void)
         if (!g_list[3].whole) { g_cur=recording;g_idle_busy=0;return; }
         hle_d3d8_interp_predicting = 1;
         xbox_D3D8InterpPredict(TRUE);
-        redraw(alpha);
+        int drawn = redraw(alpha);
         xbox_D3D8InterpPredict(FALSE);
         hle_d3d8_interp_predicting = 0;
+        if (!drawn) {
+            g_cur = recording;
+            restore_prefix(&g_list[3]);
+            g_idle_busy = 0;
+            return; /* No present timestamp/cost exists for a failed redraw. */
+        }
         cost = g_presented_at - now.QuadPart;
         if (cost > period / 4) cost = period / 4;
         g_redraw_est = (g_redraw_est * 7 + cost) / 8;
