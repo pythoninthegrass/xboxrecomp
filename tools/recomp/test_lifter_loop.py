@@ -51,17 +51,17 @@ def test_loop_counts_ecx_down_and_branches_on_it():
 
 def test_loope_and_loopne_combine_the_counter_with_the_zero_flag():
     loope = _translate(_fixture(b"\xE1"))
-    assert "if ((ecx != 0) && (CMP_EQ(_fa, _fb)))" in loope, loope
+    assert "if ((ecx != 0) && (!(((uint32_t)(_fa - _fb)))))" in loope, loope
 
     loopne = _translate(_fixture(b"\xE0"))
-    assert "if ((ecx != 0) && (CMP_NE(_fa, _fb)))" in loopne, loopne
+    assert "if ((ecx != 0) && (!(!(((uint32_t)(_fa - _fb))))))" in loopne, loopne
 
 
 def test_loop_preserves_the_comparison_for_a_later_branch():
     # The jge at +5 inherits its flags from the cmp at +0 across the loop.
     for opcode in (b"\xE2", b"\xE1", b"\xE0"):
         code = _translate(_fixture(opcode))
-        assert "if (CMP_GE(_fas, _fbs)) goto loc_00010009;" in code, code
+        assert "if (!(!!((!!((((uint32_t)(_fa - _fb))) & 0x80000000u)) != (!!(((_fa) ^ (_fb)) & ((_fa) ^ (((uint32_t)(_fa - _fb)))) & 0x80000000u))))) goto loc_00010009;" in code, code
 
 
 def test_loope_without_a_tracked_setter_keeps_the_fallback():

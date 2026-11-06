@@ -75,9 +75,9 @@ class SignFlagOverflowTest(unittest.TestCase):
                     self.assertIn("uint", expr)
 
     def test_width_follows_the_operand(self):
-        self.assertIn(">> 31", _cond("js", "eax"))
-        self.assertIn(">> 15", _cond("js", "ax"))
-        self.assertIn(">> 7", _cond("js", "al"))
+        self.assertIn("& 0x80000000u", _cond("js", "eax"))
+        self.assertIn("& 0x8000u", _cond("js", "ax"))
+        self.assertIn("& 0x80u", _cond("js", "al"))
 
     def test_the_emitted_expression_is_right_at_O2(self):
         """Compile the real emitted text at -O2 and check it against x86.

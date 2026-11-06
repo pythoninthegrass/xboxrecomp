@@ -894,6 +894,8 @@ class FunctionTranslator:
         from translation_strings import is_compare as string_compare
         last_setter = None
         for insn in instructions:
+            if insn.mnemonic == "lahf":
+                return True  # LAHF consumes captured arithmetic carry.
             if not insn.mnemonic.startswith("rep") and string_compare(insn):
                 return True  # Single string comparisons publish ordinary CMP snapshots.
             if insn.mnemonic.removeprefix("lock ") in ("xadd", "cmpxchg"):

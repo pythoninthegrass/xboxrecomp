@@ -18,12 +18,12 @@ def translate_join(consumer=bytes.fromhex('0f95c0c3')):
 
 def test_different_cmp_operands_join_for_setne():
     code = translate_join()
-    assert 'CMP_NE(_fa, _fb)' in code, code
+    assert '!(!(((uint32_t)(_fa - _fb))))' in code, code
     assert '_flags /* setne */' not in code
 
 def test_different_cmp_operands_join_for_cmovne():
     code = translate_join(bytes.fromhex('0f45c7c3'))
-    assert 'if (CMP_NE(_fa, _fb)) eax = edi;' in code, code
+    assert 'if (!(!(((uint32_t)(_fa - _fb))))) eax = edi;' in code, code
 
 def test_unknown_path_is_not_guessed():
     assert _merge_flag_states([None, ('cmp', [])]) is None

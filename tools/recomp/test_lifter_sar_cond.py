@@ -10,6 +10,7 @@ of indices as 32 and overran into the next heap block, whose free-list walk
 then spun forever.
 """
 
+import re
 import os
 import sys
 
@@ -36,6 +37,14 @@ def _x86(jcc, result):
     return {"jl": sf, "jge": not sf, "jle": zf or sf, "jg": not zf and not sf}[jcc]
 
 
+def _evaluate(expr, result):
+    # Translate the C boolean spelling; retain the independent SAR reference.
+    expr = re.sub(r"(?<=\w)u\b", "", expr)
+    expr = expr.replace("||", " or ").replace("&&", " and ")
+    expr = re.sub(r"!(?!=)", " not ", expr)
+    return eval(expr.strip(), {"_fa": result & 0xffffffff, "_fas": result})
+
+
 def test_sar_signed_conditions_have_a_rule():
     for jcc in ("jl", "jge", "jle", "jg"):
         got = _make_condition(jcc, "sar", OPS)
@@ -48,15 +57,14 @@ def test_sar_signed_conditions_match_the_hardware():
         result = size >> 5              # Python >> on int is arithmetic, as sar
         for jcc in ("jl", "jge", "jle", "jg"):
             expr = _make_condition(jcc, "sar", OPS)[0]
-            got = eval(expr.replace("||", " or ").replace("&&", " and "),
-                       {"_fas": result})
+            got = _evaluate(expr, result)
             assert bool(got) == _x86(jcc, result), (size, jcc, expr)
 
 
 def test_the_memcpy_tail_branch_is_taken_under_32_bytes():
     expr = _make_condition("jle", "sar", OPS)[0]
-    assert eval(expr, {"_fas": 12 >> 5}), expr       # 12 bytes: skip the loop
-    assert not eval(expr, {"_fas": 64 >> 5}), expr   # 64 bytes: run it
+    assert _evaluate(expr, 12 >> 5), expr       # 12 bytes: skip the loop
+    assert not _evaluate(expr, 64 >> 5), expr   # 64 bytes: run it
 
 
 def test_shl_and_shr_get_no_invented_rule():

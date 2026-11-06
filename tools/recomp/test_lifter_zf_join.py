@@ -26,10 +26,10 @@ from tools.recomp.translator import _before_terminator
 
 def test_zf_expression_per_setter():
     assert zf_expression(("cmp", [object(), object()])) == "(_fa == _fb)"
-    assert zf_expression(("test", [object(), object()])) == "((_fa & _fb) == 0)"
+    assert zf_expression(("test", [object(), object()])) == "!(_fa & _fb)"
     # The result-snapshot family stores the result itself in _fa.
-    assert zf_expression(("and", [object()])) == "(_fa == 0)"
-    assert zf_expression(("xor", [object()])) == "(_fa == 0)"
+    assert zf_expression(("and", [object()])) == "!_fa"
+    assert zf_expression(("xor", [object()])) == "!_fa"
 
 
 def test_zf_expression_refuses_what_it_cannot_answer():

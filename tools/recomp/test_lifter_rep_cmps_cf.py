@@ -57,8 +57,8 @@ def test_carry_conditions_after_a_rep_compare():
                            mem_disp=0, mem_segment="es", imm=0)]
     assert _make_condition("jb", "repe cmpsb", ops)[0] == "_cf"
     assert _make_condition("jae", "repe cmpsb", ops)[0] == "!_cf"
-    assert _make_condition("ja", "repe cmpsb", ops)[0] == "(!_cf && _flags == 0)"
-    assert _make_condition("jbe", "repe cmpsb", ops)[0] == "(_cf || _flags != 0)"
+    assert _make_condition("ja", "repe cmpsb", ops)[0] == "((!_cf) && (!_flags))"
+    assert _make_condition("jbe", "repe cmpsb", ops)[0] == "((_cf) || (_flags))"
 
 
 def test_the_translator_counts_a_rep_compare_as_a_cf_producer():

@@ -68,20 +68,20 @@ class PopfdFlagTrackingTest(unittest.TestCase):
         self.assertIn("pushfd", _EFLAGS_PRESERVE)
 
     def test_a_branch_after_popfd_does_not_use_the_old_compare(self):
-        self.assertNotIn("CMP_EQ", _lift(["popfd"]))
+        self.assertNotIn("!(((uint32_t)(_fa - _fb)))", _lift(["popfd"]))
 
     def test_the_same_branch_without_popfd_still_resolves(self):
         # The positive control. Without it, a lifter that resolved NOTHING
         # would pass the test above.
-        self.assertIn("CMP_EQ", _lift([]))
+        self.assertIn("!(((uint32_t)(_fa - _fb)))", _lift([]))
 
     def test_a_genuinely_preserving_instruction_still_preserves(self):
         # nop is in _EFLAGS_PRESERVE and must stay there: this pins that the
         # change was to popfd and not to the mechanism.
-        self.assertIn("CMP_EQ", _lift(["nop"]))
+        self.assertIn("!(((uint32_t)(_fa - _fb)))", _lift(["nop"]))
 
     def test_popfd_anywhere_in_the_run_breaks_the_chain(self):
-        self.assertNotIn("CMP_EQ", _lift(["nop", "popfd", "nop"]))
+        self.assertNotIn("!(((uint32_t)(_fa - _fb)))", _lift(["nop", "popfd", "nop"]))
 
 
 if __name__ == "__main__":

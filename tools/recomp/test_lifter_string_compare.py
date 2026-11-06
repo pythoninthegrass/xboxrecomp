@@ -42,7 +42,7 @@ class StringCompareLifterTest(unittest.TestCase):
         self.assertIn("_flags = (_str_value == _str_other);", generated)
         self.assertIn("esi += _str_step;\nedi += _str_step;\necx += 0xFFFFFFFFu;", generated)
         self.assertIn("if (!_flags) break;", generated)
-        self.assertIn("if ((_flags != 0)) goto loc_00000010;", generated)
+        self.assertIn("if (_flags) goto loc_00000010;", generated)
 
     def test_dword_compare_sets_the_flags_its_jcc_reads(self):
         compare = Instruction(

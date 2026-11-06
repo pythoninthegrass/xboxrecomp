@@ -82,8 +82,8 @@ def test_disagreeing_predecessors_snapshot_zero_flag():
              b"\xC3")             # ret
     code = _translate(image)
     assert "_flags /*" not in code, code
-    assert "_flags = (_fa == 0)" in code, code
-    assert "_flags = (edx == 0)" in code, code
+    assert "_flags = !_fa" in code, code
+    assert "_flags = !_fa" in code, code
     assert "if (_flags)" in code, code
 
 
