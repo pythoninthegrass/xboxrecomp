@@ -680,6 +680,26 @@ void sub_000765A0(void)
 #endif
 }
 
+extern void sub_002D91F0_gen(void);
+void sub_002D91F0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_mouse_footer(sub_002D91F0_gen);
+#else
+    sub_002D91F0_gen();
+#endif
+}
+
+extern void sub_002F3CA0_gen(void);
+void sub_002F3CA0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_mouse_footer(sub_002F3CA0_gen);
+#else
+    sub_002F3CA0_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
