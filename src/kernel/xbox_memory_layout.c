@@ -1077,6 +1077,7 @@ void xbox_Nv2aFlipGateCycle(void)
  * the next vblank is the last one plus a period. */
 static xbox_FlipGateIdleFn g_flip_gate_idle;
 static volatile LONGLONG   g_flip_gate_last_vblank;
+static LONGLONG            g_flip_gate_previous;
 static LONGLONG            g_flip_gate_period, g_flip_gate_qpf;
 
 void xbox_Nv2aFlipGateSetIdle(xbox_FlipGateIdleFn fn)
@@ -1142,6 +1143,14 @@ static BOOL flip_gate_lend(void)
     }
 }
 
+/* Native frames bypass the gate but retain the last real vblank. When the
+ * original clock resumes and waits for its next ISR, Arm can consume that
+ * signal without adding a second tick. Do not consume or synthesize events. */
+void xbox_Nv2aFlipGateNativeFrame(void)
+{
+    g_flip_gate_previous = g_flip_gate_last_vblank;
+}
+
 void xbox_Nv2aFlipGateArm(void)
 {
     static int said;
@@ -1156,13 +1165,12 @@ void xbox_Nv2aFlipGateArm(void)
     /* A cinematic may already have waited for this vblank inside the title.
      * Interpolation must not add another full tick and halve its simulation.
      * A cheap frame still waits normally, lending time for its midpoint. */
-    static LONGLONG native_previous_gate;
     LARGE_INTEGER native_now;
     QueryPerformanceCounter(&native_now);
-    if (native_previous_gate && g_flip_gate_period &&
-        native_now.QuadPart - native_previous_gate >= g_flip_gate_period * 9 / 10 &&
+    if (g_flip_gate_previous && g_flip_gate_period &&
+        native_now.QuadPart - g_flip_gate_previous >= g_flip_gate_period * 9 / 10 &&
         WaitForSingleObject(g_flip_gate_event, 0) == WAIT_OBJECT_0) {
-        native_previous_gate = native_now.QuadPart;
+        g_flip_gate_previous = native_now.QuadPart;
 #ifdef _WIN32
         /* Finish matching this guest frame even when its own wait already
          * consumed the tick. Its next host slot may follow the boundary. */
@@ -1171,7 +1179,7 @@ void xbox_Nv2aFlipGateArm(void)
 #endif
         return;
     }
-    native_previous_gate = g_flip_gate_last_vblank + g_flip_gate_period;
+    g_flip_gate_previous = g_flip_gate_last_vblank + g_flip_gate_period;
 #endif
     if (g_flip_gate_strict)
         ResetEvent(g_flip_gate_event);                  /* the next vblank, not a past one */

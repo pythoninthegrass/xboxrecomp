@@ -252,6 +252,7 @@ void xbox_DispatchParkOthers(void);
 void xbox_DispatchReleaseOthers(void);
 void xbox_GuestConcurrencyReport(void);
 
+void xbox_Nv2aFlipGateNativeFrame(void);
 void xbox_Nv2aFlipGateArm(void);
 void xbox_Nv2aFlipGateRelease(void);
 

@@ -2357,6 +2357,7 @@ HLE_EXPORT(D3DDevice_Swap)
         if (g_swap_last.QuadPart)
             g_swap_frame_ticks += t0.QuadPart - g_swap_last.QuadPart;
         if (!pc_native_rate()) xbox_Nv2aFlipGateArm();
+        else xbox_Nv2aFlipGateNativeFrame();
         QueryPerformanceCounter(&t1);
 #ifdef _WIN32
         hle_d3d8_interp_finish();
@@ -2416,6 +2417,7 @@ HLE_EXPORT(D3DDevice_Present)
         if (g_swap_last.QuadPart)
             g_swap_frame_ticks += t0.QuadPart - g_swap_last.QuadPart;
         if (!pc_native_rate()) xbox_Nv2aFlipGateArm();
+        else xbox_Nv2aFlipGateNativeFrame();
         QueryPerformanceCounter(&t1);
 #ifdef _WIN32
         hle_d3d8_interp_finish();
