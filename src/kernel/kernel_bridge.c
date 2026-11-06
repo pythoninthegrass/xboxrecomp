@@ -6762,67 +6762,7 @@ static void bridge_PsSetCreateThreadNotifyRoutine(void)
 
 #include "guest_kernel_product.inc"
 
-/* --- RtlExtendedLargeIntegerDivide (ordinal 282, 4 args = 16 bytes)
- * LARGE_INTEGER RtlExtendedLargeIntegerDivide(LARGE_INTEGER Dividend,
- *                                             ULONG Divisor,
- *                                             PULONG Remainder);
- * Dividend.Low (4) + Dividend.High (4) + Divisor (4) + Remainder-ptr (4). */
-static void bridge_RtlExtendedLargeIntegerDivide(void)
-{
-    uint64_t dividend = ((uint64_t)(uint32_t)STACK_ARG(1) << 32)
-                      | (uint32_t)STACK_ARG(0);
-    uint32_t divisor = STACK_ARG(2);
-    uint32_t rem_ptr = STACK_ARG(3);
-    uint32_t remainder;
-    uint64_t quotient;
-
-    if (divisor == 0) {
-        /* Division by zero: report 0/*; Real hardware faults here. */
-        if (rem_ptr)
-            BRIDGE_MEM32(rem_ptr) = 0;
-        g_eax = 0;
-        g_edx = 0;
-        return;
-    }
-
-    quotient  = dividend / divisor;
-    remainder = (uint32_t)(dividend % divisor);
-
-    if (rem_ptr)
-        BRIDGE_MEM32(rem_ptr) = remainder;
-    g_eax = (uint32_t)quotient;
-    g_edx = (uint32_t)(quotient >> 32);
-}
-
-/* --- RtlExtendedMagicDivide (ordinal 283, 4 args = 16 bytes)
- * RtlExtendedMagicDivide(Dividend.Low, Dividend.High, Divisor, Remainder-ptr)
- * per the 16-byte stack layout. The precomputed magic multiplier is not
- * available, so a real division produces the identical quotient. */
-static void bridge_RtlExtendedMagicDivide(void)
-{
-    uint64_t dividend = ((uint64_t)(uint32_t)STACK_ARG(1) << 32)
-                      | (uint32_t)STACK_ARG(0);
-    uint32_t divisor = STACK_ARG(2);
-    uint32_t rem_ptr = STACK_ARG(3);
-    uint32_t remainder;
-    uint64_t quotient;
-
-    if (divisor == 0) {
-        if (rem_ptr)
-            BRIDGE_MEM32(rem_ptr) = 0;
-        g_eax = 0;
-        g_edx = 0;
-        return;
-    }
-
-    quotient  = dividend / divisor;
-    remainder = (uint32_t)(dividend % divisor);
-
-    if (rem_ptr)
-        BRIDGE_MEM32(rem_ptr) = remainder;
-    g_eax = (uint32_t)quotient;
-    g_edx = (uint32_t)(quotient >> 32);
-}
+#include "guest_kernel_division.inc"
 
 /* --- RtlFillMemoryUlong (ordinal 285, 3 args = 12 bytes)
  * VOID RtlFillMemoryUlong(PVOID Destination, ULONG Length, ULONG Pattern);
@@ -7351,7 +7291,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     /* Rtl */
     case 281: return 12;  /* RtlExtendedIntegerMultiply (3) */
     case 282: return 16;  /* RtlExtendedLargeIntegerDivide (4) */
-    case 283: return 16;  /* RtlExtendedMagicDivide (4) */
+    case 283: return 20;  /* RtlExtendedMagicDivide (5 words) */
     case 303: return  4;  /* RtlRaiseStatus (1) */
     case 361: return  0;  /* RtlSnprintf - __cdecl, caller cleans */
     case 362: return  0;  /* RtlSprintf - __cdecl, caller cleans */
