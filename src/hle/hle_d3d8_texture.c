@@ -313,7 +313,20 @@ static uint32_t texel_sample(const texture_layout *t)
         return s;
     }
     step = words > 1024 ? words / 1024 : 1;
-    for (i = 0, k = 0; i < words; i += step, k = (k + 1) & 3) {
+    /* Same sample positions and lane order, four independent lanes at once. */
+    i = 0;
+    while (i < words && words - i > 3 * step) {
+        memcpy(&w, p + (size_t)i * 8, 8);
+        h[0] = (h[0] ^ w) * 0x100000001B3ull;
+        memcpy(&w, p + (size_t)(i + step) * 8, 8);
+        h[1] = (h[1] ^ w) * 0x100000001B3ull;
+        memcpy(&w, p + (size_t)(i + 2 * step) * 8, 8);
+        h[2] = (h[2] ^ w) * 0x100000001B3ull;
+        memcpy(&w, p + (size_t)(i + 3 * step) * 8, 8);
+        h[3] = (h[3] ^ w) * 0x100000001B3ull;
+        i += 4 * step;
+    }
+    for (k = 0; i < words; i += step, k = (k + 1) & 3) {
         memcpy(&w, p + (size_t)i * 8, 8);
         h[k] = (h[k] ^ w) * 0x100000001B3ull;
     }
