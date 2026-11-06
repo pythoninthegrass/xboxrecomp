@@ -48,6 +48,11 @@ int recomp_config_user_dir(char *out, size_t n);
  * of the process. */
 const char *recomp_config_lookup(const char *env_name, const char *key);
 
+/* Queue a validated menu choice; publish it on the guest update boundary.
+ * Readers receive immutable strings, including across host threads. */
+int recomp_config_request_native_rate(int rate);
+void recomp_config_commit_native_rate(void);
+
 /* The same, parsed, with a fallback for absent or unreadable values.
  * Booleans accept 1/0, on/off, yes/no, true/false, and an empty
  * environment variable counts as on -- the rule xbox_EnvSwitch already

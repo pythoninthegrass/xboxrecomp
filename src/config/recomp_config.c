@@ -9,6 +9,7 @@
  */
 #include "recomp_config.h"
 #include "pc_frame_rate_settings.h"
+#include "pc_frame_rate_live.inc"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -499,9 +500,11 @@ static const char *from_file(const char *key)
 
 const char *recomp_config_lookup(const char *env_name, const char *key)
 {
-    /* One startup snapshot shared by every consumer. A preference saved from
-     * the guest menu must never switch a running game's timing system.
-     * Explicit player choices take precedence over launcher rate defaults. */
+    /* Saved startup preference, overridden only by an explicit in-game apply. */
+    if (key && !strcmp(key,"native_fps")) {
+        const char *live=pc_frame_rate_live_value();
+        if(live)return live;
+    }
     static int frame_rate_loaded, frame_rate=-1;
     static char frame_rate_text[16];
     if (!frame_rate_loaded) {
