@@ -25,6 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 /* FNV-1a over the source, the macros, the entry point and the target: the
  * same text under a different target is a different shader. */
@@ -79,7 +82,11 @@ static const char *hlsl_dump_dir(void)
         const char *v = getenv("RECOMP_D3D8_HLSL_DIR");
         dir = (v && *v) ? v : NULL;
         if (dir) {
+#ifdef _WIN32
             CreateDirectoryA(dir, NULL);
+#else
+            mkdir(dir,0700);
+#endif
             fprintf(stderr, "[D3D8] writing every compiled HLSL source to %s\n", dir);
         }
         checked = 1;
@@ -100,7 +107,7 @@ void d3d8_hlsl_note(const char *src, size_t len, const char *name,
     hash = hlsl_hash(src, len, macros, entry, target);
     if (!hlsl_first_sighting(hash))
         return;
-    snprintf(path, sizeof path, "%s\\%s-%s-%s-%08X.hlsl",
+    snprintf(path, sizeof path, "%s/%s-%s-%s-%08X.hlsl",
              dir, name ? name : "shader", entry, target, hash);
     f = fopen(path, "wb");
     if (!f)
@@ -138,14 +145,18 @@ void d3d8_compile_note(int kind, long long started)
         g_compile_last_report = now.QuadPart;
     }
     InterlockedIncrement(&g_compiles[kind]);
+#ifdef _WIN32
     InterlockedAdd64(&g_compile_ticks[kind], now.QuadPart - started);
+#else
+    __atomic_add_fetch(&g_compile_ticks[kind],now.QuadPart-started,__ATOMIC_SEQ_CST);
+#endif
     if (now.QuadPart - g_compile_last_report >= 5 * g_compile_qpf) {
         g_compile_last_report = now.QuadPart;
         fprintf(stderr, "[D3D8] runtime shader compiles so far: combiner %ld (%.0f ms), "
                 "fixed-function %ld (%.0f ms), vertex program %ld (%.0f ms)\n",
-                g_compiles[0], g_compile_ticks[0] * 1000.0 / g_compile_qpf,
-                g_compiles[1], g_compile_ticks[1] * 1000.0 / g_compile_qpf,
-                g_compiles[2], g_compile_ticks[2] * 1000.0 / g_compile_qpf);
+                (long)g_compiles[0], g_compile_ticks[0] * 1000.0 / g_compile_qpf,
+                (long)g_compiles[1], g_compile_ticks[1] * 1000.0 / g_compile_qpf,
+                (long)g_compiles[2], g_compile_ticks[2] * 1000.0 / g_compile_qpf);
         fflush(stderr);
     }
 }

@@ -307,6 +307,20 @@ typedef struct {
     uint32_t debug;             /* ask for the debug / validation layer */
 } RhiDeviceDesc;
 
+/* Optional OS adapter, installed before rendering starts and cleared only
+ * after rendering stops. The adapter owns its context; the interface copies
+ * callbacks, not window ownership. NULL restores the native Win32 defaults.
+ * A pump may run on a guest thread: adapters enforce their event-thread rules.
+ * Drawable size is physical pixels; failure leaves the caller's values alone. */
+typedef struct RhiHost {
+    void *context;
+    void (*pump_events)(void *context);
+    int (*drawable_size)(void *context, void *window, uint32_t *width, uint32_t *height);
+} RhiHost;
+void rhi_set_host(const RhiHost *host);
+void rhi_pump_events(void);
+int rhi_drawable_size(void *window, uint32_t *width, uint32_t *height);
+
 /* Chooses the backend before the device is created. NULL or "" means
  * RECOMP_D3D8_BACKEND, and that unset means d3d11. Returns 0 when the
  * named backend exists; otherwise it says so and keeps d3d11. */

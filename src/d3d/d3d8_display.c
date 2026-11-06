@@ -16,7 +16,7 @@
 #include "pc_display.h"
 #endif
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(TSFP_RHI_RENDERER)
 
 #include <stdint.h>
 #include <stdio.h>
@@ -431,4 +431,4 @@ void d3d8_display_shutdown(void)
     g.failed = 0;
 }
 
-#endif /* _WIN32 */
+#endif /* shared RHI renderer */

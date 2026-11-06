@@ -32,6 +32,9 @@
 
 #if defined(_WIN32)
 #  include <windows.h>
+#else
+#  include <strings.h>
+#  define _stricmp strcasecmp
 #endif
 
 #define CACHE_MAGIC   0x43535258u   /* "XRSC" */

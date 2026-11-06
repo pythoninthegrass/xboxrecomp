@@ -1,9 +1,10 @@
 /**
  * rhi.c -- forwards rhi.h to the backend in use (rhi_backend.h).
  *
- * Deliberately nothing but forwarding: the one place a call from the
+ * GPU calls are forwarding only: the one place a call from the
  * renderer meets the backend table, so a breakpoint here sees every GPU
- * call either backend makes.
+ * call either backend makes. The small host boundary keeps OS window/events
+ * outside the common Xbox device implementation.
  */
 
 #include "rhi_backend.h"
@@ -11,6 +12,46 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
+static RhiHost g_host;
+void rhi_set_host(const RhiHost *host)
+{
+    if(host)g_host=*host;
+    else memset(&g_host,0,sizeof g_host);
+}
+void rhi_pump_events(void)
+{
+    if(g_host.pump_events) {g_host.pump_events(g_host.context);return;}
+#if defined(_WIN32)
+    MSG msg;
+    while(PeekMessageA(&msg,NULL,0,0,PM_REMOVE)) {
+        if(msg.message==WM_QUIT)ExitProcess(0);
+        TranslateMessage(&msg);DispatchMessageA(&msg);
+    }
+#endif
+}
+int rhi_drawable_size(void *window,uint32_t *width,uint32_t *height)
+{
+    uint32_t w=0,h=0;
+    if(!width || !height)return 0;
+    if(g_host.drawable_size) {
+        if(!g_host.drawable_size(g_host.context,window,&w,&h) || !w || !h)return 0;
+    } else {
+#if defined(_WIN32)
+        RECT rect;
+        if(!window || !GetClientRect((HWND)window,&rect) ||
+           rect.right<=rect.left || rect.bottom<=rect.top)return 0;
+        w=(uint32_t)(rect.right-rect.left);h=(uint32_t)(rect.bottom-rect.top);
+#else
+        (void)window;return 0;
+#endif
+    }
+    *width=w;*height=h;return 1;
+}
 
 #if defined(_WIN32)
 const RhiBackend *g_rhi = &rhi_d3d11_backend;

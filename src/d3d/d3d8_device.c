@@ -171,13 +171,7 @@ static void interp_target_destroy(void);
  * ================================================================ */
 void d3d8_PresentFrame(void)
 {
-    /* Pump Windows messages */
-    MSG msg;
-    while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) ExitProcess(0);
-        TranslateMessage(&msg);
-        DispatchMessageA(&msg);
-    }
+    rhi_pump_events();
 
     /* Present the backbuffer (VSync = 1) */
     if (rhi_device_ready()) {
@@ -392,7 +386,7 @@ static void present_scene(void)
 {
     D3D8DeviceState *s = &g_device_state;
     D3D8DisplayFit fit;
-    RECT rc;
+    uint32_t drawable_w,drawable_h;
 
     if (!rhi_swapchain_view() || !s->rhi_scene_srv)
         return;
@@ -402,8 +396,8 @@ static void present_scene(void)
      * right all the way through still reaches the screen distorted. Keep
      * the buffer the size of the window and the stretch is the identity;
      * the fit below then puts bars around the picture instead. */
-    if (s->hwnd && GetClientRect(s->hwnd, &rc)) {
-        UINT w = (UINT)(rc.right - rc.left), h = (UINT)(rc.bottom - rc.top);
+    if (rhi_drawable_size(s->hwnd, &drawable_w, &drawable_h)) {
+        UINT w = drawable_w, h = drawable_h;
 
         if (w && h && (w != s->swap_width || h != s->swap_height)) {
             if (rhi_swapchain_resize(w, h) == 0) {
@@ -811,17 +805,7 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
         last_tick = now;
     }
 
-    /* Pump Windows messages: the game's internal main loop drives rendering,
-     * so our external message pump never runs. Process messages here to keep
-     * the window responsive and handle input. */
-    MSG msg;
-    while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) {
-            ExitProcess(0);
-        }
-        TranslateMessage(&msg);
-        DispatchMessageA(&msg);
-    }
+    rhi_pump_events();
 
     present_resolve();
     return (HRESULT)rhi_present(1);
@@ -2345,15 +2329,7 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
 {
     (void)self; (void)Flags;
 
-    /* Pump Windows messages (same as dev_Present) */
-    MSG msg;
-    while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) {
-            ExitProcess(0);
-        }
-        TranslateMessage(&msg);
-        DispatchMessageA(&msg);
-    }
+    rhi_pump_events();
 
     present_resolve();
     return (HRESULT)rhi_present(g_present_interval);
