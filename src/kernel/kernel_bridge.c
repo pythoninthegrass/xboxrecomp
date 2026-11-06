@@ -6597,15 +6597,7 @@ static void bridge_IoBuildAsynchronousFsdRequest(void)
 }
 
 /* --- IoCheckShareAccess (ordinal 63, 5 args = 20 bytes) --- */
-static void bridge_IoCheckShareAccess(void)
-{
-    (void)STACK_ARG(0);
-    (void)STACK_ARG(1);
-    (void)STACK_ARG(2);
-    (void)STACK_ARG(3);
-    (void)STACK_ARG(4);
-    g_eax = 0;
-}
+#include "guest_kernel_share.inc"
 
 
 
@@ -6639,21 +6631,10 @@ static void bridge_IoQueueThreadIrp(void)
 }
 
 /* --- IoRemoveShareAccess (ordinal 78, 2 args = 8 bytes) --- */
-static void bridge_IoRemoveShareAccess(void)
-{
-    (void)STACK_ARG(0);
-    (void)STACK_ARG(1);
-}
 
-/* --- IoSetShareAccess (ordinal 80, 5 args = 20 bytes) --- */
-static void bridge_IoSetShareAccess(void)
-{
-    (void)STACK_ARG(0);
-    (void)STACK_ARG(1);
-    (void)STACK_ARG(2);
-    (void)STACK_ARG(3);
-    (void)STACK_ARG(4);
-}
+
+/* --- IoSetShareAccess (ordinal 80, 4 args = 16 bytes) --- */
+
 
 /* --- IoDismountVolume (ordinal 90, 1 arg = 4 bytes) --- */
 static void bridge_IoDismountVolume(void)
@@ -8362,7 +8343,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     case  76: return 20;  /* IoQueryVolumeInformation (5) */
     case  77: return  4;  /* IoQueueThreadIrp (1) */
     case  78: return  8;  /* IoRemoveShareAccess (2) */
-    case  80: return 20;  /* IoSetShareAccess (5) */
+    case  80: return 16;  /* IoSetShareAccess (4) */
 
     /* Kd */
     case  88: return  0;  /* KdDebuggerEnabled (void) */
