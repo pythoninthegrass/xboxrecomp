@@ -16,6 +16,7 @@
  * overrides the pixel shader (d3d8_combiners.c).
  */
 
+#include "graphics/point_size_shader.h"
 #include "d3d8_internal.h"
 #ifdef TSFP_TEXTURE_PACK
 #include "texture_pack.h"
@@ -98,6 +99,7 @@ static const char g_vs_source[] =
      * not just the names. Coordinates are float4: the combiners' projected
      * and reflection modes read their w. */
     "struct VS_OUT {\n"
+        TSFP_POINT_SIZE_FIELD
     "    float4 pos      : SV_POSITION;\n"
     "    float4 diffuse  : COLOR0;\n"
     "    float4 specular : COLOR1;\n"
@@ -161,6 +163,7 @@ static const char g_vs_source[] =
     "\n"
     "VS_OUT main(VS_IN input) {\n"
     "    VS_OUT o;\n"
+        TSFP_POINT_SIZE_INIT
     "    o.fog = 1.0;\n"
     "    o.specular = float4(0, 0, 0, 0);\n"
     "    o.viewpos = float4(0, 0, 0, 1);\n"

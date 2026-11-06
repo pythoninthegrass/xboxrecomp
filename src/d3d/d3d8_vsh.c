@@ -18,6 +18,7 @@
  *   - Output semantics: SV_POSITION, COLOR0/1, TEXCOORD0-3, FOG, PSIZE
  */
 
+#include "graphics/point_size_shader.h"
 #include "d3d8_internal.h"
 #include <float.h>
 #include <math.h>
@@ -754,6 +755,7 @@ int d3d8_vsh_generate_hlsl(const NV2AVshProgram *program,
      * them read oT3.w as its fog factor. */
     sb_append(&sb,
         "struct VS_OUT {\n"
+        TSFP_POINT_SIZE_FIELD
         "    float4 oPos : SV_POSITION;\n"
         "    float4 oD0  : COLOR0;\n"
         "    float4 oD1  : COLOR1;\n"
@@ -888,6 +890,7 @@ int d3d8_vsh_generate_hlsl(const NV2AVshProgram *program,
     sb_append(&sb,
         "    /* Write outputs */\n"
         "    VS_OUT o;\n"
+        TSFP_POINT_SIZE_INIT
         "    o.oPos = oPos;\n"
         "    o.oD0  = saturate(oD0);\n"  /* Colors clamped to [0,1] */
         "    o.oD1  = saturate(oD1);\n"
