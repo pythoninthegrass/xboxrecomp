@@ -53,7 +53,7 @@
 
 /* ---- the controls a title can read ------------------------------------- */
 
-enum { K_DIGITAL, K_ANALOG, K_AXIS };
+enum { K_DIGITAL, K_ANALOG, K_AXIS, K_WEAPON_SLOT };
 
 /* XINPUT_GAMEPAD_TRIGGER_THRESHOLD: the value XInput documents as the point
  * a trigger counts as pressed. */
@@ -90,6 +90,11 @@ static const struct {
     { "rstick_left",  K_AXIS,    AXIS_RX,                 -1 },
     { "rstick_right", K_AXIS,    AXIS_RX,                  1 },
     { "rthumb",       K_DIGITAL, XBOX_GAMEPAD_RIGHT_THUMB, 0 },
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+#define PC_WEAPON_SLOT(n,key) { "weapon_slot_" #n, K_WEAPON_SLOT, n-1, 0 },
+#include "pc_weapon_slots.def"
+#undef PC_WEAPON_SLOT
+#endif
 };
 #define CONTROL_COUNT ((int)(sizeof CONTROLS / sizeof CONTROLS[0]))
 
@@ -699,6 +704,9 @@ static void describe(Controller *c, char *out, size_t n)
         snprintf(out, n, "nothing");
 }
 
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+static void pc_weapon_bindings_migrate(const char *text);
+#endif
 static void bindings_load(void)
 {
     char *text;
@@ -712,6 +720,9 @@ static void bindings_load(void)
     if (find_config(g_path, sizeof g_path) && (text = read_file(g_path)) != NULL) {
         if (parse_config(text)) {
             g_have_path = 1;
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+            pc_weapon_bindings_migrate(text);
+#endif
         } else {
             fprintf(stderr, "[INPUT] %s is not a binding config this build "
                             "can read; using the built-in bindings\n", g_path);
@@ -924,6 +935,9 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     Controller snapshot;
 #endif
     KeyCache kc;
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+    unsigned char weapon_down[PC_WEAPON_SLOT_COUNT]={0};
+#endif
     RecompPadState pad;
     int have_pad = 0, i;
     int axis[4] = { 0, 0, 0, 0 };
@@ -952,7 +966,14 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     if (c->device == DEV_NONE)
         return 0;
 #ifdef TSFP_NATIVE_INPUT
-    if(!tsfp_native_input_focused())return 1;
+    if(!tsfp_native_input_focused()) {
+        if(port==0) {
+            AcquireSRWLockExclusive(&g_pc_weapon_lock);
+            pc_weapon_keys_sample(&g_pc_weapon_keys,weapon_down,0,now_ms());
+            ReleaseSRWLockExclusive(&g_pc_weapon_lock);
+        }
+        return 1;
+    }
 #endif
     memset(&kc, 0, sizeof kc);
     key_cache_tick();
@@ -1006,6 +1027,20 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     for (i = 0; i < CONTROL_COUNT; i++) {
         int mag = 0, s;
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+        if(CONTROLS[i].kind==K_WEAPON_SLOT) {
+            if(port==0 && c->device==DEV_KEYBOARD)
+                for(s=0;s<c->bind[i].count;s++)
+                    if(c->bind[i].src[s].kind==SRC_KEY)
+                        weapon_down[CONTROLS[i].arg]|=!!
+#ifdef TSFP_NATIVE_INPUT
+                            tsfp_native_key_down(c->bind[i].src[s].arg);
+#else
+                            pc_controls_key_down(c->bind[i].src[s].arg);
+#endif
+            continue;
+        }
+#endif
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
         if (auto_pad>=0) {
             for (s=0;s<pad_defaults.bind[i].count;s++) {
                 int m=source_magnitude(&pad_defaults.bind[i].src[s],&kc,&pad,1,c->deadzone);
@@ -1050,6 +1085,12 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
         }
     }
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+    if(port==0) {
+        int active=c->device==DEV_KEYBOARD && pc_controls_weapon_slots_active();
+        AcquireSRWLockExclusive(&g_pc_weapon_lock);
+        pc_weapon_keys_sample(&g_pc_weapon_keys,weapon_down,active,now_ms());
+        ReleaseSRWLockExclusive(&g_pc_weapon_lock);
+    }
     pc_input_normalize_movement(&out->sThumbLX, &out->sThumbLY);
     if(port==0 && (c->device==DEV_KEYBOARD || c->has_key) && pc_controls_terminal_click())
         out->bAnalogButtons[XBOX_BUTTON_A]=255;

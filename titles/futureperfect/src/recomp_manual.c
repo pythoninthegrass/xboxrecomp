@@ -658,6 +658,16 @@ void sub_00080F20(void)
     sub_00080F20_gen();
 }
 
+#include "pc_weapon_slots.h"
+extern void sub_001BF140_gen(void);
+void sub_001BF140(void)
+{
+    sub_001BF140_gen();
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_display_weapon_slots();
+#endif
+}
+
 extern void sub_000D2B80_gen(void);
 void sub_000D2B80(void)
 {
