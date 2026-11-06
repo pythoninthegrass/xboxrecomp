@@ -15,6 +15,7 @@
 #include <string.h>
 
 #if defined(_WIN32)
+#include <windows.h>
 #include <direct.h>
 #define RECOMP_MKDIR(p) _mkdir(p)
 #else
@@ -245,6 +246,10 @@ int recomp_settings_read(const char *path, RecompSettings *s)
             s->fullscreen = !off_word(v);
         if ((v = from_table("vrr")) != NULL)
             s->vrr = !off_word(v);
+        if ((v = from_table("refresh_rate")) != NULL)
+            s->refresh_rate = (atoi(v) == 120 || atoi(v) == 144) ? atoi(v) : 0;
+        if ((v = from_table("frame_target")) != NULL)
+            s->frame_target = (atoi(v) == 120 || atoi(v) == 144) ? atoi(v) : 0;
         if ((v = from_table("frame_interp")) != NULL)
             s->frame_interp = clamp_int(atoi(v), 1, 4);
         if ((v = from_table("game_dir")) != NULL)
@@ -356,12 +361,23 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "# variable refresh. 1 is off.                   [RECOMP_FRAME_INTERP]\n"
         "frame_interp = %d\n"
         "\n"
+        "# Windows presentation target: 0 preserves frame_interp, or 120 / 144.\n"
+        "# Keeps gameplay at 60 Hz. Requires adaptive/60 pacing and GPU headroom.\n"
+        "#                                  [RECOMP_FRAME_TARGET]\n"
+        "frame_target = %d\n"
+        "\n"
+        "# Fullscreen monitor refresh: 0 keeps desktop, 120 or 144 Hz.\n"
+        "# The desktop mode is restored on focus loss/exit; resolution stays.\n"
+        "#                                          [RECOMP_REFRESH_RATE]\n"
+        "refresh_rate = %d\n"
+        "\n"
         "# Where the game's files are, if they are not beside the executable.\n"
         "#                                                   [RECOMP_GAME_DIR]\n",
         s->resolution_scale, s->widescreen, s->hor_plus, s->hor_plus_register,
         s->widescreen_2d[0] ? s->widescreen_2d : "auto",
         s->anisotropy, s->frame_cap[0] ? s->frame_cap : "adaptive", s->fps_overlay,
-        s->fullscreen, s->vrr, s->frame_interp < 1 ? 1 : s->frame_interp);
+        s->fullscreen, s->vrr, s->frame_interp < 1 ? 1 : s->frame_interp,
+        s->frame_target, s->refresh_rate);
 
     if (s->game_dir[0])
         fprintf(f, "game_dir = %s\n", s->game_dir);
@@ -456,6 +472,28 @@ static void load_and_report(void)
                 g_title_id);
 }
 
+/* The vblank timer and renderer can request configuration concurrently.
+ * Publishing g_loaded before parse completed let the renderer cache fallback
+ * fullscreen/pacing values while the timer was still loading the file. */
+#ifdef _WIN32
+static INIT_ONCE config_once = INIT_ONCE_STATIC_INIT;
+static BOOL CALLBACK initialize_config(PINIT_ONCE once, PVOID parameter, PVOID *context)
+{
+    (void)once; (void)parameter; (void)context;
+    load_and_report();
+    return TRUE;
+}
+static void ensure_loaded(void)
+{
+    InitOnceExecuteOnce(&config_once, initialize_config, NULL, NULL);
+}
+#else
+static void ensure_loaded(void)
+{
+    if (!g_loaded) load_and_report();
+}
+#endif
+
 /* ---------------------------------------------------------------- lookup */
 
 /* The table as it stands, without loading anything. */
@@ -475,8 +513,7 @@ static const char *from_file(const char *key)
 {
     if (!key)
         return NULL;
-    if (!g_loaded)
-        load_and_report();
+    ensure_loaded();
     return from_table(key);
 }
 
@@ -491,8 +528,7 @@ const char *recomp_config_lookup(const char *env_name, const char *key)
 
 const char *recomp_config_path(void)
 {
-    if (!g_loaded)
-        load_and_report();
+    ensure_loaded();
     return g_have_path ? g_path : NULL;
 }
 

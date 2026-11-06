@@ -264,6 +264,7 @@ void xbox_Nv2aFlipGateRelease(void);
  * (adaptive, or a cap of the vblank rate). NULL takes it back. */
 typedef long long (*xbox_FlipGateIdleFn)(long long now, long long release);
 void xbox_Nv2aFlipGateSetIdle(xbox_FlipGateIdleFn fn);
+void xbox_SetRecompIdle(void (*fn)(void));
 
 /* The setting by name ("adaptive", "60", "30", "off", or "custom" for one
  * RECOMP_FPS_CAP asked for that is not a stop on the cycle), and the next

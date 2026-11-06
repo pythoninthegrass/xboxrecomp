@@ -97,6 +97,19 @@ static UINT               g_target_level, g_target_face;
 static IDirect3DSurface8 *g_target_depth;
 static int                g_target_lost;
 
+/* CPU prediction may read the last real offscreen result, but must never
+ * change it: the guest may already be using it in its partial frame. */
+static int prediction_holds_target(void)
+{
+#ifdef _WIN32
+    return hle_d3d8_interp_predicting &&
+           (g_target_lost || g_target_texture ||
+            (g_target_depth && g_target_depth != g_device_depth));
+#else
+    return 0;
+#endif
+}
+
 static unsigned long g_draws, g_texture_writes, g_level_writes, g_unrecorded_binds;
 static unsigned long g_unrecorded_targets;
 static uint64_t      g_texture_bytes;
@@ -948,6 +961,7 @@ typedef struct { DWORD count, flags; D3DCOLOR color; float z; DWORD stencil; } d
 static void op_clear(const void *arg)
 {
     const dq_clear *c = (const dq_clear *)arg;
+    if (prediction_holds_target()) return;
     host_Clear(hle_d3d8_shadow_device(), c->count,
                c->count ? (const D3DRECT *)DEFER_PART_A(arg, dq_clear) : NULL,
                c->flags, c->color, c->z, c->stencil);
@@ -1307,6 +1321,7 @@ typedef struct { DWORD type; UINT prims, stride; } dq_draw_up;
 static void op_draw_up(const void *arg)
 {
     const dq_draw_up *p = (const dq_draw_up *)arg;
+    if (prediction_holds_target()) return;
     host_DrawPrimitiveUP(hle_d3d8_shadow_device(), (D3DPRIMITIVETYPE)p->type, p->prims,
                          DEFER_PART_A(arg, dq_draw_up), p->stride);
 }
@@ -1321,6 +1336,7 @@ typedef struct {
 static void op_draw_indexed_up(const void *arg)
 {
     const dq_draw_indexed_up *p = (const dq_draw_indexed_up *)arg;
+    if (prediction_holds_target()) return;
     host_DrawIndexedPrimitiveUP(hle_d3d8_shadow_device(), (D3DPRIMITIVETYPE)p->type,
                                 p->min_index, p->num_vertices, p->prims,
                                 DEFER_PART_A(arg, dq_draw_indexed_up),
@@ -1662,6 +1678,7 @@ HRESULT host_SetRenderTarget(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *textu
     g_target_face    = face;
     g_target_depth   = depth;
     g_target_lost    = FAILED(hr);
+    if (g_target_lost) hle_d3d8_interp_unsafe();
     if (hle_d3d8_interp_rec) {
         dq_render_target p;
         p.texture = texture;
@@ -1923,6 +1940,11 @@ typedef struct { IDirect3DTexture8 *dst; int has_rect; RECT src; POINT at; } dq_
 static void op_screen_copy(const void *arg)
 {
     const dq_screen_copy *p = (const dq_screen_copy *)arg;
+#ifdef _WIN32
+    /* Prediction samples the latest real feedback image. Mutating this shared
+     * texture would corrupt the guest's partial frame when it resumes. */
+    if (hle_d3d8_interp_predicting) return;
+#endif
 
     if (p->has_rect)
         host_CopyBackBufferRectToTexture(p->dst, &p->src, &p->at);
@@ -1982,6 +2004,7 @@ void hle_d3d8_interp_snapshot(void)
 
     if (!dev || !hle_d3d8_interp_rec)
         return;
+    if (g_target_lost) hle_d3d8_interp_unsafe();
     snapshot_declarations();
     {
         dq_constants p;

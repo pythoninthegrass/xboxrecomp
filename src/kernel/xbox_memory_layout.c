@@ -1088,6 +1088,14 @@ static LONGLONG            g_flip_gate_period, g_flip_gate_qpf;
 void xbox_Nv2aFlipGateSetIdle(xbox_FlipGateIdleFn fn)
 {
     g_flip_gate_idle = fn;
+#ifdef _WIN32
+    /* The timer can query pacing before the title/config is selected.
+     * Re-read it when the renderer installs interpolation, otherwise a
+     * saved strict 60 cap stays adaptive and leaves no replay interval. */
+    g_flip_gate_divisor = -1;
+    g_flip_gate_strict = 0;
+    if (fn && flip_gate_divisor() == 1) g_flip_gate_strict = 1;
+#endif
 }
 
 /* Lend the wait to the hook until it wants nothing more or the vblank comes.
@@ -1150,7 +1158,7 @@ void xbox_Nv2aFlipGateArm(void)
         return;                                         /* no vblank has ever come */
     if (!g_flip_gate_event)
         return;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
     /* A cinematic may already have waited for this vblank inside the title.
      * Interpolation must not add another full tick and halve its simulation.
      * A cheap frame still waits normally, lending time for its midpoint. */
@@ -1161,6 +1169,11 @@ void xbox_Nv2aFlipGateArm(void)
         native_now.QuadPart - native_previous_gate >= g_flip_gate_period * 9 / 10 &&
         WaitForSingleObject(g_flip_gate_event, 0) == WAIT_OBJECT_0) {
         native_previous_gate = native_now.QuadPart;
+#ifdef _WIN32
+        /* Finish matching this guest frame even when its own wait already
+         * consumed the tick. Its next host slot may follow the boundary. */
+        g_flip_gate_idle(native_now.QuadPart, g_flip_gate_last_vblank);
+#endif
         return;
     }
     native_previous_gate = g_flip_gate_last_vblank + g_flip_gate_period;

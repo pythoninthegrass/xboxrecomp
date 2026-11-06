@@ -1282,6 +1282,9 @@ void          xbox_D3D8ScreenCopyShutdown(void);
    waits to be shown; Present shows it without counting a frame; End puts
    the scene target back. FALSE from Begin: no second image, draw nothing. */
 BOOL xbox_D3D8InterpBegin(void);
+BOOL xbox_D3D8InterpCanPredict(void);
+void xbox_D3D8InterpPredict(BOOL on);
+void xbox_D3D8SkipGuestPresent(void);
 BOOL xbox_D3D8InterpPresent(void);
 void xbox_D3D8InterpEnd(void);
 

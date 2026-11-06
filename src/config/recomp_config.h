@@ -78,6 +78,8 @@ typedef struct RecompSettings {
     int  fps_overlay;           /* 0 or 1 */
     int  fullscreen;            /* 0 or 1: borderless, on the window's monitor */
     int  vrr;                   /* 0 or 1: present for variable refresh when fullscreen */
+    int  refresh_rate;          /* Windows fullscreen monitor Hz: 0, 120, 144 */
+    int  frame_target;          /* 0: legacy multiplier; 120 or 144: host FPS */
     int  frame_interp;          /* 1 (off) to 4: frames shown for each the game draws */
     char game_dir[512];         /* empty means beside the executable */
 } RecompSettings;

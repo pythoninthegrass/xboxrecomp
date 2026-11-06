@@ -19,6 +19,11 @@
 #include <time.h>
 
 #include "xbox_memory_layout.h"
+#ifdef _WIN32
+static void (*s_render_idle)(void);
+static RECOMP_TLS unsigned s_idle_count;
+void xbox_SetRecompIdle(void (*fn)(void)) { s_render_idle = fn; }
+#endif
 
 extern RECOMP_TLS uint32_t g_eax, g_ecx, g_edx, g_esp;
 extern RECOMP_TLS uint32_t g_ebx, g_esi, g_edi;
@@ -503,6 +508,11 @@ void recomp_stub_missing(uint32_t va)
 
 void recomp_trace_enter(const char *name, uint32_t va)
 {
+#ifdef _WIN32
+    /* Bounded checks only when the title explicitly installs a renderer.
+     * The callback verifies thread ownership and untouched frame state. */
+    if (s_render_idle && !(++s_idle_count & 255u)) s_render_idle();
+#endif
     watch_check(name);
     dump_va_once();
     if (trace_only_match(name))

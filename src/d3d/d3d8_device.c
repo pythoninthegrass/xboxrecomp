@@ -2355,6 +2355,8 @@ static HRESULT __stdcall dev_EndPush(IDirect3DDevice8 *self, DWORD *pPush)
  * loader on frames presented, so a vsync wait here throttled Burnout 2 from
  * about 136 frames a second to 27 and cut how far a run got by two thirds. */
 static UINT g_present_interval = 1;
+static BOOL g_skip_guest_present;
+void xbox_D3D8SkipGuestPresent(void) { g_skip_guest_present = TRUE; }
 
 void xbox_D3D8SetPresentInterval(UINT interval)
 {
@@ -2367,6 +2369,12 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
 
     rhi_pump_events();
 
+    if (g_skip_guest_present) {
+        g_skip_guest_present = FALSE;
+        two_d_tag_frame();
+        d3d8_display_frame_done();
+        return S_OK;
+    }
     present_resolve();
     return (HRESULT)rhi_present_kind(g_present_interval,RHI_PRESENT_GUEST);
 }
@@ -2386,6 +2394,7 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
 static RhiImage *g_interp_image;
 static RhiView  *g_interp_rtv, *g_interp_srv;
 static UINT      g_interp_w, g_interp_h;
+static BOOL g_interp_predict;
 
 static void interp_target_destroy(void)
 {
@@ -2415,10 +2424,19 @@ static void interp_target_swap(void)
     rhi_set_render_target(g_cur_rt ? g_cur_rt->rtv : s->rhi_default_rtv, draw_depth_view(g_cur_ds));
 }
 
+BOOL xbox_D3D8InterpCanPredict(void)
+{
+    return !g_interp_on && g_auto_ds && !g_cur_rt && (!g_cur_ds || g_cur_ds == g_auto_ds);
+}
+void xbox_D3D8InterpPredict(BOOL on) { g_interp_predict = on; }
+
 BOOL xbox_D3D8InterpBegin(void)
 {
     D3D8DeviceState *s = &g_device_state;
 
+    /* Both gate replay and CPU prediction use the shared per-subresource
+     * depth cache below. Never replace the guest surface's depth view. */
+    if (g_interp_predict && !xbox_D3D8InterpCanPredict()) return FALSE;
     if (g_interp_on || !rhi_device_ready() || !s->rhi_scene_image)
         return FALSE;
     if (g_interp_image && (g_interp_w != s->width || g_interp_h != s->height))

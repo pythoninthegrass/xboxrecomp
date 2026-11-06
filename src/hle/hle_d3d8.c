@@ -69,6 +69,7 @@
 #include "recomp_config.h"
 #ifdef TSFP_PC_CONTROLS
 #include "pc_controls.h"
+#include "pc_refresh.h"
 #endif
 
 static unsigned long g_shadow_swaps; /* Guest frame counter, all hosts. */
@@ -260,6 +261,7 @@ static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 {
 #ifdef TSFP_PC_CONTROLS
     LRESULT pc_result;
+    pc_refresh_message(hwnd,msg,wp);
     if (pc_controls_message(hwnd, msg, wp, lp, &pc_result)) return pc_result;
 #endif
     switch (msg) {
@@ -348,6 +350,9 @@ static void shadow_set_fullscreen(HWND hwnd, int on)
     fflush(stderr);
     g_shadow_fullscreen = on;
     xbox_D3D8SetFullscreen(on ? TRUE : FALSE);
+#ifdef TSFP_PC_CONTROLS
+    pc_refresh_fullscreen(hwnd,on,recomp_config_int("RECOMP_REFRESH_RATE","refresh_rate",0));
+#endif
 }
 
 typedef struct {
@@ -2111,16 +2116,21 @@ static void overlay_frame(void)
     if (qpf.QuadPart &&
         now.QuadPart - window_start.QuadPart >= qpf.QuadPart / 2) {
         double secs = (double)(now.QuadPart - window_start.QuadPart) / (double)qpf.QuadPart;
+        static unsigned long suppressed_before;
+        unsigned long suppressed = hle_d3d8_interp_suppressed();
         unsigned long extra = hle_d3d8_interp_presents() - window_extra;
+        double shown = (double)window_frames + extra - (suppressed - suppressed_before);
+        suppressed_before = suppressed;
+        if (shown < 0) shown = 0;
 
 #ifdef TSFP_PC_CONTROLS
-        pc_debug_sample((double)window_frames / secs, (double)(window_frames + extra) / secs);
+        pc_debug_sample((double)window_frames / secs, shown / secs);
 #endif
         /* With frame interpolation, what reaches the screen as well. */
         if (extra)
             snprintf(line, line_size, "%.1f fps (%.1f shown)   cap %s",
                      (double)window_frames / secs,
-                     (double)(window_frames + extra) / secs, xbox_Nv2aFlipGateModeName());
+                     shown / secs, xbox_Nv2aFlipGateModeName());
         else
             snprintf(line, line_size, "%.1f fps   cap %s",
                      (double)window_frames / secs, xbox_Nv2aFlipGateModeName());
@@ -2240,6 +2250,9 @@ static void frame_end_shadow(void)
         {
             LARGE_INTEGER a, b;
             QueryPerformanceCounter(&a);
+#ifdef _WIN32
+            if (hle_d3d8_interp_skip_guest()) xbox_D3D8SkipGuestPresent();
+#endif
             host_Swap(g_shadow, 0);
             QueryPerformanceCounter(&b);
             g_swap_present_ticks += b.QuadPart - a.QuadPart;
@@ -2343,6 +2356,9 @@ HLE_EXPORT(D3DDevice_Swap)
             g_swap_frame_ticks += t0.QuadPart - g_swap_last.QuadPart;
         xbox_Nv2aFlipGateArm();
         QueryPerformanceCounter(&t1);
+#ifdef _WIN32
+        hle_d3d8_interp_finish();
+#endif
         HLE_CALL_ORIGINAL(D3DDevice_Swap);
 #if !defined(_WIN32) && !defined(__APPLE__)
         g_shadow_swaps++;
@@ -2399,6 +2415,9 @@ HLE_EXPORT(D3DDevice_Present)
             g_swap_frame_ticks += t0.QuadPart - g_swap_last.QuadPart;
         xbox_Nv2aFlipGateArm();
         QueryPerformanceCounter(&t1);
+#ifdef _WIN32
+        hle_d3d8_interp_finish();
+#endif
         HLE_CALL_ORIGINAL(D3DDevice_Present);
         QueryPerformanceCounter(&t2);
         g_swap_gate_ticks += t1.QuadPart - t0.QuadPart;

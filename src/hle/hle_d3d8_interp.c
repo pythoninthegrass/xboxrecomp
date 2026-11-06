@@ -72,6 +72,7 @@
 #include "d3d8_vsh.h"
 #include "hle_d3d8_record.h"
 #include "recomp_config.h"
+#include "pc_frame_clock.h"
 #include "../kernel/xbox_memory_layout.h"
 
 #define INTERP_MAX_MULTIPLE  8
@@ -108,6 +109,7 @@ typedef struct {
     int        ndraws, cap_draws;
     uint8_t   *retire;                           /* ops run when the list is done */
     size_t     rlen, rcap;
+    int        idle_safe;
     int        whole;                            /* began at a frame start, all kept */
 } InterpList;
 
@@ -122,14 +124,40 @@ typedef struct {
 
 static int        g_multiple;                    /* frames shown a frame drawn; <2 off */
 static int        g_on;
+static int g_target, g_replayed;
+static HleFrameClock g_clock;
+static LONGLONG g_release;
+static unsigned long g_suppressed;
+
+unsigned long hle_d3d8_interp_suppressed(void) { return g_suppressed; }
+
 static int        g_proj = -1, g_aff_first = -1, g_aff_count, g_nregs, g_groups;
-static InterpList g_list[2];
+static InterpList g_list[4];
+int hle_d3d8_interp_predicting;
+static int previous_list(int i) { return g_target ? (i + 2) % 3 : i ^ 1; }
+static DWORD g_render_thread;
+static int g_idle_checked, g_idle_ok, g_idle_busy;
+static unsigned long g_idle_reasons[10];
 static int        g_cur;                         /* the list being kept */
 static Prepared  *g_prep;                        /* g_groups a draw of the current list */
 static int        g_prep_cap;
 
 /* This frame, in the gate. */
 static int        g_prepared, g_frame_ok, g_slot;
+void hle_d3d8_interp_unsafe(void) { if (hle_d3d8_interp_rec) g_list[g_cur].idle_safe = 0; }
+
+int hle_d3d8_interp_skip_guest(void)
+{
+    /* All display frames use the host clock. An extra endpoint at every
+     * 60 Hz boundary would undo the even 144 Hz cadence. Unsafe frames
+     * retain the ordinary guest present rather than replaying a bad match. */
+    if (g_target && g_on && g_frame_ok && g_replayed &&
+        !hle_d3d8_capture_active() && !hle_d3d8_movie_layer_shown()) {
+        g_suppressed++;
+        return 1;
+    }
+    return 0;
+}
 static LONGLONG   g_last_present, g_qpf, g_redraw_est, g_presented_at;
 
 /* RECOMP_INTERP_DUMP=<prefix>: in-between frames from swap
@@ -664,7 +692,7 @@ static const float *regs_of(const InterpList *l, int i)
  * matrices ready; decide whether the frame can be interpolated. */
 static int prepare_frame(void)
 {
-    InterpList *cur = &g_list[g_cur], *prev = &g_list[g_cur ^ 1];
+    InterpList *cur = &g_list[g_cur], *prev = &g_list[previous_list(g_cur)];
     double prims3d = 0.0, matched = 0.0, cut = 0.0;
     int i, g;
 
@@ -756,7 +784,7 @@ static int prepare_frame(void)
  * blended ones. */
 static void set_draw_registers(int i, double a)
 {
-    const InterpList *cur = &g_list[g_cur], *prev = &g_list[g_cur ^ 1];
+    const InterpList *cur = &g_list[g_cur], *prev = &g_list[previous_list(g_cur)];
     const InterpDraw *d = &cur->draws[i];
     const float *b = regs_of(cur, i);
     float out[INTERP_MAX_REGS * 4];
@@ -929,7 +957,25 @@ static int redraw(double a)
     hle_d3d8_interp_rec = rec;
     g_pair_trace = 0;
     capture_finish(&capture, a, presented);
-    if(presented) {g_presents_total++;g_shown++;}
+    if (presented) {
+    {
+        /* Opt-in bounded timing evidence: CPU submissions, not scanout. */
+        static FILE *trace;
+        static int opened, rows;
+        if (!opened) {
+            const char *path = getenv("RECOMP_INTERP_TRACE");
+            opened = 1;
+            if (path && *path) trace = fopen(path, "w");
+            if (trace) fprintf(trace, "seconds,guest_frame,blend\n");
+        }
+        if (trace && rows < 20000) {
+            fprintf(trace, "%.9f,%lu,%.6f\n", (double)g_presented_at / g_qpf, g_swaps, a);
+            if (++rows % 144 == 0) fflush(trace);
+            if (rows == 20000) { fclose(trace); trace = NULL; }
+        }
+    }
+        g_presents_total++; g_shown++; g_replayed++;
+    }
     return presented;
 }
 
@@ -943,6 +989,7 @@ static LONGLONG g_prepare_est;
 static long long gate_idle(long long now, long long release)
 {
     LONGLONG span = release - g_last_present;
+    g_release = release;
 
     if (!g_on || !g_last_present)
         return 0;
@@ -971,16 +1018,24 @@ static long long gate_idle(long long now, long long release)
     }
     if (!g_frame_ok || span <= g_qpf / 1000 || span > g_qpf / 10)
         return 0;
-    while (g_slot < g_multiple) {
-        LONGLONG due = g_last_present + span * g_slot / g_multiple;
+    if (g_target) {
+        if (!g_clock.rate || now - hle_frame_clock_due(&g_clock) > g_qpf / 10)
+            hle_frame_clock_reset(&g_clock, g_last_present, g_qpf, g_target);
+        hle_frame_clock_catch_up(&g_clock, now + g_redraw_est - g_qpf / 1000);
+    }
+    while (g_target || g_slot < g_multiple) {
+        LONGLONG due = g_target ? hle_frame_clock_due(&g_clock) :
+                                  g_last_present + span * g_slot / g_multiple;
         LONGLONG start = due - g_redraw_est;
         LARGE_INTEGER a, b;
         double alpha, ms;
 
+        if (g_target && due >= release)
+            return 0;
         if (now < start)
             return start;
-        if (now + g_redraw_est > release - g_qpf / 2000) {
-            g_late += g_multiple - g_slot;       /* too late for the rest */
+        if (now + g_redraw_est > release + (g_target ? g_qpf / 2000 : -g_qpf / 2000)) {
+            g_late += g_target ? 1 : g_multiple - g_slot;       /* too late for the rest */
             g_slot = g_multiple;
             /* Nothing measured, so the estimate cannot correct itself: let
              * it fall back, or one slow redraw would hold every frame. */
@@ -1021,11 +1076,142 @@ static long long gate_idle(long long now, long long release)
             g_off_ms_max = ms;
         g_alpha_sum += alpha;
         g_slot++;
+        if (g_target) g_clock.slot++;
         if (!g_on)
             return 0;
         now = b.QuadPart;
     }
     return 0;
+}
+
+/* The next host slot can lie just beyond the guest vblank. Present there
+ * before allowing guest work to start: it then has a whole 6.94 ms host
+ * period to finish before the following 144 Hz slot. Predict transforms
+ * for at most one host period, instead of inserting an off-clock 60 Hz
+ * endpoint or leaving a hole while the guest builds its next frame. Cuts,
+ * failed matches, capture and movies keep the ordinary guest fallback. */
+void hle_d3d8_interp_finish(void)
+{
+#ifdef _WIN32
+    static HANDLE timer;
+    LARGE_INTEGER now, wait;
+    LONGLONG due, span, cost;
+    double alpha;
+    if (!g_target || !g_on || !g_frame_ok || !g_clock.rate ||
+        hle_d3d8_capture_active() || hle_d3d8_movie_layer_shown()) return;
+    span = g_release - g_last_present;
+    if (span <= g_qpf / 1000 || span > g_qpf / 10) return;
+    QueryPerformanceCounter(&now);
+    hle_frame_clock_catch_up(&g_clock, now.QuadPart + g_redraw_est - g_qpf / 1000);
+    due = hle_frame_clock_due(&g_clock);
+    /* Never wait into another guest tick or extrapolate beyond one slot. */
+    if (due > g_release + g_qpf / g_target) return;
+    alpha = (double)(due - g_last_present) / span;
+    if (alpha < 0 || alpha > 1.5) return;
+    if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002, TIMER_ALL_ACCESS);
+    if (!timer) timer = CreateWaitableTimerW(NULL, FALSE, NULL);
+    if (!timer) return;
+    if (due - g_redraw_est > now.QuadPart) {
+        wait.QuadPart = -(LONGLONG)((double)(due - g_redraw_est - now.QuadPart) * 1e7 / g_qpf);
+        if (!SetWaitableTimer(timer, &wait, 0, NULL, NULL, FALSE) ||
+            WaitForSingleObject(timer, 100) != WAIT_OBJECT_0) return;
+    }
+    QueryPerformanceCounter(&now);
+    if (now.QuadPart + g_redraw_est > due + g_qpf / 1000) return;
+    redraw(alpha);
+    cost = g_presented_at - now.QuadPart;
+    if (cost > span / 4) cost = span / 4;
+    g_redraw_est = (g_redraw_est * 7 + cost) / 8;
+    g_clock.slot++;
+    g_slot++;
+#endif
+}
+
+/* Restore a state-only snapshot after drawing a completed pose. This list
+ * contains no guest geometry, clears, or feedback writes. InterpEnd has already
+ * restored the real color/depth targets, including their partial contents. */
+static void restore_prefix(const InterpList *list)
+{
+    size_t off;
+    int rec = hle_d3d8_interp_rec;
+    hle_d3d8_interp_rec = 0;
+    for (off = 0; off < list->len; ) {
+        const op_header *h = (const op_header *)(list->ops + off);
+        h->fn(h->size ? (const void *)(h + 1) : NULL);
+        off += sizeof *h + INTERP_ALIGN(h->size);
+    }
+    hle_d3d8_interp_rec = rec;
+}
+
+/* Between guest functions, including CPU work within a partial frame,
+ * the previous completed scene can be predicted on the same render thread.
+ * This fills host deadlines while the CPU calculates its next guest frame.
+ * Three lists retain both completed poses plus the frame being recorded.
+ * A fourth, transient list saves host state only. Separate color/depth targets
+ * and held feedback copies keep the partially drawn guest scene unchanged. */
+static void guest_idle(void)
+{
+#ifdef _WIN32
+    LARGE_INTEGER now;
+    LONGLONG due, cost, period;
+    double alpha, ms;
+    int recording;
+    if (!g_target || !g_on || g_idle_busy || !g_clock.rate) { g_idle_reasons[0]++; return; }
+    if (GetCurrentThreadId() != g_render_thread) { g_idle_reasons[1]++; return; }
+    if (!hle_d3d8_interp_rec) { g_idle_reasons[2]++; return; }
+
+    if (!g_list[g_cur].whole) { g_idle_reasons[4]++; return; }
+    if (!xbox_D3D8InterpCanPredict()) { g_idle_reasons[5]++; return; }
+    if (hle_d3d8_capture_active() || hle_d3d8_movie_layer_shown()) { g_idle_reasons[6]++; return; }
+    g_idle_reasons[7]++;
+    QueryPerformanceCounter(&now);
+    due = hle_frame_clock_due(&g_clock);
+    if (now.QuadPart + g_redraw_est < due) return;
+    period = g_qpf / 60;
+    hle_frame_clock_catch_up(&g_clock, now.QuadPart + g_redraw_est - g_qpf / 1000);
+    due = hle_frame_clock_due(&g_clock);
+    if (now.QuadPart + g_redraw_est < due) return;
+    alpha = 1.0 + (double)(due - g_last_present) / period;
+    if (alpha < 1.0 || alpha > 2.0) { g_idle_reasons[8]++; return; } /* at most one guest interval */
+    g_idle_reasons[9]++;
+    g_idle_busy = 1;
+    recording = g_cur;
+    g_cur = previous_list(recording);
+    if (!g_list[g_cur].idle_safe) { g_cur=recording;g_idle_busy=0;g_idle_reasons[3]++;return; }
+    if (!g_idle_checked) {
+        g_idle_checked = 1;
+        g_idle_ok = prepare_frame();
+    }
+    if (g_idle_ok) {
+        /* Keep only host state here: no guest draws, clears or feedback writes.
+         * The real scene color/depth remain untouched by prediction. */
+        g_cur = 3;
+        list_retire(&g_list[3]);
+        g_list[3].whole = 1;
+        hle_d3d8_interp_snapshot();
+        g_cur = previous_list(recording);
+        if (!g_list[3].whole) { g_cur=recording;g_idle_busy=0;return; }
+        hle_d3d8_interp_predicting = 1;
+        xbox_D3D8InterpPredict(TRUE);
+        redraw(alpha);
+        xbox_D3D8InterpPredict(FALSE);
+        hle_d3d8_interp_predicting = 0;
+        cost = g_presented_at - now.QuadPart;
+        if (cost > period / 4) cost = period / 4;
+        g_redraw_est = (g_redraw_est * 7 + cost) / 8;
+        ms = (double)(g_presented_at - now.QuadPart) * 1000.0 / g_qpf;
+        g_redraw_ms_sum += ms; g_redraws++;
+        if (ms > g_redraw_ms_max) g_redraw_ms_max = ms;
+        ms = fabs((double)(g_presented_at - due)) * 1000.0 / g_qpf;
+        g_off_ms_sum += ms;
+        if (ms > g_off_ms_max) g_off_ms_max = ms;
+        g_alpha_sum += alpha;
+        g_clock.slot++;g_slot++;
+    }
+    g_cur = recording;
+    if (g_idle_ok) restore_prefix(&g_list[3]);
+    g_idle_busy = 0;
+#endif
 }
 
 /* ---------------------------------------------------------- frame edges */
@@ -1048,9 +1234,10 @@ static void follow_registers(void)
     g_nregs = (proj >= 0 ? 4 : 0) + count;
     list_retire(&g_list[0]);
     list_retire(&g_list[1]);
+    list_retire(&g_list[2]);
     {
         int i;
-        for (i = 0; i < 2; i++) {
+        for (i = 0; i < 3; i++) {
             free(g_list[i].regs);
             free(g_list[i].draws);
             g_list[i].regs = NULL;
@@ -1073,7 +1260,24 @@ void hle_d3d8_interp_init(void)
     if (done)
         return;
     done = 1;
-    n = recomp_config_int("RECOMP_FRAME_INTERP", "frame_interp", 0);
+#ifdef _WIN32
+    g_target = recomp_config_int("RECOMP_FRAME_TARGET", "frame_target", 0);
+    if (g_target != 120 && g_target != 144) g_target = 0;
+    if (g_target) {
+        const char *cap = recomp_config_lookup("RECOMP_FPS_CAP", "frame_cap");
+        if (cap && strcmp(cap, "adaptive") && strcmp(cap, "60")) {
+            fprintf(stderr, "[INTERP] presentation target requires adaptive or 60 pacing; using legacy multiplier\n");
+            g_target = 0;
+        }
+    }
+#endif
+#ifdef TSFP_PC_CONTROLS
+    /* TSFP puts camera/object transforms in c64-c75. Blending just its
+     * fixed c60 projection repeats poses and only inflates the FPS count.
+     * The native Mac bridge already supplies this title-specific layout. */
+    xbox_D3D8SetInterpRegisters(60, 64, 12);
+#endif
+    n = g_target ? 3 : recomp_config_int("RECOMP_FRAME_INTERP", "frame_interp", 0);
     if (n < 2)
         return;
     if (n > INTERP_MAX_MULTIPLE)
@@ -1097,7 +1301,12 @@ void hle_d3d8_interp_init(void)
         g_dump_from = from ? (unsigned long)atol(from) : 0;
     }
     xbox_Nv2aFlipGateSetIdle(gate_idle);
-    fprintf(stderr, "[INTERP] frame interpolation: %d frames shown for each the title "
+#ifdef _WIN32
+    if (g_target) xbox_SetRecompIdle(guest_idle);
+#endif
+    if (g_target)
+        fprintf(stderr, "[INTERP] target %d host FPS; guest clock unchanged at 60 Hz\n", g_target);
+    if (!g_target) fprintf(stderr, "[INTERP] frame interpolation: %d frames shown for each the title "
             "draws (RECOMP_FRAME_INTERP)\n", n);
     fflush(stderr);
 }
@@ -1109,7 +1318,7 @@ void hle_d3d8_interp_frame_end(void)
     if (!g_multiple)
         return;
     QueryPerformanceCounter(&now);
-    g_last_present = now.QuadPart;
+    g_last_present = g_target && g_release && g_replayed ? g_release : now.QuadPart;
     g_frames++;
     g_swaps++;
     if (!g_on) {
@@ -1117,34 +1326,49 @@ void hle_d3d8_interp_frame_end(void)
             hle_d3d8_interp_rec = 0;
             list_retire(&g_list[0]);
             list_retire(&g_list[1]);
+            list_retire(&g_list[2]);
         }
         return;
     }
     follow_registers();
     /* The frame just shown becomes the one before; what the one before it
      * put off can happen now, since neither will be drawn again. */
-    list_retire(&g_list[g_cur ^ 1]);
-    g_cur ^= 1;
+    if (!g_target) list_retire(&g_list[g_cur ^ 1]);
+    g_cur = g_target ? (g_cur + 1) % 3 : g_cur ^ 1;
     list_retire(&g_list[g_cur]);
     g_list[g_cur].whole = 1;
+    g_list[g_cur].idle_safe = 1;
     hle_d3d8_interp_rec = 1;
     hle_d3d8_interp_snapshot();
+#ifdef _WIN32
+    g_render_thread = GetCurrentThreadId();
+#endif
+    g_idle_checked = 0;
     g_prepared = 0;
     g_frame_ok = 0;
     g_slot = 1;
+    if (g_target && !g_replayed) g_clock.rate = 0;
+    g_replayed = 0;
 }
 
 void hle_d3d8_interp_report(void)
 {
     unsigned long held = g_held_2d + g_held_match + g_held_cut + g_held_other;
 
+    char label[32];
     if (!g_multiple)
         return;
-    fprintf(stderr, "[INTERP] %dx: %lu frames, %lu in-between accepted, %lu late; held "
+    if (g_target && getenv("RECOMP_INTERP_DEBUG"))
+        fprintf(stderr, "[INTERP-IDLE] off %lu thread %lu rec %lu copy %lu partial %lu drawn %lu movie %lu ready %lu range %lu replay %lu\n",
+                g_idle_reasons[0],g_idle_reasons[1],g_idle_reasons[2],g_idle_reasons[3],g_idle_reasons[4],
+                g_idle_reasons[5],g_idle_reasons[6],g_idle_reasons[7],g_idle_reasons[8],g_idle_reasons[9]);
+    if (g_target) fprintf(stderr, "[INTERP] target %d host FPS; suppressed %lu guest endpoints\n", g_target, g_suppressed);
+    snprintf(label, sizeof label, g_target ? "target %d FPS" : "%dx", g_target ? g_target : g_multiple);
+    fprintf(stderr, "[INTERP] %s: %lu frames, %lu in-between accepted, %lu late; held "
             "%lu (%lu no 3D, %lu matched too little, %lu cut, %lu other); matched "
             "%.0f%% of 3D primitives; redraw %.2f ms average, %.2f worst; submission start "
             "%.2f ms from schedule on average, %.2f worst; blend %.2f average%s\n",
-            g_multiple, g_frames, g_shown, g_late, held, g_held_2d, g_held_match,
+            label, g_frames, g_shown, g_late, held, g_held_2d, g_held_match,
             g_held_cut, g_held_other,
             g_matched_frames ? g_matched_sum * 100.0 / (double)g_matched_frames : 0.0,
             g_redraws ? g_redraw_ms_sum / (double)g_redraws : 0.0, g_redraw_ms_max,

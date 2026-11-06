@@ -107,6 +107,8 @@ typedef struct {
     int      uses_proj;   /* drawn through the projection: 3D */
 } HleInterpDrawKey;
 
+void hle_d3d8_interp_unsafe(void);
+extern int hle_d3d8_interp_predicting;
 void hle_d3d8_interp_op(void (*fn)(const void *arg), const void *arg, size_t size);
 void hle_d3d8_interp_draw(void (*fn)(const void *arg), const void *arg, size_t size,
                           const HleInterpDrawKey *key);
@@ -131,6 +133,9 @@ void hle_d3d8_interp_frame_end(void);
 /* The five-second report's line, and in-between frames shown so far. */
 void hle_d3d8_interp_report(void);
 unsigned long hle_d3d8_interp_presents(void);
+unsigned long hle_d3d8_interp_suppressed(void);
+int hle_d3d8_interp_skip_guest(void);
+void hle_d3d8_interp_finish(void);
 
 /* Screen copies, wrapped so frame interpolation draws them again. */
 HRESULT host_CopyBackBufferToTexture(IDirect3DTexture8 *dst);
