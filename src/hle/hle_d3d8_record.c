@@ -930,8 +930,15 @@ static void draw_key(HleInterpDrawKey *k, DWORD type, UINT prims, UINT stride,
     k->target = g_target_lost ? NULL : g_target_texture;
     /* Read after the draw: the program's verdict is made when it is bound
      * for it. A fixed-function draw is not blended. */
-    k->uses_proj = d3d8_vsh_is_programmable(g_bound_vs) &&
-                   d3d8_vsh_bound_uses_projection();
+    {
+        int projection, first, count;
+        d3d8_vsh_interp_registers(&projection, &first, &count);
+        /* Some title programs read a precomposed projection/transform rather
+         * than the separate projection. These still describe moving 3D. */
+        k->uses_proj = d3d8_vsh_is_programmable(g_bound_vs) &&
+            ((projection >= 0 && d3d8_vsh_bound_reads(projection, 4)) ||
+             (first >= 0 && count > 0 && d3d8_vsh_bound_reads(first, count)));
+    }
 }
 
 /* ------------------------------------------------------------ device calls */

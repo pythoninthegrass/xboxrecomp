@@ -39,6 +39,7 @@
 #ifdef TSFP_PC_CONTROLS
 #include "pc_debug_output.h"
 #include "pc_crash.h"
+#include "graphics/tsfp_interpolation.h"
 #endif
 
 /* xboxrecomp runtime headers */
@@ -536,6 +537,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     (void)nCmdShow;
 
 #ifdef TSFP_PC_CONTROLS
+    tsfp_configure_interpolation();
     int crash_ready = pc_crash_init(capture_crash_guest);
     if (crash_ready) atexit(pc_crash_shutdown);
     /* Exact test commands run before game files, settings or saves are opened. */

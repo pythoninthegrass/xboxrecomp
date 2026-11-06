@@ -57,7 +57,7 @@
  * The deferred-frames mode (RECOMP_HLE_D3D8_DEFER) is not combined with
  * this; interpolation stays off there.
  *
- * Windows only, like the rest of shadow mode.
+ * Shared by the Windows and native Mac shadow renderers.
  */
 #include "platform/xbox_winnt.h"
 #include <math.h>
@@ -114,7 +114,7 @@ typedef struct {
 /* A matrix ready to blend: rotation (a quaternion each side, the second
  * turned to the same hemisphere), the rest of the 3x3, the translation. */
 typedef struct {
-    int    ok;
+    int    ok, projective;
     double qa[4], qb[4];
     double sa[9], sb[9];
     double ta[3], tb[3];
@@ -560,6 +560,73 @@ static void prepare_group(Prepared *p, const float *a, const float *b, int *cut)
     p->ok = 1;
 }
 
+/* Recover an affine view/model transform from P*M. The guest may update
+ * this combined matrix without refreshing a separate affine register group.
+ * Never use that other group as a substitute: its translation may be stale. */
+static int unproject_group(const float *projection, const float *combined, float *out)
+{
+    double rows[4][8];
+    int i, j, k;
+    for (i = 0; i < 4; i++)
+        for (j = 0; j < 8; j++)
+            rows[i][j] = j < 4 ? projection[i * 4 + j] : combined[i * 4 + j - 4];
+    for (i = 0; i < 4; i++) {
+        int pivot = i;
+        for (j = i + 1; j < 4; j++)
+            if (fabs(rows[j][i]) > fabs(rows[pivot][i])) pivot = j;
+        if (!isfinite(rows[pivot][i]) || fabs(rows[pivot][i]) < 1e-10) return 0;
+        for (k = 0; k < 8; k++) {
+            double v = rows[i][k]; rows[i][k] = rows[pivot][k]; rows[pivot][k] = v;
+        }
+        double scale = rows[i][i];
+        for (k = 0; k < 8; k++) rows[i][k] /= scale;
+        for (j = 0; j < 4; j++) if (j != i) {
+            double factor = rows[j][i];
+            for (k = 0; k < 8; k++) rows[j][k] -= factor * rows[i][k];
+        }
+    }
+    for (i = 0; i < 4; i++) for (j = 0; j < 4; j++) {
+        if (!isfinite(rows[i][j + 4])) return 0;
+        out[i * 4 + j] = (float)rows[i][j + 4];
+        if (!isfinite(out[i * 4 + j])) return 0;
+    }
+    return is_affine(out);
+}
+
+static void project_group(const float *projection, const float *affine, float *out)
+{
+    float result[16];
+    int i, j, k;
+    for (i = 0; i < 4; i++) for (j = 0; j < 4; j++) {
+        double v = 0.0;
+        for (k = 0; k < 4; k++) v += projection[i * 4 + k] * (double)affine[k * 4 + j];
+        result[i * 4 + j] = (float)v;
+    }
+    memcpy(out, result, sizeof result);
+}
+
+static void prepare_transform_group(Prepared *p, const float *a, const float *b,
+                                    const float *pa, const float *pb, int *cut)
+{
+    float aa[16], ab[16];
+    p->ok = p->projective = 0;
+    for (int i = 0; i < 16; i++)
+        if (!isfinite(a[i]) || !isfinite(b[i])) return;
+    if (is_affine(a) && is_affine(b)) {
+        prepare_group(p, a, b, cut);
+    } else if (pa && pb && memcmp(pa + 12, pb + 12, 4 * sizeof(float)) == 0 &&
+               unproject_group(pa, a, aa) && unproject_group(pb, b, ab)) {
+        prepare_group(p, aa, ab, cut);
+        /* Projection-only motion still needs reprojection even if M is static. */
+        if (!*cut && !p->ok && memcmp(pa, pb, 16 * sizeof(float)) != 0) {
+            int ma, mb;
+            p->ok = split(aa, p->qa, p->sa, p->ta, &ma) &&
+                    split(ab, p->qb, p->sb, p->tb, &mb) && ma == mb;
+        }
+        p->projective = p->ok;
+    }
+}
+
 static void blend_group(const Prepared *p, double a, float *out)
 {
     double q[4], r[9], s[9], n;
@@ -638,7 +705,9 @@ static int prepare_frame(void)
             const float *b = regs_of(cur, i) + (g_proj >= 0 ? 16 : 0);
             for (g = 0; g < g_groups; g++) {
                 if ((d->groups >> g) & 1u)
-                    prepare_group(&g_prep[i * g_groups + g], a + g * 16, b + g * 16, &d->cut);
+                    prepare_transform_group(&g_prep[i * g_groups + g], a + g * 16, b + g * 16,
+                        g_proj >= 0 ? regs_of(prev, d->match) : NULL,
+                        g_proj >= 0 ? regs_of(cur, i) : NULL, &d->cut);
                 else
                     g_prep[i * g_groups + g].ok = 0;
             }
@@ -702,15 +771,18 @@ static void set_draw_registers(int i, double a)
         if (g_proj >= 0) {
             /* The same kind of projection both sides (the last row says
              * perspective or not), or it is a change of view, not motion. */
-            if (d->reads_proj && memcmp(pa + 12, b + 12, 4 * sizeof(float)) == 0)
+            if (memcmp(pa + 12, b + 12, 4 * sizeof(float)) == 0)
                 for (k = 0; k < 16; k++)
                     o[k] = (float)((1.0 - a) * pa[k] + a * b[k]);
             o += 16;
         }
         for (g = 0; g < g_groups; g++) {
             const Prepared *p = &g_prep[i * g_groups + g];
-            if (p->ok)
+            if (p->ok) {
                 blend_group(p, a, o + g * 16);
+                if (p->projective)
+                    project_group(out, o + g * 16, o + g * 16);
+            }
         }
     }
     if (g_proj >= 0) {
@@ -783,6 +855,8 @@ static int redraw(double a)
  * shows this one; it is started early by what a redraw has been costing,
  * so it lands on time, and given up if it would not be done before the
  * vblank. Its blend is for the moment it is shown. */
+static LONGLONG g_prepare_est;
+
 static long long gate_idle(long long now, long long release)
 {
     LONGLONG span = release - g_last_present;
@@ -790,12 +864,27 @@ static long long gate_idle(long long now, long long release)
     if (!g_on || !g_last_present)
         return 0;
     if (!g_prepared) {
+        LARGE_INTEGER finished;
+        LONGLONG cost;
         g_prepared = 1;
         g_frame_ok = 0;
+        /* Matching/decomposition also consumes the guest's remaining wait.
+         * Do not spend a known expensive preparation inside a tiny idle gap. */
+        if (g_prepare_est > 0 && now + g_prepare_est >= release - g_qpf / 2000) {
+            g_held_other++;
+            g_prepare_est -= g_prepare_est / 16 + (g_prepare_est < 16);
+            return 0;
+        }
         if (hle_d3d8_capture_active() || hle_d3d8_movie_layer_shown())
             g_held_other++;
         else
             g_frame_ok = prepare_frame();
+        QueryPerformanceCounter(&finished);
+        cost = finished.QuadPart > now ? finished.QuadPart - now : 0;
+        g_prepare_est = (g_prepare_est * 7 + cost) / 8;
+        /* The old timestamp could schedule a replay after preparation had
+         * already used its budget, delaying the original guest presentation. */
+        now = finished.QuadPart;
     }
     if (!g_frame_ok || span <= g_qpf / 1000 || span > g_qpf / 10)
         return 0;
