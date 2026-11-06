@@ -735,6 +735,17 @@ void sub_00077140(void)
 #endif
 }
 
+/* US animated frontend background sheet. */
+extern void sub_002DB010_gen(void);
+void sub_002DB010(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_backdrop(sub_002DB010_gen);
+#else
+    sub_002DB010_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
