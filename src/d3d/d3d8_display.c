@@ -16,6 +16,8 @@
 #define TSFP_GRAPHICS_SETTINGS_IMPLEMENTATION
 #include "graphics/graphics_settings.h"
 #include "graphics/fxaa_resolve.h"
+#include "rhi_shader_cache.h"
+int pc_graphics_clear_cache(void) { return rhi_shader_cache_clear(); }
 #ifdef TSFP_PC_DISPLAY
 #include "pc_display.h"
 #endif
