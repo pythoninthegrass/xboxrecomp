@@ -3841,46 +3841,7 @@ static void bridge_NtCreateDirectoryObject(void)
     g_eax = 0;  /* STATUS_SUCCESS */
 }
 
-/* IoCreateSymbolicLink (ordinal 67, 2 args)
- *
- * Was a bare "return STATUS_SUCCESS": the title was told its link existed and
- * nothing recorded it. Titles mount their own drive letters this way --
- * Wreckless links \??\Z: to \Device\Harddisk0\Partition1\ and then loads
- * every asset through z:\ -- so dropping the link left xbox_translate_path
- * applying the generic "Z: is the cache partition" rule, and every asset open
- * failed with ERROR_FILE_NOT_FOUND a whole boot later.
- *
- * Both arguments are guest ANSI_STRINGs whose Buffer field holds a guest VA,
- * so passing the structs straight through would have xbox_copy_ansi read a
- * 32-bit guest address as a 64-bit host pointer. Rebuild them by hand, the way
- * bridge_RtlEqualString does.
- */
-static void bridge_IoCreateSymbolicLink(void)
-{
-    uint32_t link_va   = STACK_ARG(0);
-    uint32_t target_va = STACK_ARG(1);
-    XBOX_ANSI_STRING link, target;
-
-    if (!link_va) {
-        g_eax = 0xC000000Du;  /* STATUS_INVALID_PARAMETER */
-        return;
-    }
-    link.Length        = BRIDGE_MEM16(link_va + 0);
-    link.MaximumLength = BRIDGE_MEM16(link_va + 2);
-    link.Buffer        = (PCHAR)XBOX_TO_NATIVE(BRIDGE_MEM32(link_va + 4));
-
-    if (target_va) {
-        target.Length        = BRIDGE_MEM16(target_va + 0);
-        target.MaximumLength = BRIDGE_MEM16(target_va + 2);
-        target.Buffer        = (PCHAR)XBOX_TO_NATIVE(BRIDGE_MEM32(target_va + 4));
-    } else {
-        target.Length = target.MaximumLength = 0;
-        target.Buffer = NULL;
-    }
-
-    g_eax = (uint32_t)xbox_IoCreateSymbolicLink(&link,
-                                                target_va ? &target : NULL);
-}
+#include "guest_kernel_symlinks.inc"
 
 /* ── ObReferenceObjectByHandle (ordinal 246) ──────────────
  * NTSTATUS ObReferenceObjectByHandle(HANDLE Handle, PVOID ObjectType,
@@ -4655,21 +4616,6 @@ static void bridge_IoBuildSynchronousFsdRequest(void)
         (PXBOX_IO_STATUS_BLOCK)XBOX_TO_NATIVE(STACK_ARG(6)));
 }
 
-static void bridge_IoDeleteSymbolicLink(void)
-{
-    uint32_t name_va = STACK_ARG(0);
-    XBOX_ANSI_STRING name;
-
-    if (!name_va) {
-        g_eax = 0xC000000Du;   /* STATUS_INVALID_PARAMETER */
-        return;
-    }
-    name.Length        = BRIDGE_MEM16(name_va + 0);
-    name.MaximumLength = BRIDGE_MEM16(name_va + 2);
-    name.Buffer        = (PCHAR)XBOX_TO_NATIVE(BRIDGE_MEM32(name_va + 4));
-
-    g_eax = (uint32_t)xbox_IoDeleteSymbolicLink(&name);
-}
 
 #include "guest_kernel_requests.inc"
 

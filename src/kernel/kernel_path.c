@@ -161,7 +161,8 @@ static int resolve_symlink(const char* xbox_path, char* out, size_t out_size)
 {
     char        link[8];
     const char* rest;
-    const char* target;
+    char        target[4096];
+    size_t      target_bytes;
     size_t      tlen, rlen;
     int         i;
 
@@ -182,9 +183,11 @@ static int resolve_symlink(const char* xbox_path, char* out, size_t out_size)
     link[5] = ':';
     link[6] = '\0';
 
-    target = xbox_LookupSymbolicLink(link);
-    if (!target || !target[0])
+    if (tsfp_kernel_symlink_copy(link, strlen(link), target, sizeof(target)-1,
+                                 &target_bytes) != TSFP_SYMLINK_OK ||
+        !target_bytes || memchr(target, 0, target_bytes))
         return 0;
+    target[target_bytes] = 0;
 
     while (*rest == '\\' || *rest == '/')
         rest++;

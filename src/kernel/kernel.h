@@ -868,11 +868,7 @@ NTSTATUS __stdcall xbox_IoInvalidDeviceRequest(PVOID DeviceObject, PVOID Irp);
 NTSTATUS __fastcall xbox_IofCallDriver(PVOID DeviceObject, PVOID Irp);
 VOID     __fastcall xbox_IofCompleteRequest(PVOID Irp, CCHAR PriorityBoost);
 
-NTSTATUS __stdcall xbox_IoCreateSymbolicLink(PXBOX_ANSI_STRING SymbolicLinkName, PXBOX_ANSI_STRING DeviceName);
-/* Target of a link registered by xbox_IoCreateSymbolicLink, or NULL.
- * Looked up by exact link name, e.g. "\\??\\Z:". */
-const char* xbox_LookupSymbolicLink(const char* link);
-NTSTATUS __stdcall xbox_IoDeleteSymbolicLink(PXBOX_ANSI_STRING SymbolicLinkName);
+#include "guest_kernel_symlinks.h"
 
 /* ============================================================================
  * Crypto (kernel_crypto.c)

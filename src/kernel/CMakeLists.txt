@@ -32,6 +32,8 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_symlinks.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_kernel_symlinks.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_io_targets.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_event.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_io_scheduler.c"
