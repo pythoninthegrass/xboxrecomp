@@ -69,7 +69,9 @@
 #include "recomp_config.h"
 #ifdef TSFP_PC_CONTROLS
 #include "pc_controls.h"
+#ifdef _WIN32
 #include "pc_refresh.h"
+#endif
 #endif
 
 static unsigned long g_shadow_swaps; /* Guest frame counter, all hosts. */
