@@ -46,6 +46,7 @@ target_sources(xbox_kernel PRIVATE
 
 # Independent image inspection and materialization, shared by both hosts.
 target_sources(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime/guest_image.c")
+target_sources(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime/guest_allocation.c")
 target_include_directories(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime")
 
 # See src/platform/CMakeLists.txt: resolve src/ relative to this file, not via

@@ -711,55 +711,26 @@ static void bridge_MmAllocateSystemMemory(void)
 
 static void bridge_MmAllocateContiguousMemoryEx(void)
 {
-    uint32_t size = STACK_ARG(0);
-    uint32_t low = STACK_ARG(1);
-    uint32_t high = STACK_ARG(2);
-    uint32_t align = STACK_ARG(3);
-    uint32_t prot = STACK_ARG(4);
-    uint32_t xbox_va;
-
-    (void)prot;
-
-    /*
-     * A caller that constrains the range to exactly one allocation's worth is
-     * demanding a specific physical address, not expressing a preference.
-     * Halo does this for its two big pools and asserts on the result
-     * (physical_memory_map.c:46) - XPhysicalAlloc passes lowest = the address
-     * it wants and highest = lowest + size - 1, then requires
-     * 0x80000000 | lowest back. Satisfying that from the heap fails the assert
-     * and leaves its whole memory map wrong.
-     */
-    if (low && high >= low && (high - low + 1) <= size + 0x1000) {
-        xbox_va = XBOX_PHYSICAL_MIRROR_BASE + low;
-
-        /* The console hands out zeroed pages here, and titles rely on it:
-         * pool headers and free-list roots are assumed clear, so whatever the
-         * backing view happened to contain shows up later as structures that
-         * are "allocated" but full of garbage. */
-        memset((void *)((uintptr_t)xbox_va + g_xbox_mem_offset), 0, size);
-        /* And the arena must not hand these pages out again. */
-        xbox_ContiguousPin(xbox_va, size);
-
-        if (KERNEL_LOG_ON_HALF()) {
-            fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemoryEx: size=%u "
-                    "pinned phys 0x%08X -> Xbox VA 0x%08X (zeroed)\n",
-                    size, low, xbox_va);
-            fflush(stderr);
-        }
-        g_eax = xbox_va;
-        return;
+    uint32_t size = STACK_ARG(0), low = STACK_ARG(1), high = STACK_ARG(2);
+    uint32_t alignment = STACK_ARG(3), result = 0;
+    uint64_t width = high >= low ? (uint64_t)high - low + 1u : 0;
+    /* Preserve the narrow-range fixed-address convention, with bounds and
+     * ownership checked before any memory write. The protection word does
+     * not change the host mapping's existing writable policy. */
+    if (!width || low >= XBOX_CONTIG_SIZE) {
+        result = 0;
+    } else if (low && width <= (uint64_t)size + 4096u) {
+        if (low < XBOX_CONTIG_SIZE && size <= width)
+            result = xbox_ContiguousAllocAt(XBOX_CONTIG_BASE + low, size);
+    } else {
+        uint32_t ceiling = high < XBOX_CONTIG_SIZE ? high : XBOX_CONTIG_SIZE - 1u;
+        result = xbox_ContiguousAllocRange(size, alignment,
+            XBOX_CONTIG_BASE + low, XBOX_CONTIG_BASE + ceiling);
     }
-
-    if (align < 4096) align = 4096;
-    xbox_va = xbox_ContiguousAlloc(size, align);
-
-    if (KERNEL_LOG_ON_HALF()) {
-        fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemoryEx: size=%u align=%u → Xbox VA 0x%08X\n",
-                size, align, xbox_va);
-        fflush(stderr);
-    }
-
-    g_eax = xbox_va;
+    g_eax = result;
+    if (KERNEL_LOG_ON_HALF())
+        fprintf(stderr, "  [KERNEL] physical allocation size=%u low=0x%08X high=0x%08X align=%u -> 0x%08X\n",
+                size, low, high, alignment, result);
 }
 
 /* ── MmFreeContiguousMemory (ordinal 171) ─────────────────

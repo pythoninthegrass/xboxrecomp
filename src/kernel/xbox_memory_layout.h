@@ -188,14 +188,16 @@ void xbox_SetDisplayFramebuffer(uint32_t fb_va, uint32_t pitch);
 /* Read it back: 0 until the title sets a mode. Pitch is optional. */
 uint32_t xbox_GetDisplayFramebuffer(uint32_t *pitch);
 
-/* Allocate from the contiguous (physical-mirror) arena. Returns a guest VA
- * below 256 MB, or 0 when the arena is exhausted. */
+/* Allocate in the mapped physical window above its reserved low prefix.
+ * Returns a guest VA in that window, or 0 on invalid input/exhaustion. */
 uint32_t xbox_ContiguousAlloc(uint32_t size, uint32_t alignment);
 /* Give a block back; 0 when xbox_va is not a live block this arena made. */
 int      xbox_ContiguousFree(uint32_t xbox_va);
-/* A caller was handed this exact range by physical address (a pinned
- * MmAllocateContiguousMemoryEx): keep the arena from handing it out again. */
-void     xbox_ContiguousPin(uint32_t xbox_va, uint32_t size);
+/* Claim and zero an exact physical range after checking bounds/ownership.
+ * Returns xbox_va on success, otherwise 0 without changing guest memory. */
+uint32_t xbox_ContiguousAllocAt(uint32_t xbox_va, uint32_t size);
+/* Inclusive guest-VA bounds; requested bytes must fit, including the low limit. */
+uint32_t xbox_ContiguousAllocRange(uint32_t size, uint32_t alignment, uint32_t low, uint32_t high);
 uint32_t xbox_ContiguousAllocatedBytes(void);
 
 int xbox_Nv2aMirrorFence(uint32_t device_ptr_va,

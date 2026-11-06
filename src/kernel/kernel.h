@@ -1080,7 +1080,7 @@ uint32_t xbox_kernel_console_av_standard(void);
  * if there was no mapped XBE to read it from. */
 uint32_t xbox_kernel_get_xbe_game_region(void);
 
-/* Walk the contiguous allocations, oldest first. Returns 0 past the end. */
+/* Walk live physical allocations in ascending address order; 0 past the end. */
 int xbox_ContiguousBlock(int index, uint32_t *addr, uint32_t *size);
 void     xbox_kernel_set_xbe_game_region(uint32_t region);
 
