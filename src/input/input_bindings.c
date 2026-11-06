@@ -21,6 +21,7 @@
 #include "recomp_pad.h"
 #ifdef TSFP_NATIVE_INPUT
 #include "input_sdl.h"
+#include "pc_input.h"
 #include <pthread.h>
 #endif
 #ifdef TSFP_PC_CONTROLS
@@ -1039,7 +1040,7 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
         default:      out->sThumbRY = (SHORT)v; break;
         }
     }
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     pc_input_normalize_movement(&out->sThumbLX, &out->sThumbLY);
 #endif
 #ifdef TSFP_NATIVE_INPUT

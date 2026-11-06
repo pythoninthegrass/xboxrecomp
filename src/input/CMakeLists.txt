@@ -56,7 +56,10 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
 endif()
 
 if(APPLE AND TSFP_NATIVE_DIR)
-    target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c")
+    # Compile the same portable input model used by the Windows adapter.
+    target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c"
+                                      "${TSFP_NATIVE_DIR}/../pc_input.c")
+    target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/..")
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}")
     target_compile_definitions(xbox_input PRIVATE TSFP_NATIVE_INPUT)
 endif()
