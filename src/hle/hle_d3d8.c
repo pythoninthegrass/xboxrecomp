@@ -2063,8 +2063,7 @@ static void overlay_frame(void)
         QueryPerformanceFrequency(&qpf);
         QueryPerformanceCounter(&window_start);
         snprintf(line, line_size, "-- fps   cap %s", xbox_Nv2aFlipGateModeName());
-        fprintf(stderr, "[HLE-D3D8] F9 shows the frame rate on screen, F10 steps the "
-                "frame cap (now %s)\n", xbox_Nv2aFlipGateModeName());
+        fprintf(stderr, "[HLE-D3D8] F9 shows the frame rate on screen; fixed %s FPS\n", xbox_Nv2aFlipGateModeName());
         fflush(stderr);
     }
 

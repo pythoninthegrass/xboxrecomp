@@ -1069,13 +1069,7 @@ const char *xbox_Nv2aFlipGateModeName(void)
 
 void xbox_Nv2aFlipGateCycle(void)
 {
-    int i = flip_gate_mode_index();
-
-    i = i < 0 ? 0 : (i + 1) % (int)(sizeof g_gate_modes / sizeof g_gate_modes[0]);
-    g_flip_gate_divisor = g_gate_modes[i].divisor;
-    g_flip_gate_strict = g_gate_modes[i].strict;
-    fprintf(stderr, "  [NV2A] flip gate: %s\n", g_gate_modes[i].name);
-    fflush(stderr);
+    /* Timing is fixed at 60; the old hotkey must not enable uncapped mode. */
 }
 
 /* The gate's wait, lent out (xbox_Nv2aFlipGateSetIdle). The time of the

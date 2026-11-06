@@ -131,12 +131,6 @@ static void build_rows(void)
     r->kind  = ROW_INT; r->lo = 1; r->hi = 16; r->ival = &g_settings.anisotropy;
     r++;
 
-    r->label = "Frame rate";
-    r->help  = "Adaptive paces the game the way the console did. F10 changes it"
-               " while playing.";
-    r->kind  = ROW_CHOICE; r->choices = k_frame_caps; r->ival = &g_frame_cap_index;
-    r++;
-
     r->label = "Show frame rate";
     r->help  = "Start with the counter on screen. F9 toggles it while playing.";
     r->kind  = ROW_BOOL; r->ival = &g_settings.fps_overlay;
@@ -150,12 +144,6 @@ static void build_rows(void)
     r->label = "Variable refresh rate";
     r->help  = "In fullscreen on a G-SYNC or FreeSync display: an even 60, no judder.";
     r->kind  = ROW_BOOL; r->ival = &g_settings.vrr;
-    r++;
-
-    r->label = "Frame interpolation";
-    r->help  = "Draw frames between the game's own: smoother motion while the game"
-               " still runs at 60. Best with Variable refresh rate.";
-    r->kind  = ROW_INT; r->lo = 1; r->hi = 4; r->ival = &g_settings.frame_interp;
     r++;
 
     g_video_count = (int)(r - g_video_rows);

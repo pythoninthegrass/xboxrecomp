@@ -196,7 +196,7 @@ void recomp_settings_defaults(RecompSettings *s)
     s->fullscreen        = 0;
     s->vrr               = 1;
     s->frame_interp      = 1;
-    snprintf(s->frame_cap, sizeof s->frame_cap, "adaptive");
+    snprintf(s->frame_cap, sizeof s->frame_cap, "60");
 }
 
 static int clamp_int(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -238,20 +238,12 @@ int recomp_settings_read(const char *path, RecompSettings *s)
             snprintf(s->widescreen_2d, sizeof s->widescreen_2d, "%s", v);
         if ((v = from_table("anisotropy")) != NULL)
             s->anisotropy = clamp_int(atoi(v), 1, 16);
-        if ((v = from_table("frame_cap")) != NULL)
-            snprintf(s->frame_cap, sizeof s->frame_cap, "%s", v);
         if ((v = from_table("fps_overlay")) != NULL)
             s->fps_overlay = !off_word(v);
         if ((v = from_table("fullscreen")) != NULL)
             s->fullscreen = !off_word(v);
         if ((v = from_table("vrr")) != NULL)
             s->vrr = !off_word(v);
-        if ((v = from_table("refresh_rate")) != NULL)
-            s->refresh_rate = (atoi(v) == 120 || atoi(v) == 144) ? atoi(v) : 0;
-        if ((v = from_table("frame_target")) != NULL)
-            s->frame_target = (atoi(v) == 120 || atoi(v) == 144) ? atoi(v) : 0;
-        if ((v = from_table("frame_interp")) != NULL)
-            s->frame_interp = clamp_int(atoi(v), 1, 4);
         if ((v = from_table("game_dir")) != NULL)
             snprintf(s->game_dir, sizeof s->game_dir, "%s", v);
     }
@@ -339,7 +331,7 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "# is left alone, which wants no filtering.              [RECOMP_ANISO]\n"
         "anisotropy = %d\n"
         "\n"
-        "# Frame pacing: adaptive, 60, 30, or 0 for uncapped.  [RECOMP_FPS_CAP]\n"
+        "# Fixed 60 FPS pacing.\n"
         "frame_cap = %s\n"
         "\n"
         "# Show the frame rate from the moment the game starts. F9 toggles it\n"
@@ -356,28 +348,15 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "# must have it switched on. 0 turns it off.             [RECOMP_VRR]\n"
         "vrr = %d\n"
         "\n"
-        "# Frame interpolation: draw frames between the game's own, so 2 shows\n"
-        "# 120 a second while the game itself still runs at 60. Best with\n"
-        "# variable refresh. 1 is off.                   [RECOMP_FRAME_INTERP]\n"
-        "frame_interp = %d\n"
-        "\n"
-        "# Windows presentation target: 0 preserves frame_interp, or 120 / 144.\n"
-        "# Keeps gameplay at 60 Hz. Requires adaptive/60 pacing and GPU headroom.\n"
-        "#                                  [RECOMP_FRAME_TARGET]\n"
-        "frame_target = %d\n"
-        "\n"
-        "# Fullscreen monitor refresh: 0 keeps desktop, 120 or 144 Hz.\n"
-        "# The desktop mode is restored on focus loss/exit; resolution stays.\n"
-        "#                                          [RECOMP_REFRESH_RATE]\n"
-        "refresh_rate = %d\n"
+        "# Legacy timing keys: interpolation removed; keep the desktop refresh.\n"
+        "frame_interp = %d\nframe_target = %d\nrefresh_rate = %d\n"
         "\n"
         "# Where the game's files are, if they are not beside the executable.\n"
         "#                                                   [RECOMP_GAME_DIR]\n",
         s->resolution_scale, s->widescreen, s->hor_plus, s->hor_plus_register,
         s->widescreen_2d[0] ? s->widescreen_2d : "auto",
-        s->anisotropy, s->frame_cap[0] ? s->frame_cap : "adaptive", s->fps_overlay,
-        s->fullscreen, s->vrr, s->frame_interp < 1 ? 1 : s->frame_interp,
-        s->frame_target, s->refresh_rate);
+        s->anisotropy, "60", s->fps_overlay,
+        s->fullscreen, s->vrr, 1, 0, 0);
 
     if (s->game_dir[0])
         fprintf(f, "game_dir = %s\n", s->game_dir);
@@ -519,6 +498,13 @@ static const char *from_file(const char *key)
 
 const char *recomp_config_lookup(const char *env_name, const char *key)
 {
+    /* Retired timing options cannot reactivate interpolation or uncapped
+     * rendering through old configuration files or inherited overrides. */
+    if (key) {
+        if (!strcmp(key, "frame_interp")) return "1";
+        if (!strcmp(key, "frame_target") || !strcmp(key, "refresh_rate")) return "0";
+        if (!strcmp(key, "frame_cap")) return "60";
+    }
     const char *v = env_name ? getenv(env_name) : NULL;
 
     if (v && *v)
