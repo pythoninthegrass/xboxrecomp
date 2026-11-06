@@ -579,6 +579,8 @@ uint32_t xbox_AllocThreadTib(void);
 /* Shared fixed slices used by timer, USB and host-driven callbacks. */
 int xbox_worker_stack_alloc(void);
 void xbox_worker_stack_free(int slot);
+/* Original active stack bounds, independent of cloned TIB metadata. */
+int xbox_GetGuestStackBounds(uint32_t esp,uint32_t *low,uint32_t *high);
 /* Release operation scopes/current-object ownership before a guest-capable host worker exits. */
 void xbox_bridge_thread_objects_exit(void);
 

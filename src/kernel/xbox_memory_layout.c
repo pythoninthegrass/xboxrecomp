@@ -2340,6 +2340,10 @@ void xbox_worker_stack_free(int slot)
 {
     (void)tsfp_worker_stack_release(&g_guest_threads, slot);
 }
+int xbox_GetGuestStackBounds(uint32_t esp,uint32_t *low,uint32_t *high)
+{
+    return tsfp_thread_stack_bounds(&g_guest_threads,esp,low,high);
+}
 /* End project thread-memory ABI adapters. */
 
 /* Project allocation ABI adapters; ownership and zeroing live in one provider. */

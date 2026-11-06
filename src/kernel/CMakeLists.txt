@@ -29,6 +29,7 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_stack_trace.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_text_raw.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_string_transform.c"
     "${TSFP_SHARED_SOURCE}/runtime/host_string_case.c"

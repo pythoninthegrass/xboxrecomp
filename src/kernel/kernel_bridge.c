@@ -4784,23 +4784,11 @@ typedef void (*bridge_func_t)(void);
 /* ── Rtl Misc stubs (ordinals 288, 297, 319, 321) ─────────── */
 
 /* 288: VOID RtlGetCallersAddress(PVOID *CallersAddress, PVOID *CallersCaller) */
-static void bridge_RtlGetCallersAddress(void)
-{
-    uint32_t a_va = STACK_ARG(0);
-    uint32_t c_va = STACK_ARG(1);
-
-    if (a_va) BRIDGE_MEM32(a_va) = 0;
-    if (c_va) BRIDGE_MEM32(c_va) = 0;
-    g_eax = 0;
-}
+#include "guest_kernel_stack_trace.inc"
 
 /* 297: VOID RtlMapGenericMask(PACCESS_MASK AccessMask, PRTL_GENERIC_MAPPING) */
 
 /* 319: ULONG RtlWalkFrameChain(PVOID *Callers, ULONG Count, ULONG Flags) */
-static void bridge_RtlWalkFrameChain(void)
-{
-    g_eax = 0;
-}
 
 /* 321: XboxEEPROMKey (data export, 0 args)
  * Not in the kernel_data_va_for_ordinal table, so it needs a bridge that hands
@@ -4819,22 +4807,7 @@ static void bridge_XboxEEPROMKey(void)
 
 /* ── Rtl Exception (ordinals 264, 265, 266, 303) ──────────── */
 
-/* 264: VOID RtlAssert(PVOID FailedAssertion, PVOID FileName, ULONG LineNumber) */
-static void bridge_RtlAssert(void)
-{
-    uint32_t assert_va = STACK_ARG(0);
-    uint32_t file_va   = STACK_ARG(1);
-    uint32_t line      = STACK_ARG(2);
-    const char *a = assert_va ? (const char *)XBOX_TO_NATIVE(assert_va) : NULL;
-    const char *f = file_va   ? (const char *)XBOX_TO_NATIVE(file_va) : NULL;
-
-    xbox_log(XBOX_LOG_ERROR, XBOX_LOG_RTL, "RtlAssert: %s:%u %s",
-             f ? f : "?", line, a ? a : "?");
-#ifdef _DEBUG
-    DebugBreak();
-#endif
-    g_eax = 0;
-}
+/* Original four-argument RtlAssert selected above, including optional Message. */
 
 /* 265: VOID RtlCaptureContext(PCONTEXT Context) - stub: zero the x86 CONTEXT. */
 static void bridge_RtlCaptureContext(void)
@@ -4846,13 +4819,7 @@ static void bridge_RtlCaptureContext(void)
     g_eax = 0;
 }
 
-/* 266: ULONG RtlCaptureStackBackTrace(FramesToSkip, FramesToCapture,
- *       BackTrace, BackTraceHash) - stub, returns 0 frames. Stack is cleaned
- *       up per stdcall_args_for_ordinal (20 bytes in kernel_bridge.c). */
-static void bridge_RtlCaptureStackBackTrace(void)
-{
-    g_eax = 0;
-}
+/* Original four-argument RtlCaptureStackBackTrace selected above. */
 
 
 /* --- Ke Object Shadow Table --- */
@@ -6630,9 +6597,9 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     case 261: return  8;  /* RtlAppendStringToString (2) */
     case 262: return  8;  /* RtlAppendUnicodeStringToString (2) */
     case 263: return  8;  /* RtlAppendUnicodeToString (2) */
-    case 264: return 12;  /* RtlAssert (3) */
+    case 264: return 16;  /* RtlAssert (4) */
     case 265: return  4;  /* RtlCaptureContext (1) */
-    case 266: return 20;  /* RtlCaptureStackBackTrace (5) */
+    case 266: return 16;  /* RtlCaptureStackBackTrace (4) */
     case 267: return 12;  /* RtlCharToInteger (3) */
     case 271: return 12;  /* RtlCompareUnicodeString (3) */
     case 272: return  8;  /* RtlCopyString (2) */
