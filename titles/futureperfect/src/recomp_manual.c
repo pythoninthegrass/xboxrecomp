@@ -163,6 +163,24 @@ extern void sub_000E1FA0(void);
 void pc_native_kind35_target(void)
 { pc_native_kind35_target_guest(sub_000E1FA0, *(const uint32_t *)((uintptr_t)g_esp+4+g_xbox_mem_offset)); }
 
+/* Rocket-family initialization and smoke cadence share the projectile scope. */
+extern void sub_000E28D0_gen(void);
+void sub_000E28D0(void)
+{ pc_native_kind35_init_guest(sub_000E28D0_gen, *(const uint32_t *)((uintptr_t)g_esp+4+g_xbox_mem_offset)); }
+extern void sub_00153BD0(void),sub_000F85C0(void);
+extern RECOMP_MANUAL_TLS double g_fp_stack[8];
+extern RECOMP_MANUAL_TLS int g_fp_top;
+void pc_native_projectile_smoke_rng(void)
+{
+    if(!pc_native_projectile_skip_smoke()) { sub_00153BD0();return; }
+    g_fp_top=(g_fp_top-1)&7;g_fp_stack[g_fp_top]=0.5;g_esp+=4;
+}
+void pc_native_projectile_smoke(void)
+{
+    if(!pc_native_projectile_skip_smoke()) { sub_000F85C0();return; }
+    g_esp+=4;
+}
+
 /* Original rocking impulses/contact responses, with fractional free flight. */
 #include "pc_native_rocking_guest.h"
 extern void sub_000A84F0_gen(void);
