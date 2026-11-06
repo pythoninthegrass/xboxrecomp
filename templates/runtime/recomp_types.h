@@ -66,6 +66,9 @@
 #ifndef RECOMP_LOAD_GLOBAL_U32
 #define RECOMP_LOAD_GLOBAL_U32(site, address, value) (value)
 #endif
+#ifndef RECOMP_LOAD_U8_AT
+#define RECOMP_LOAD_U8_AT(site, value) (value)
+#endif
 #ifndef RECOMP_PUSH_IMM_U32_AT
 #define RECOMP_PUSH_IMM_U32_AT(site, value) (value)
 #endif

@@ -141,6 +141,20 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 #include "pc_native_timing_guest.inc"
 extern void sub_001538C0_gen(void);
 void sub_001538C0(void) { pc_native_timing_guest(sub_001538C0_gen); }
+
+/* Fractional physics keeps contact-order RNG separate from gameplay draws. */
+#include "pc_native_contact_guest.inc"
+#include "pc_native_physics_guest.h"
+extern void sub_00171FB0_gen(void);
+extern void sub_00171560(void),sub_00153B40(void);
+void sub_00171FB0(void)
+{ pc_native_physics_guest(sub_00171FB0_gen); }
+void pc_native_physics_solver(void)
+{ pc_native_physics_solver_guest(sub_00171560); }
+void pc_native_physics_random(void)
+{ pc_native_physics_random_guest(sub_00153B40); }
+
+
 extern void sub_0018FF70_gen(void);
 void sub_0018FF70(void) { pc_native_input_guest(sub_0018FF70_gen); }
 #include "pc_native_weapon_guest.h"

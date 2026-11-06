@@ -1758,6 +1758,10 @@ class Lifter:
                 ops[1].mem_size == 4 and not ops[1].mem_base and
                 not ops[1].mem_index and not ops[1].mem_seg):
             src = f"RECOMP_LOAD_GLOBAL_U32(0x{insn.address:X}, {_fmt_mem(ops[1])}, {src})"
+        # Byte loads can feed title-owned discrete timers. The generic
+        # default preserves the original load, with single evaluation.
+        if ops[0].type == "reg" and ops[1].type == "mem" and ops[1].mem_size == 1:
+            src = f"RECOMP_LOAD_U8_AT(0x{insn.address:X}, {src})"
         # Title-owned observation of direct 32-bit global stores. The
         # policy returns the value to write; default semantics are unchanged.
         if (ops[0].type == "mem" and ops[0].mem_size == 4 and
@@ -1949,7 +1953,10 @@ class Lifter:
                 "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp"):
             out = [f"{val}{'++' if m == 'inc' else '--'};"]
         else:
-            out = [_fmt_operand_write(ops[0], f"{val} {op_char} {delta}")]
+            source = val
+            if m == "dec" and ops[0].type == "mem" and ops[0].mem_size == 1:
+                source = f"RECOMP_LOAD_U8_AT(0x{insn.address:X}, {val})"
+            out = [_fmt_operand_write(ops[0], f"{source} {op_char} {delta}")]
         size = _operand_width(ops[0]) or 4
         mask, sx = self._SNAP_MASK[size], self._SNAP_SX[size]
         overflow_result = (1 << (size * 8 - 1)) - (m == "dec")
