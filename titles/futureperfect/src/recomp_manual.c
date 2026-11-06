@@ -272,6 +272,16 @@ void sub_000D4BE0(void)
 #endif
 }
 
+extern void sub_000A0130_gen(void);
+void sub_000A0130(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_world_visibility(sub_000A0130_gen);
+#else
+    sub_000A0130_gen();
+#endif
+}
+
 extern void sub_0035BD70_gen(void);
 void sub_0035BD70(void)
 {
