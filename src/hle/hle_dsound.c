@@ -387,15 +387,23 @@ static int32_t voice_adjust(uint32_t settings, int *is3d)
     return recomp_dsound_mix_adjust(bins, count, volumes, use3d ? data3d : NULL);
 }
 
-/* A stream's adjustment, for hle_dsound_stream.c: its voice is stream+4,
- * whose settings object is at voice+0x10. */
+/* A stream keeps its raw SetVolume argument. Its XDK voice also applies
+ * headroom (settings+0x20), so include that attenuation in the host mix.
+ * Otherwise stereo music/cutscenes with 600 hundredths of a dB headroom play
+ * twice as loud as the console, leaving no room for dialogue and effects.
+ * The voice is stream+4; its settings object is at voice+0x10. */
 int32_t hle_dsound_stream_adjust(uint32_t stream_object, int *is3d)
 {
     if (is3d)
         *is3d = 0;
     if (!stream_voice_layout() || !guest_readable(stream_object + 0x14u, 4u))
         return 0;
-    return voice_adjust(HLE_MEM32(stream_object + 0x14u), is3d);
+    {
+        uint32_t settings = HLE_MEM32(stream_object + 0x14u);
+        if (!guest_readable(settings, 0xBCu))
+            return 0;
+        return voice_adjust(settings, is3d) - (int32_t)HLE_MEM32(settings + 0x20u);
+    }
 }
 
 /* The level a buffer is heard at: its volume (the settings word the XDK's
@@ -413,6 +421,7 @@ static int32_t buffer_level(const Buffer *b, int *is3d)
 static void pump(Buffer *b, uint64_t now)
 {
     RecompDsoundBufferModel *out = &b->output_model;
+    RecompDsoundBufferModel next = *out;
     uint32_t channels, bits, offset = 0u, bytes, queued = 0u;
     uint64_t until = now + lead_ms();
     int adpcm, is3d;
@@ -430,8 +439,12 @@ static void pump(Buffer *b, uint64_t now)
     channels = (b->format >> 16) & 0xFFu;
     bits = b->format >> 24;
     adpcm = (b->format & 0xFFFFu) == TAG_ADPCM;
-    bytes = recomp_dsound_buffer_consume(out, until, &offset);
-    if (bytes == 0u || b->data == 0u || bytes > sizeof pcm)
+    bytes = recomp_dsound_buffer_consume(&next, until, &offset);
+    if (bytes == 0u) {
+        *out = next; /* retain the existing stale-ring-data policy */
+        return;
+    }
+    if (b->data == 0u || bytes > sizeof pcm)
         return;
 
     if (adpcm) {
@@ -475,6 +488,9 @@ static void pump(Buffer *b, uint64_t now)
     if (!recomp_audio_output_submit(slot_of(b), pcm, bytes, out->sample_rate,
                                     channels, bits, b->level))
         return;
+    /* Commit only accepted PCM. A full queue must not discard these samples,
+     * including the final chunk of a non-looping sound. */
+    *out = next;
     b->fed = 1;
     g_stat.submits++;
     if (b->play_us) {

@@ -33,7 +33,7 @@
  * host plays the samples, so the host is asked where it is
  * (recomp_audio_output_position) and the clock is pulled onto that reading
  * every tick. Wall-clock time is only the fallback -- for a format the host
- * cannot play, before the voice exists, and while the voice is dry -- because
+ * cannot play, before the voice exists -- because
  * a wall clock drifts away from what is coming out of the speakers by the
  * device's rate error and by every gap the queue ran dry for, and a title
  * that paces a cutscene on its music drifts with it. RECOMP_DSOUND_WALLCLOCK=1
@@ -118,6 +118,7 @@ typedef struct Stream {
      * the voice and moves this. */
     uint64_t play_origin;
     int      play_anchored;          /* the host clock has been read at least once */
+    int      host_clock;             /* consumed_base is a device snapshot */
     /* This stream's own drift (see g_drift_ms) and how often its host voice
      * ran dry while it still had sound to play: each dry spell is a gap the
      * wall clock ran on through, and the correction that follows adds the
@@ -230,12 +231,19 @@ static int wallclock_only(void)
     return g_wallclock;
 }
 
-static uint64_t consumed(const Stream *s, uint64_t now)
+static uint64_t wall_consumed(const Stream *s, uint64_t now)
 {
     uint64_t c = s->consumed_base;
     if (!s->paused && s->resumed_ms && now > s->resumed_ms)
         c += ms_to_bytes(s, now - s->resumed_ms);
     return c > s->queued ? s->queued : c;
+}
+
+static uint64_t consumed(const Stream *s, uint64_t now)
+{
+    if (s->host_clock)
+        return s->consumed_base > s->queued ? s->queued : s->consumed_base;
+    return wall_consumed(s, now);
 }
 
 /* The clock stops at the end of the data; when new data arrives after a
@@ -247,9 +255,8 @@ static void restart_clock(Stream *s, uint64_t now)
 }
 
 /* Pull the clock onto the host's own play position, so packets complete when
- * the sound is actually heard. Skipped while the voice is dry: its position
- * has stopped meaning anything, and letting the wall clock run on is what
- * lets a starved stream restart. */
+ * the sound is actually heard. A dry voice still has a valid final position:
+ * it consumed what was submitted, not the packets still waiting to be fed. */
 static void sync_to_host(Stream *s, uint64_t now)
 {
     uint64_t played = 0, pos;
@@ -257,23 +264,25 @@ static void sync_to_host(Stream *s, uint64_t now)
 
     if (!s->output || s->paused || !s->resumed_ms)
         return;
-    if (!recomp_audio_output_position(slot_of(s), &played, &queued))
+    if (!recomp_audio_output_position(slot_of(s), &played, &queued)) {
+        s->host_clock = 0;
         return;
+    }
     if (queued == 0) {
         /* Dry while the clock says there is sound to play: the host was not
          * fed in time (a stall longer than the lead). Counted once a spell. */
-        if (!s->dry && s->sent > s->play_origin && consumed(s, now) < s->queued)
+        if (!s->dry && s->sent > s->play_origin && s->sent < s->queued)
             s->starved++;
         s->dry = 1;
-        return;
+    } else {
+        s->dry = 0;
     }
-    s->dry = 0;
 
     pos = s->play_origin + played;
     if (pos > s->queued)
         pos = s->queued;
     if (s->play_anchored) {
-        uint64_t wall = consumed(s, now);
+        uint64_t wall = wall_consumed(s, now);
         uint64_t bps = bytes_per_ms_x1000(s);
         long drift = bps ? (long)(((int64_t)wall - (int64_t)pos) * 1000 / (int64_t)bps) : 0;
         g_drift_ms = drift;
@@ -288,8 +297,11 @@ static void sync_to_host(Stream *s, uint64_t now)
     s->play_anchored = 1;
     /* Measured either way, corrected unless the wall clock was asked for,
      * so one run of each says how far the sound and the packets parted. */
-    if (wallclock_only())
+    if (wallclock_only()) {
+        s->host_clock = 0;
         return;
+    }
+    s->host_clock = 1;
     s->consumed_base = pos;
     s->resumed_ms = now;
 }
@@ -431,6 +443,7 @@ static void pump(Stream *s, uint64_t now)
             s->sent = target;
             s->play_origin = target;
             s->play_anchored = 0;
+            s->host_clock = 0;
             break;
         }
         within = s->sent - p->start;
@@ -445,26 +458,33 @@ static void pump(Stream *s, uint64_t now)
         if (s->tag == TAG_ADPCM) {
             uint32_t block = XBOX_ADPCM_BLOCK_BYTES * s->channels;
             uint32_t dblock = XBOX_ADPCM_BLOCK_SAMPLES * s->channels * 2u;
-            uint32_t n = (uint32_t)(want / dblock), k;
-            if (n == 0u) n = 1u;
-            bytes = 0u;
-            for (k = 0; k < n; k++) {
-                uint32_t src = p->data + (uint32_t)((within / dblock) + k) * block;
+            uint32_t written = 0u;
+            bytes = (uint32_t)want;
+            while (written < bytes) {
+                uint64_t offset = within + written;
+                uint32_t skip = (uint32_t)(offset % dblock);
+                uint32_t count = dblock - skip;
+                uint32_t src = p->data + (uint32_t)(offset / dblock) * block;
                 int16_t decoded[XBOX_ADPCM_BLOCK_SAMPLES * 2];
+                if (count > bytes - written) count = bytes - written;
                 if (!guest_readable(src, block) ||
                     !xbox_adpcm_decode_block((const uint8_t *)HLE_PTR(src), block,
                                              s->channels, decoded,
                                              XBOX_ADPCM_BLOCK_SAMPLES * 2u)) {
+                    s->host_clock = 0;
                     s->output = 0;   /* bad data: keep the clock, drop the sound */
                     recomp_audio_output_reset_voice(slot_of(s));
                     return;
                 }
-                memcpy(pcm + bytes, decoded, dblock);
-                bytes += dblock;
+                /* A device cursor or pause can land inside a decoded block.
+                 * Keep that exact sample offset and stop at the packet end. */
+                memcpy(pcm + written, (const uint8_t *)decoded + skip, count);
+                written += count;
             }
         } else {
             bytes = (uint32_t)want - (uint32_t)(want % frame_bytes(s));
             if (!bytes || !guest_readable(p->data + (uint32_t)within, bytes)) {
+                s->host_clock = 0;
                 s->output = 0;
                 recomp_audio_output_reset_voice(slot_of(s));
                 return;
@@ -490,6 +510,7 @@ static void refeed(Stream *s, uint64_t now)
     s->sent = consumed(s, now);
     s->play_origin = s->sent;
     s->play_anchored = 0;
+    s->host_clock = 0;
     pump(s, now);
 }
 
@@ -570,6 +591,7 @@ static void relayout(Stream *s, uint64_t now, uint32_t new_freq, uint32_t wfx)
     uint64_t c, pos;
     int i;
 
+    sync_to_host(s, now);
     complete_passed(s, now);
     c = consumed(s, now);
     recomp_audio_output_reset_voice(slot_of(s));
@@ -591,6 +613,7 @@ static void relayout(Stream *s, uint64_t now, uint32_t new_freq, uint32_t wfx)
     s->sent          = c;
     s->play_origin   = c;
     s->play_anchored = 0;
+    s->host_clock = 0;
     s->resumed_ms    = (!s->paused && s->count > 0) ? now : 0u;
     pump(s, now);
 }
@@ -722,6 +745,7 @@ HLE_EXPORT(CDirectSoundStream_Process)
             fprintf(stderr, "[DSOUND] stream Process on unknown object %08X\n", object);
         HLE_RETURN(DS_OK);
     }
+    sync_to_host(s, now);
     complete_passed(s, now);
     if (s->count >= (int)s->max_packets) {
         unlock();
@@ -773,6 +797,10 @@ HLE_EXPORT(CDirectSoundStream_Flush)
         s->consumed_base = s->queued;
         s->resumed_ms = 0u;
         s->sent = s->queued;
+        s->play_origin = s->queued;
+        s->play_anchored = 0;
+        s->host_clock = 0;
+        s->dry = 0;
         recomp_audio_output_reset_voice(slot_of(s));
         for (i = 0; i < n; i++)
             complete(s, &flushed[i], XMP_STATUS_FLUSHED, 0u);
@@ -832,7 +860,9 @@ HLE_EXPORT(CDirectSoundStream_Pause)
              * output never drains looks exactly like one that has
              * failed, and this tells the two apart in one run. */
             if (!s->paused && !xbox_EnvSwitch("RECOMP_DSOUND_IGNORE_PAUSE", 0)) {
+                sync_to_host(s, now);
                 s->consumed_base = consumed(s, now);
+                s->host_clock = 0;
                 s->paused = 1;
                 s->resumed_ms = 0u;
                 recomp_audio_output_reset_voice(slot_of(s));
