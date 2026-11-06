@@ -622,6 +622,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 #ifdef TSFP_PC_CONTROLS
         extern int xbox_save_root_utf8(char *, unsigned);
         extern void pc_storage_set_path(const char *);
+        extern int xbox_set_profile_root_utf8(const char *);
+        extern void pc_storage_set_profile_router(int (*)(const char *));
+        pc_storage_set_profile_router(xbox_set_profile_root_utf8);
         extern int pc_storage_resolve_root(const char *,char *,size_t);
         char save_root[4096],selected[4096];
         if(xbox_save_root_utf8(save_root,sizeof save_root)) {
