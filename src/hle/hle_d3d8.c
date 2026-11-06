@@ -2011,6 +2011,10 @@ static void overlay_frame(void)
     f9  = front && (GetAsyncKeyState(VK_F9)  & 0x8000) != 0;
     f10 = front && (GetAsyncKeyState(VK_F10) & 0x8000) != 0;
     f11 = front && (GetAsyncKeyState(VK_F11) & 0x8000) != 0;
+#ifdef TSFP_PC_CONTROLS
+    /* Diagnostic frame capture requires Ctrl+F11; plain F11 does nothing. */
+    f11 = f11 && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+#endif
     if (f11 && !f11_was_down) {
         /* Both, because they answer different questions: the picture shows
          * what is wrong, the capture lets it be replayed draw by draw with
