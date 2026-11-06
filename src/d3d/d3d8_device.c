@@ -2033,11 +2033,11 @@ void d3d8_place_2d_draw(const void *vertices, UINT stride, UINT count)
         two_d_tag_note(vertices, stride, count);
     if (!g_2d_squeeze)
         return;
-    /* World-projected health bars use transformed 16-byte vertices. Their
-     * X coordinates already track the widened camera, so the 4:3 HUD squeeze
-     * shifts them away from the actors on widescreen displays. */
-    if (g_2d_placement == XBOX_D3D8_2D_AUTO && vertices && stride == 16 &&
-        count >= 6 && !(count % 3)) {
+    /* World-projected health bars and enemy shields use transformed 16- or
+     * 24-byte vertices. Their XY already follows the widened camera; the 4:3
+     * HUD squeeze shifts them toward the center. Ordinary HUD depth is .001. */
+    if (g_2d_placement == XBOX_D3D8_2D_AUTO && vertices &&
+        ((stride == 16 && !(count % 3)) || stride == 24) && count >= 6) {
         float depth;
         memcpy(&depth, (const uint8_t *)vertices + 8, sizeof depth);
         if (depth > 0.9f && depth < 1.0f) {
