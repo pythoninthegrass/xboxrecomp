@@ -1841,7 +1841,10 @@ HRESULT xbox_D3D8PrepareSharedDepthTarget(IDirect3DTexture8 *texture,
         return E_INVALIDARG;
     rhi_image_get_desc(tex->image, &desc);
     if (desc.width == ds->width && desc.height == ds->height) return S_OK;
-    if (desc.samples != ds->sample_count) return E_INVALIDARG;
+    /* Guest textures stay single-sampled; SetRenderTarget supplies their
+     * coverage companion after this resize. Only an already multisampled
+     * color image must match the depth's sample count here. */
+    if (desc.samples > 1 && desc.samples != ds->sample_count) return E_INVALIDARG;
     replacement = *tex;
     desc.width = ds->width;
     desc.height = ds->height;
