@@ -343,6 +343,8 @@ def zf_expression(flag_state):
     if not flag_state:
         return None
     setter, ops = flag_state
+    if setter == "__zf_snapshot":
+        return "_flags"
     if setter == "__zf_from_dest" and ops:
         return f"({_fmt_operand_read(ops[0])} == 0)"
     if setter == "cmp" and len(ops) >= 2:
@@ -366,6 +368,15 @@ def _make_condition(jcc, flag_setter, flag_ops):
     if not cond_info:
         return None
     cmp_macro, test_macro, desc = cond_info
+
+    # Only the zero flag is proven at a mixed-operation/width join. SETcc,
+    # CMOVcc and LOOPcc also use this decoder, preserving their polarity.
+    if flag_setter == "__zf_snapshot":
+        if jcc in ("je", "jz"):
+            return "_flags", desc
+        if jcc in ("jne", "jnz"):
+            return "!_flags", desc
+        return None
 
     # A join whose predecessors disagree on which instruction set the flags,
     # but agree that the zero flag came from the same destination register.

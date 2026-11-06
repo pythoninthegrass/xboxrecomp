@@ -121,7 +121,17 @@ def _incoming_flag_state(sources, known, is_entry):
         return None
     if not all(p in known for p in sources):
         return None
-    return _merge_flag_states([known[p] for p in sources])
+    states = [known[p] for p in sources]
+    merged = _merge_flag_states(states)
+    if merged is not None:
+        return merged
+    # A CMP/TEST or width mismatch cannot share all flags, but every edge
+    # can still provide ZF. Mark that fact explicitly so JNE negates ZF;
+    # the untyped fallback treats every condition as the same boolean.
+    from .lifter import zf_expression
+    if all(zf_expression(state) is not None for state in states):
+        return ("__zf_snapshot", [])
+    return None
 
 
 def write_if_changed(path, text):
@@ -1456,6 +1466,11 @@ class FunctionTranslator:
         # its own zero flag writes one, and the fallback reads a real value
         # instead of an uninitialised local. See lifter.zf_expression.
         needs_zf = set()
+        for bb in blocks:
+            incoming = _incoming_flag_state(preds[bb.start], settled_state,
+                                            bb.start == start)
+            if has_conditionals and incoming == ("__zf_snapshot", []):
+                needs_zf.update(preds[bb.start])
         zf_probe = [bb for bb in blocks
                     if len(preds[bb.start]) > 1 and bb.start != start
                     and not _incoming_flag_state(preds[bb.start],
@@ -1497,7 +1512,7 @@ class FunctionTranslator:
             if bb.start in needs_zf:
                 from .lifter import zf_expression
                 zf = zf_expression(out_state[bb.start])
-                if zf:
+                if zf and zf != "_flags":
                     # Before the block leaves, not after. Appending put it
                     # below the `goto`, where it never ran -- so the join read
                     # a value the *other* predecessor had left, which is worse
