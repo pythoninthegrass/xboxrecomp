@@ -182,10 +182,12 @@ void hle_d3d8_push_arrays_scan(uint32_t start, uint32_t end)
 static void push_copy_attribute(uint8_t *dst, size_t dstride, uint32_t va, uint32_t first,
                                 uint32_t sstride, uint32_t vertices, UINT size)
 {
-    uint32_t v;
+    uint32_t v, source;
+    size_t offset;
 #define PUSH_COPY_BYTES(n) \
-    for (v = 0; v < vertices; v++) \
-        memcpy(dst + (size_t)v * dstride, HLE_PTR(va + (first + v) * sstride), (n))
+    for (v = 0, source = va + first * sstride, offset = 0; v < vertices; \
+         v++, source += sstride, offset += dstride) \
+        memcpy(dst + offset, HLE_PTR(source), (n))
     switch (size) {
     case 1: PUSH_COPY_BYTES(1); break;
     case 2: PUSH_COPY_BYTES(2); break;
