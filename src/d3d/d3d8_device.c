@@ -23,6 +23,7 @@
 #include "d3d8_display.h"
 #ifdef TSFP_PC_DISPLAY
 #include "pc_display.h"
+#include "pc_ui_layout.h"
 #endif
 #include "d3d8_fvf.h"         /* d3d8_fvf_transformed: draw_extent */
 #include "recomp_config.h"   /* RECOMP_VRR */
@@ -2022,6 +2023,10 @@ static int two_d_side_anchor(const void *vertices, UINT stride, UINT count)
 
     if (!guest_w || !draw_extent(vertices, stride, count, &lo, &hi))
         return XBOX_D3D8_2D_CENTRE;
+#ifdef TSFP_PC_DISPLAY
+    mid = pc_ui_side_anchor(lo,hi,(float)guest_w);
+    return mid==0.f?XBOX_D3D8_2D_LEFT:mid==1.f?XBOX_D3D8_2D_RIGHT:XBOX_D3D8_2D_CENTRE;
+#endif
     mid = (lo + hi) * 0.5f;
     if (mid < (float)guest_w / 3.0f)
         return XBOX_D3D8_2D_LEFT;

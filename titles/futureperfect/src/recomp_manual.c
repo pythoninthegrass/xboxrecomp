@@ -394,6 +394,87 @@ void sub_000245C0(void)
 /* 0x000D2B80 builds player-relative movement vectors from camera yaw.
  * Apply raw mouse counts just before those vectors, after the game's own
  * controller look step. Keep the generated original body and its ABI. */
+/* US HUD groups: preserve proportions and anchor whole widgets. */
+extern void sub_001334D0_gen(void);
+void sub_001334D0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_001334D0_gen,0x001334D0u);
+#else
+    sub_001334D0_gen();
+#endif
+}
+extern void sub_00133AB0_gen(void);
+void sub_00133AB0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_00133AB0_gen,0x00133AB0u);
+#else
+    sub_00133AB0_gen();
+#endif
+}
+extern void sub_001358A0_gen(void);
+void sub_001358A0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_001358A0_gen,0x001358A0u);
+#else
+    sub_001358A0_gen();
+#endif
+}
+extern void sub_0012F670_gen(void);
+void sub_0012F670(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_0012F670_gen,0x0012F670u);
+#else
+    sub_0012F670_gen();
+#endif
+}
+extern void sub_0014B930_gen(void);
+void sub_0014B930(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_0014B930_gen,0x0014B930u);
+#else
+    sub_0014B930_gen();
+#endif
+}
+extern void sub_001409C0_gen(void);
+void sub_001409C0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_001409C0_gen,0x001409C0u);
+#else
+    sub_001409C0_gen();
+#endif
+}
+extern void sub_0013AB60_gen(void);
+void sub_0013AB60(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_health(sub_0013AB60_gen);
+#else
+    sub_0013AB60_gen();
+#endif
+}
+extern void sub_00018EA0_gen(void);
+void sub_00018EA0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    if(FP_MEM32(g_esp)==0x0013BA9Cu)pc_display_health_side();
+#endif
+    sub_00018EA0_gen();
+}
+extern void sub_00080F20_gen(void);
+void sub_00080F20(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    if(FP_MEM32(g_esp)==0x001341B7u)pc_display_radar_begin();
+#endif
+    sub_00080F20_gen();
+}
+
 extern void sub_000D2B80_gen(void);
 void sub_000D2B80(void)
 {
