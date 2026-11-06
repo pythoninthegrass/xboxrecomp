@@ -142,6 +142,11 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 extern void sub_001538C0_gen(void);
 void sub_001538C0(void) { pc_native_timing_guest(sub_001538C0_gen); }
 
+/* Recorded-input wait/exit clocks retain native elapsed time. */
+#include "pc_native_demo_guest.inc"
+extern void sub_00043220_gen(void);
+void sub_00043220(void) { pc_native_demo_guest(sub_00043220_gen); }
+
 /* Fractional physics keeps contact-order RNG separate from gameplay draws. */
 #include "pc_native_contact_guest.inc"
 #include "pc_native_physics_guest.h"
