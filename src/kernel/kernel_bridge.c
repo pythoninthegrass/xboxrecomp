@@ -771,37 +771,8 @@ void xbox_HostExit(const char *why)
     ExitProcess(0);
 }
 
-static void bridge_ExAllocatePool(void)
-{
-    uint32_t size = STACK_ARG(0);
-    uint32_t xbox_va = xbox_HeapAlloc(size, 16);
+#include "guest_kernel_pool.inc"
 
-    if (KERNEL_LOG_ON()) {
-        fprintf(stderr, "  [KERNEL] ExAllocatePool: size=%u → Xbox VA 0x%08X\n",
-                size, xbox_va);
-        fflush(stderr);
-    }
-
-    g_eax = xbox_va;
-}
-
-static void bridge_ExAllocatePoolWithTag(void)
-{
-    uint32_t size = STACK_ARG(0);
-    uint32_t tag = STACK_ARG(1);
-    uint32_t xbox_va = xbox_HeapAlloc(size, 16);
-
-    if (KERNEL_LOG_ON()) {
-        fprintf(stderr, "  [KERNEL] ExAllocatePoolWithTag: size=%u tag='%c%c%c%c' → Xbox VA 0x%08X\n",
-                size,
-                (char)(tag & 0xFF), (char)((tag >> 8) & 0xFF),
-                (char)((tag >> 16) & 0xFF), (char)((tag >> 24) & 0xFF),
-                xbox_va);
-        fflush(stderr);
-    }
-
-    g_eax = xbox_va;
-}
 
 /* ── KfRaiseIrql / KfLowerIrql (ordinals 160, 161) ──────
  *
@@ -2582,21 +2553,6 @@ int xbox_kernel_cancel_timer(uint32_t timer_va)
     return was_set;
 }
 
-/* ── ExQueryPoolBlockSize (ordinal 24) ────────────────────
- * ULONG ExQueryPoolBlockSize(PVOID PoolBlock)
- *
- * Returns the size of a pool memory block.
- * Since we use HeapAlloc, we can query the Windows heap.
- */
-static void bridge_ExQueryPoolBlockSize(void)
-{
-    /* Pool blocks come from xbox_HeapAlloc, so the block table has the real
-     * answer. It used to return a literal 0 on the theory that this is only
-     * ever used for stats -- which is a guess about the caller, and a title
-     * that sizes a copy from it copies nothing. */
-    g_eax = xbox_HeapBlockSize(STACK_ARG(0));
-}
-
 /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
  * ULONG RtlNtStatusToDosError(NTSTATUS Status)
  *
@@ -3972,21 +3928,6 @@ static void bridge_AvSendTVEncoderOption(void)
     xbox_AvSendTVEncoderOption(XBOX_TO_NATIVE(STACK_ARG(0)),
                                STACK_ARG(1), STACK_ARG(2),
                                (PULONG)XBOX_TO_NATIVE(STACK_ARG(3)));
-    g_eax = 0;
-}
-
-/* ── ExFreePool (ordinal 17, 1 arg)
- * Was resolving to a DATA address before the kernel_data_va_for_ordinal fix,
- * so the title was calling into kernel data. Even after that it was an
- * unbridged no-op, which leaks every pool block the title ever frees.
- *
- * Deliberately does NOT call xbox_ExFreePool: that one HeapFrees its argument
- * on the host heap, but every pool block reaches the title as a guest VA from
- * xbox_HeapAlloc, so only the guest heap can release it. xbox_HeapFree answers
- * through the block table and takes the raw 32-bit guest VA. */
-static void bridge_ExFreePool(void)
-{
-    xbox_HeapFree(STACK_ARG(0));
     g_eax = 0;
 }
 

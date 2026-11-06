@@ -5,7 +5,6 @@ cmake_minimum_required(VERSION 3.20)
 # Memory layout, file I/O, threading, synchronization, crypto, HAL.
 
 set(KERNEL_SOURCES
-    kernel_pool.c
     kernel_rtl.c
     kernel_memory.c
     kernel_file.c

@@ -561,14 +561,7 @@ const wchar_t *xbox_LastHostPath(void);
 
 BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, DWORD buf_size);
 
-/* ============================================================================
- * Pool Allocator (kernel_pool.c)
- * ============================================================================ */
-
-PVOID   __stdcall xbox_ExAllocatePool(ULONG NumberOfBytes);
-PVOID   __stdcall xbox_ExAllocatePoolWithTag(ULONG NumberOfBytes, ULONG Tag);
-VOID    __stdcall xbox_ExFreePool(PVOID P);
-ULONG   __stdcall xbox_ExQueryPoolBlockSize(PVOID PoolBlock);
+/* Guest pool imports use the original guest allocation provider. */
 
 /* ============================================================================
  * Runtime Library (kernel_rtl.c)
