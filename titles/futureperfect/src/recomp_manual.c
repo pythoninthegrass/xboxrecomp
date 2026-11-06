@@ -494,6 +494,19 @@ void sub_000245C0(void)
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
 #include "pc_auto_look_guest.inc"
 #endif
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+#include "pc_tank_guest.inc"
+#endif
+extern void sub_001730E0_gen(void);
+void sub_001730E0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_tank_driver(sub_001730E0_gen);
+#else
+    sub_001730E0_gen();
+#endif
+}
+
 extern void sub_0025D520_gen(void);
 void sub_0025D520(void)
 {
