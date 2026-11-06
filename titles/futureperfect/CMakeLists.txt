@@ -108,6 +108,13 @@ add_executable(${PROJECT_NAME} WIN32
     ${RECOMP_GEN_SOURCES}
 )
 
+# Shared title policy for native fractional animation/effect updates. The
+# original integer conversion remains exact while native_fps is disabled.
+if(TSFP_PC_CONTROLS_DIR OR TSFP_NATIVE_DIR)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        RECOMP_NUMERIC_POLICY_HEADER="pc_native_numeric.h")
+endif()
+
 # A build-generated resource embeds the icon before executable identity sealing.
 # SDL on Windows uses the executable's first group icon for its window class.
 if(WIN32 AND TSFP_GAME_ICON_RESOURCE)

@@ -47,6 +47,17 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+
+/* Optional title numeric policy. The generic runtime retains x86 conversion
+ * semantics; a title can supply a separate header without baking its addresses
+ * into the instruction lifter. Memory operands are evaluated only once. */
+#ifdef RECOMP_NUMERIC_POLICY_HEADER
+#include RECOMP_NUMERIC_POLICY_HEADER
+#else
+#define RECOMP_I32_TO_F32(address, value) ((float)(int32_t)(value))
+#define RECOMP_I32_TO_F64(address, value) ((double)(int32_t)(value))
+#endif
+
 /* math.h is load-bearing, and its absence was invisible.
  *
  * The lifter emits sqrt() and fabs() for fsqrt/fabs -- 146 of them in one of

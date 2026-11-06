@@ -3400,14 +3400,20 @@ class Lifter:
         if m == "cvtsi2ss":
             if nops >= 2:
                 src = _fmt_operand_read(ops[1])
-                return [_sse_write(ops[0], f"(float)(int32_t){src}") + " /* cvtsi2ss */"]
+                value = f"(float)(int32_t){src}"
+                if ops[1].type == "mem" and ops[1].mem_size == 4:
+                    value = f"RECOMP_I32_TO_F32({_fmt_mem(ops[1])}, {src})"
+                return [_sse_write(ops[0], value) + " /* cvtsi2ss */"]
         if m in ("cvtss2si", "cvttss2si"):
             if nops >= 2:
                 return [_fmt_operand_write(ops[0], f"(int32_t){_sse_read(ops[1])}") + f" /* {m} */"]
         if m == "cvtsi2sd":
             if nops >= 2:
                 src = _fmt_operand_read(ops[1])
-                return [_sse_write(ops[0], f"(double)(int32_t){src}") + " /* cvtsi2sd */"]
+                value = f"(double)(int32_t){src}"
+                if ops[1].type == "mem" and ops[1].mem_size == 4:
+                    value = f"RECOMP_I32_TO_F64({_fmt_mem(ops[1])}, {src})"
+                return [_sse_write(ops[0], value) + " /* cvtsi2sd */"]
         if m in ("cvtsd2si", "cvttsd2si"):
             if nops >= 2:
                 return [_fmt_operand_write(ops[0], f"(int32_t){_sse_read(ops[1])}") + f" /* {m} */"]
@@ -3630,7 +3636,11 @@ class Lifter:
         if m == "fild":
             if len(ops) >= 1 and ops[0].type == "mem":
                 smem = _smem_accessor(ops[0].mem_size)
-                return [f"fp_push((double){smem}({_fmt_mem(ops[0])})); /* fild */"]
+                address = _fmt_mem(ops[0])
+                value = f"(double){smem}({address})"
+                if ops[0].mem_size == 4:
+                    value = f"RECOMP_I32_TO_F64({address}, {smem}({address}))"
+                return [f"fp_push({value}); /* fild */"]
             return [f"/* fild {insn.op_str} */"]
 
         if m in ("fist", "fistp"):
