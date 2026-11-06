@@ -538,6 +538,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     (void)nCmdShow;
 
 #ifdef TSFP_PC_CONTROLS
+    extern void xbox_SetAllocationObserver(void (*observer)(uint32_t,uint32_t,uint32_t));
+    xbox_SetAllocationObserver(pc_capture_allocation);
     int crash_ready = pc_crash_init(capture_crash_guest);
     if (crash_ready) atexit(pc_crash_shutdown);
     /* Exact test commands run before game files, settings or saves are opened. */

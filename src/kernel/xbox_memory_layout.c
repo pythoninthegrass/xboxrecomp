@@ -1676,6 +1676,9 @@ static tsfp_thread_memory g_guest_threads;
 
 /* Project allocation provider storage. Initialization precedes device workers. */
 static tsfp_allocations g_guest_allocations;
+static tsfp_allocation_observer g_allocation_observer;
+/* Register only during startup, before allocation/device workers exist. */
+void xbox_SetAllocationObserver(tsfp_allocation_observer observer){g_allocation_observer=observer;}
 static tsfp_allocation_record g_guest_heap_records[65536];
 /* One additional record protects the synthetic kernel page. */
 static tsfp_allocation_record g_guest_physical_records[4097];
@@ -1683,6 +1686,7 @@ static tsfp_allocation_record g_guest_physical_records[4097];
 static int xbox_AllocationInit(void)
 {
     tsfp_allocation_config config = {0};
+    config.observer=g_allocation_observer;
     if (g_memory_size > UINT32_MAX || g_xbox_total_ram > UINT32_MAX)
         return 0;
     config.ram = g_memory_base;
