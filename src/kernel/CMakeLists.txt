@@ -33,6 +33,12 @@ set(KERNEL_SOURCES
 
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
+# The complete project stack supplies this root before add_subdirectory.
+if(NOT TSFP_SHARED_SOURCE OR NOT EXISTS "${TSFP_SHARED_SOURCE}/runtime/guest_nonlocal_jump.c")
+    message(FATAL_ERROR "Project continuation provider missing; use the project build entry point")
+endif()
+target_sources(xbox_kernel PRIVATE "${TSFP_SHARED_SOURCE}/runtime/guest_nonlocal_jump.c")
+
 # See src/platform/CMakeLists.txt: resolve src/ relative to this file, not via
 # CMAKE_SOURCE_DIR, which is the consuming project's root under add_subdirectory().
 get_filename_component(XBOXRECOMP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
