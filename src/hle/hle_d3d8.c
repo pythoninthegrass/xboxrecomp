@@ -540,6 +540,10 @@ int hle_d3d8_is_framebuffer(uint32_t phys)
     return 0;
 }
 static IDirect3DSurface8 *g_device_depth;
+static HleDepthClears g_depth_clears;
+static HleDepthKey g_depth_key;
+static int g_depth_key_valid;
+static void shadow_depth_cleared(DWORD flags, float z, DWORD stencil);
 
 /* ------------------------------------------------------------- viewports */
 
@@ -1947,7 +1951,9 @@ HLE_EXPORT(D3DDevice_Clear)
         if (g_shadow_clears < 4)
             fprintf(stderr, "[HLE-D3D8] shadow Clear: flags 0x%08X color 0x%08X "
                     "z %g stencil %u\n", flags, color, z, stencil);
-        host_Clear(g_shadow, 0, NULL, xbox_clear_flags_to_host(flags), color, z, stencil);
+        DWORD host_flags = xbox_clear_flags_to_host(flags);
+        if (SUCCEEDED(host_Clear(g_shadow, 0, NULL, host_flags, color, z, stencil)))
+            shadow_depth_cleared(host_flags, z, stencil);
         g_shadow_clears++;
         g_shadow_last_color = color;
         if (shadow_trace_on())
@@ -3758,7 +3764,46 @@ int hle_d3d8_cube_face(uint32_t parent_va, uint32_t surface_va,
 #define SURFACE_PARENT 20
 
 static struct { UINT width, height; IDirect3DTexture8 *texture; } g_scratch[SHADOW_SCRATCH];
-static struct { UINT width, height; IDirect3DSurface8 *surface; } g_depths[SHADOW_SCRATCH];
+/* One guest depth image may need multiple host sizes. Clear events follow
+ * the guest image, rather than only the host size that was bound at Clear. */
+static struct {
+    UINT width, height;
+    HleDepthKey key;
+    HleDepthApplied applied;
+    IDirect3DSurface8 *surface;
+} g_depths[SHADOW_SCRATCH];
+static IDirect3DSurface8 *g_bound_depth;
+
+static void shadow_depth_cleared(DWORD flags, float z, DWORD stencil)
+{
+    HleDepthClear *clear;
+    int i;
+    if (!g_depth_key_valid || !(flags & (D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL)))
+        return;
+    clear = hle_depth_clear_find(&g_depth_clears, g_depth_key);
+    hle_depth_clear_note(&g_depth_clears, clear, flags, z, stencil);
+    /* The currently bound image already received this clear. Other sizes
+     * consume it lazily, when bound, through host_Clear (capture/defer safe). */
+    for (i = 0; i < SHADOW_SCRATCH; ++i)
+        if (g_depths[i].surface && g_depths[i].surface == g_bound_depth)
+            hle_depth_clear_applied(&g_depths[i].applied, clear, flags);
+}
+
+static void shadow_depth_sync(IDirect3DSurface8 *surface)
+{
+    int i;
+    for (i = 0; i < SHADOW_SCRATCH; ++i) {
+        HleDepthClear *clear;
+        DWORD flags;
+        if (!surface || g_depths[i].surface != surface) continue;
+        clear = hle_depth_clear_find(&g_depth_clears, g_depths[i].key);
+        flags = hle_depth_clear_pending(&g_depths[i].applied, clear);
+        if (flags && SUCCEEDED(host_Clear(g_shadow, 0, NULL, flags, 0,
+                                          clear->z, clear->stencil)))
+            hle_depth_clear_applied(&g_depths[i].applied, clear, flags);
+        return;
+    }
+}
 
 static void surface_measure(uint32_t va, UINT *w, UINT *h, uint32_t *fmt)
 {
@@ -3804,12 +3849,13 @@ static IDirect3DTexture8 *scratch_target(UINT w, UINT h)
     return NULL;
 }
 
-static IDirect3DSurface8 *depth_surface(UINT w, UINT h)
+static IDirect3DSurface8 *depth_surface(UINT w, UINT h, HleDepthKey key)
 {
     int i;
 
     for (i = 0; i < SHADOW_SCRATCH; i++) {
-        if (g_depths[i].surface && g_depths[i].width == w && g_depths[i].height == h)
+        if (g_depths[i].surface && g_depths[i].width == w && g_depths[i].height == h &&
+            hle_depth_key_equal(g_depths[i].key, key))
             return g_depths[i].surface;
     }
     for (i = 0; i < SHADOW_SCRATCH; i++) {
@@ -3818,6 +3864,7 @@ static IDirect3DSurface8 *depth_surface(UINT w, UINT h)
         if (FAILED(host_CreateDepthStencilSurface(g_shadow, w, h, D3DFMT_D24S8,
                                                   &g_depths[i].surface)))
             return g_depths[i].surface = NULL;
+        g_depths[i].key = key;
         g_depths[i].width = w;
         g_depths[i].height = h;
         return g_depths[i].surface;
@@ -3896,6 +3943,7 @@ static void shadow_set_render_target(uint32_t rt, uint32_t zs)
     IDirect3DSurface8 *depth = NULL;
     UINT w, h, zw = 0, zh = 0, face = 0, level = 0;
     uint32_t fmt, zfmt = 0, parent;
+    HleDepthKey depth_key = {0};
     int kind, i;                         /* 0 back buffer, 1 texture, 2 scratch, 3 cube */
 
     /* A NULL target keeps the current one; only the depth surface changes. */
@@ -4033,6 +4081,9 @@ static void shadow_set_render_target(uint32_t rt, uint32_t zs)
         int own;
 
         surface_measure(zs, &zw, &zh, &zfmt);
+        depth_key.data = HLE_MEM32(zs + 4) & 0x0FFFFFFFu;
+        depth_key.format = HLE_MEM32(zs + 12);
+        depth_key.size = HLE_MEM32(zs + 16);
         if (shadow_trace_on())
             fprintf(stderr, "[TRACE swap %lu]   depth 0x%08X data 0x%08X parent 0x%08X "
                     "%ux%u format 0x%02X\n", g_shadow_swaps, zs, HLE_MEM32(zs + 4),
@@ -4065,7 +4116,7 @@ static void shadow_set_render_target(uint32_t rt, uint32_t zs)
             }
         }
         if (!depth)
-            depth = depth_surface(w, h);
+            depth = depth_surface(w, h, depth_key);
         g_target_shadow_map = depth && depth_texture_of(zs) && zw == w && zh == h &&
                               shadow_maps_on() && kind != 0;
     } else {
@@ -4096,6 +4147,10 @@ static void shadow_set_render_target(uint32_t rt, uint32_t zs)
             host_SetRenderTarget(g_shadow, NULL, 0, 0, depth);
         }
     }
+    g_bound_depth = depth;
+    g_depth_key = depth_key;
+    g_depth_key_valid = zs != 0 && depth != NULL;
+    shadow_depth_sync(depth);
     g_target_width = w;
     g_target_height = h;
 

@@ -78,3 +78,68 @@ static __inline int xbox_transform_state_to_host(uint32_t state, DWORD *host)
 }
 
 #endif /* XBOXRECOMP_D3D8_XBOX_MAP_H */
+
+/* Clear history for host depth replicas of the same guest image.
+ * Host targets may have a different size from the Xbox depth attachment.
+ * Keep depth and stencil independent; binding a replica is not a new clear.
+ * No platform or graphics API dependency: flag values are D3DCLEAR_*.
+ */
+#ifndef HLE_D3D8_DEPTH_CLEAR_H
+#define HLE_D3D8_DEPTH_CLEAR_H
+#include <stdint.h>
+#include <string.h>
+#define HLE_DEPTH_CLEAR_SLOTS 32
+typedef struct { uint32_t data, format, size; } HleDepthKey;
+typedef struct { uint64_t depth, stencil; } HleDepthApplied;
+typedef struct {
+    HleDepthKey key;
+    HleDepthApplied generation;
+    float z;
+    uint32_t stencil;
+    int valid;
+} HleDepthClear;
+typedef struct {
+    HleDepthClear entries[HLE_DEPTH_CLEAR_SLOTS];
+    uint64_t serial;
+    unsigned next;
+} HleDepthClears;
+static int hle_depth_key_equal(HleDepthKey a, HleDepthKey b)
+{
+    return a.data == b.data && a.format == b.format && a.size == b.size;
+}
+static HleDepthClear *hle_depth_clear_find(HleDepthClears *history, HleDepthKey key)
+{
+    unsigned i;
+    HleDepthClear *clear;
+    for (i = 0; i < HLE_DEPTH_CLEAR_SLOTS; ++i)
+        if (history->entries[i].valid && hle_depth_key_equal(history->entries[i].key, key))
+            return &history->entries[i];
+    clear = &history->entries[history->next++ % HLE_DEPTH_CLEAR_SLOTS];
+    memset(clear, 0, sizeof *clear);
+    clear->valid = 1;
+    clear->key = key;
+    /* Newly allocated host storage must not start at near depth. A real
+     * guest clear replaces these defaults, even before a replica exists. */
+    clear->z = 1.0f;
+    clear->generation.depth = clear->generation.stencil = ++history->serial;
+    return clear;
+}
+static void hle_depth_clear_note(HleDepthClears *history, HleDepthClear *clear,
+                                 uint32_t flags, float z, uint32_t stencil)
+{
+    if (flags & 2) { clear->z = z; clear->generation.depth = ++history->serial; }
+    if (flags & 4) { clear->stencil = stencil; clear->generation.stencil = ++history->serial; }
+}
+static uint32_t hle_depth_clear_pending(const HleDepthApplied *applied,
+                                        const HleDepthClear *clear)
+{
+    return (applied->depth != clear->generation.depth ? 2u : 0u) |
+           (applied->stencil != clear->generation.stencil ? 4u : 0u);
+}
+static void hle_depth_clear_applied(HleDepthApplied *applied,
+                                    const HleDepthClear *clear, uint32_t flags)
+{
+    if (flags & 2) applied->depth = clear->generation.depth;
+    if (flags & 4) applied->stencil = clear->generation.stencil;
+}
+#endif
