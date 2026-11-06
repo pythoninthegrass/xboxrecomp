@@ -112,7 +112,7 @@ class FpuLifterTest(unittest.TestCase):
         self.assertIn("extern RECOMP_TLS double g_fp_stack[8];", main)
         self.assertIn("extern RECOMP_TLS int g_fp_top;", main)
         self.assertIn("extern RECOMP_TLS uint16_t g_fp_control_word;", runtime_types)
-        self.assertIn("#define RECOMP_PARITY8(x)", runtime_types)
+        self.assertNotIn("#define RECOMP_PARITY8(x)", runtime_types)
         self.assertIn("extern RECOMP_TLS uint16_t g_fp_control_word;", main)
 
     def test_control_word_store_and_load_use_shared_state(self):

@@ -7,7 +7,7 @@ _frnd is a bare frndint, so both of them rounded to nearest: floor of 2.7 was 3.
 A title that indexes a keyframe table with floor() and ceil() then reads one
 key past the end once per animation loop.
 
-The emitted text is checked here, and the helper is compiled and run: a text
+The emitted text is checked here, and emitted instructions run: a text
 check cannot tell a correct nearest-even from one that rounds halves up.
 """
 
@@ -18,7 +18,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .disasm import Instruction
+from .disasm import Instruction, Operand
 from .lifter import Lifter
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -35,15 +35,39 @@ class FrndintLiftTest(unittest.TestCase):
         self.assertNotIn("rint(fp_top())", out.replace("recomp_frndint(fp_top()", ""))
 
 
-class FrndintRuntimeTest(unittest.TestCase):
-    def test_each_rounding_control_rounds_its_own_way(self):
-        cc = next(filter(None, map(shutil.which, ("cc", "gcc", "clang"))), None)
-        if not cc:
-            self.skipTest("no C compiler available")
-        source = r'''
+def rounding_source():
+    """Keep the original boundary oracle, now testing production x87 emission."""
+    rounding = Instruction(0, 2, "frndint", "", "")
+    rounding.operands = []
+    conversion = Instruction(0, 2, "fist", "dword ptr [0]", "")
+    conversion.operands = [Operand(type="mem", mem_size=4)]
+    wrappers = r"""
+RECOMP_TLS double g_fp_stack[8];
+RECOMP_TLS int g_fp_top;
+RECOMP_TLS uint16_t g_fp_control_word;
+static uint32_t integer_result[1];
+#define fp_top() g_fp_stack[g_fp_top]
+static double round_value(double value, uint16_t control) {
+    fp_top() = value; g_fp_control_word = control;
+/* ROUND */
+    return fp_top();
+}
+#undef MEM32
+#define MEM32(address) integer_result[(address) / 4u]
+static int64_t integer_value(double value, uint16_t control, unsigned bits) {
+    (void)bits;
+    fp_top() = value; g_fp_control_word = control;
+/* CONVERT */
+    return (int64_t)(int32_t)integer_result[0];
+}
+"""
+    wrappers = wrappers.replace('/* ROUND */', '\n'.join(Lifter().lift_instruction(rounding)))
+    wrappers = wrappers.replace('/* CONVERT */', '\n'.join(Lifter().lift_instruction(conversion)))
+    return r'''
 #include <stdint.h>
 #include <math.h>
 #include "recomp_types.h"
+/* EMITTED_OPERATIONS */
 
 ptrdiff_t g_xbox_mem_offset;
 
@@ -54,35 +78,42 @@ ptrdiff_t g_xbox_mem_offset;
 
 int main(void) {
     /* The defect: floor and ceil of a fraction above one half. */
-    if (recomp_frndint(59.6, DOWN) != 59.0) return __LINE__;
-    if (recomp_frndint(59.6, UP)   != 60.0) return __LINE__;
-    if (recomp_frndint(59.4, UP)   != 60.0) return __LINE__;
-    if (recomp_frndint(-2.5, DOWN) != -3.0) return __LINE__;
-    if (recomp_frndint(-2.5, UP)   != -2.0) return __LINE__;
-    if (recomp_frndint(-2.7, CHOP) != -2.0) return __LINE__;
-    if (recomp_frndint(2.7, CHOP)  !=  2.0) return __LINE__;
+    if (round_value(59.6, DOWN) != 59.0) return __LINE__;
+    if (round_value(59.6, UP)   != 60.0) return __LINE__;
+    if (round_value(59.4, UP)   != 60.0) return __LINE__;
+    if (round_value(-2.5, DOWN) != -3.0) return __LINE__;
+    if (round_value(-2.5, UP)   != -2.0) return __LINE__;
+    if (round_value(-2.7, CHOP) != -2.0) return __LINE__;
+    if (round_value(2.7, CHOP)  !=  2.0) return __LINE__;
     /* Nearest-even: halves go to the even neighbour. */
-    if (recomp_frndint(2.5, NEAR)  !=  2.0) return __LINE__;
-    if (recomp_frndint(3.5, NEAR)  !=  4.0) return __LINE__;
-    if (recomp_frndint(-1.5, NEAR) != -2.0) return __LINE__;
-    if (recomp_frndint(2.4, NEAR)  !=  2.0) return __LINE__;
+    if (round_value(2.5, NEAR)  !=  2.0) return __LINE__;
+    if (round_value(3.5, NEAR)  !=  4.0) return __LINE__;
+    if (round_value(-1.5, NEAR) != -2.0) return __LINE__;
+    if (round_value(2.4, NEAR)  !=  2.0) return __LINE__;
     /* Integral values, huge values and non-finite values pass through. */
-    if (recomp_frndint(60.0, DOWN) != 60.0) return __LINE__;
-    if (recomp_frndint(60.0, UP)   != 60.0) return __LINE__;
-    if (recomp_frndint(1e300, UP) != 1e300) return __LINE__;
-    if (!isnan(recomp_frndint((double)NAN, DOWN))) return __LINE__;
-    if (recomp_frndint((double)INFINITY, CHOP) != (double)INFINITY) return __LINE__;
+    if (round_value(60.0, DOWN) != 60.0) return __LINE__;
+    if (round_value(60.0, UP)   != 60.0) return __LINE__;
+    if (round_value(1e300, UP) != 1e300) return __LINE__;
+    if (!isnan(round_value((double)NAN, DOWN))) return __LINE__;
+    if (round_value((double)INFINITY, CHOP) != (double)INFINITY) return __LINE__;
     /* A zero result keeps the operand's sign. */
-    if (!signbit(recomp_frndint(-0.3, NEAR))) return __LINE__;
-    if (!signbit(recomp_frndint(-0.7, UP)))   return __LINE__;
-    if (signbit(recomp_frndint(0.3, DOWN)))   return __LINE__;
+    if (!signbit(round_value(-0.3, NEAR))) return __LINE__;
+    if (!signbit(round_value(-0.7, UP)))   return __LINE__;
+    if (signbit(round_value(0.3, DOWN)))   return __LINE__;
     /* FIST shares the rounding, and keeps its integer indefinite. */
-    if (recomp_fist(59.6, DOWN, 32) != 59) return __LINE__;
-    if (recomp_fist(59.6, NEAR, 32) != 60) return __LINE__;
-    if (recomp_fist((double)NAN, NEAR, 32) != INT32_MIN) return __LINE__;
+    if (integer_value(59.6, DOWN, 32) != 59) return __LINE__;
+    if (integer_value(59.6, NEAR, 32) != 60) return __LINE__;
+    if (integer_value((double)NAN, NEAR, 32) != INT32_MIN) return __LINE__;
     return 0;
-}
-'''
+}'''.replace('/* EMITTED_OPERATIONS */', wrappers)
+
+
+class FrndintRuntimeTest(unittest.TestCase):
+    def test_each_rounding_control_rounds_its_own_way(self):
+        cc = next(filter(None, map(shutil.which, ("cc", "gcc", "clang"))), None)
+        if not cc:
+            self.skipTest("no C compiler available")
+        source = rounding_source()
         with tempfile.TemporaryDirectory(prefix="frndint-runtime-") as tmp:
             tmp = Path(tmp)
             src, exe = tmp / "test.c", tmp / "test"

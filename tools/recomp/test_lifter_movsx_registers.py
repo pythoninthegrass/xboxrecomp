@@ -153,7 +153,7 @@ class MovsxRegisterTest(unittest.TestCase):
                 stmt = _lift("movsx",
                              Operand(type="reg", reg=dst_reg),
                              Operand(type="reg", reg=src_reg))
-                self.assertIn("SX16(", stmt)
+                self.assertIn("^ 0x8000u", stmt)
                 rc, out = self._sweep(src_reg, stmt, dest=dst_reg)
                 self.assertEqual(rc, 0, f"{src_reg}: {out}\n  stmt: {stmt}")
                 self.assertTrue(out.startswith("OK"), out)
@@ -187,7 +187,8 @@ class MovsxRegisterTest(unittest.TestCase):
         stmt = _lift("movsx",
                      Operand(type="reg", reg="eax"),
                      Operand(type="reg", reg="bp"))
-        self.assertEqual(stmt, "eax = SX16(LO16(ebp));")
+        self.assertIn("LO16(ebp)", stmt)
+        self.assertIn("^ 0x8000u", stmt)
         self.assertNotEqual(stmt, "eax = LO16(ebp);")
 
     def test_movsx_and_movzx_accept_the_same_registers(self):
@@ -206,9 +207,9 @@ class MovsxRegisterTest(unittest.TestCase):
                            Operand(type="reg", reg=src_reg))
                 zx = _lift("movzx", Operand(type="reg", reg=dst_reg),
                            Operand(type="reg", reg=src_reg))
-                self.assertIn(f"SX{width}(", sx,
+                self.assertIn(f"^ 0x{1 << (width-1):X}u", sx,
                               f"movsx fell through on {src_reg}: {sx}")
-                self.assertIn(f"ZX{width}(", zx,
+                self.assertIn(f"& 0x{(1 << width)-1:X}u", zx,
                               f"movzx fell through on {src_reg}: {zx}")
 
     def test_invalid_extension_source_is_rejected(self):
