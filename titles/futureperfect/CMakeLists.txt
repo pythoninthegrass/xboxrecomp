@@ -116,6 +116,17 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${XBOXRECOMP_DIR}/include
 )
 
+
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_network.c")
+    target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/generated")
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 bcrypt)
+    add_executable(tsfp_pc_network_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_network.c"
+        "${TSFP_PC_CONTROLS_DIR}/pc_network.c")
+    target_include_directories(tsfp_pc_network_test PRIVATE "${TSFP_PC_CONTROLS_DIR}" "${CMAKE_BINARY_DIR}/generated")
+    target_link_libraries(tsfp_pc_network_test PRIVATE ws2_32 bcrypt)
+endif()
+
 # Windows SDK libraries needed at link time
 target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d11
