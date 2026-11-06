@@ -118,7 +118,11 @@ extern RECOMP_MANUAL_TLS uint32_t g_icall_dispatch_form;
 /* PC System Link: public XNet API boundary, US 45410066. */
 #include "pc_network_guest.inc"
 extern RECOMP_MANUAL_TLS uint32_t g_ecx;
+extern RECOMP_MANUAL_TLS uint32_t g_ebx, g_edi;
 #include "pc_network_bots_guest.inc"
+extern void sub_003533F0_gen(void);
+void sub_003533F0(void)
+{ pc_network_bots_guest_score_network(sub_003533F0_gen); }
 extern void sub_000BB6C0_gen(void);
 void sub_000BB6C0(void)
 { pc_network_bots_guest_damage(sub_000BB6C0_gen); }
