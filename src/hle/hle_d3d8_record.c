@@ -1219,6 +1219,22 @@ void host_SetTwoDPlacement(int placement, uint32_t tag)
     xbox_D3D8SetTwoDPlacement(placement, tag);
 }
 
+extern void xbox_D3D8AmbientOcclusion(const float *projection);
+static void op_ambient_occlusion(const void *arg)
+{
+    host_AmbientOcclusion((const float *)arg);
+}
+void host_AmbientOcclusion(const float projection[16])
+{
+    if(!projection)return;
+    if(hle_d3d8_defer_recording()) {
+        hle_d3d8_defer_op(op_ambient_occlusion,projection,16*sizeof(float));return;
+    }
+    if(hle_d3d8_interp_rec)
+        hle_d3d8_interp_op(op_ambient_occlusion,projection,16*sizeof(float));
+    xbox_D3D8AmbientOcclusion(projection);
+}
+
 static void op_viewport(const void *arg)
 {
     host_SetViewport(hle_d3d8_shadow_device(), (const D3DVIEWPORT8 *)arg);

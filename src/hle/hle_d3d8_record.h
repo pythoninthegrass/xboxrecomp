@@ -84,6 +84,8 @@ int  hle_d3d8_defer_recording(void);
 void hle_d3d8_defer_op(void (*fn)(const void *arg), const void *arg, size_t size);
 /* Run everything queued, in order. Safe to call when nothing is. */
 void hle_d3d8_defer_flush(void);
+/* Queue the per-view post-process with the world camera snapshot. */
+void host_AmbientOcclusion(const float projection[16]);
 
 /* --------------------------------------------------- frame interpolation
  *
