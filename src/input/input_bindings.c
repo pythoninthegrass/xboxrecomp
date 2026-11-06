@@ -287,8 +287,6 @@ static void bind_add(Binding *b, const char *text, int *bad)
         (*bad)++;
         return;
     }
-    if (s.kind == SRC_NONE)
-        return;
     b->src[b->count++] = s;
 }
 
@@ -522,6 +520,9 @@ static const char *parse_controller(const char *p, int index, int *bad)
     if (seen_port && tmp.device == DEV_PAD && tmp.pad == index && index != port)
         tmp.pad = port;
     tmp.has_key = 0;
+    if (tmp.device == DEV_KEYBOARD)
+        for (i = 0; i < CONTROL_COUNT; i++)
+            if (tmp.bind[i].count > 2) tmp.bind[i].count = 2;
     for (i = 0; i < CONTROL_COUNT; i++) {
         int s;
         for (s = 0; s < tmp.bind[i].count; s++)
@@ -938,6 +939,9 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     memset(out, 0, sizeof *out);
     if (port >= PORTS)
         return 0;
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
+    if(port==0 && pc_settings_capture_pump())return 1;
+#endif
     c = &g_ctl[port];
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_INPUT)
     AcquireSRWLockShared(&g_pc_bindings_lock);
