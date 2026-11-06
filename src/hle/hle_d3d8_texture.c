@@ -88,6 +88,7 @@ typedef struct {
     /* The texels are the frame buffer's, so the content comes from the
      * host's finished frame and is refreshed every frame it is bound. */
     int                framebuffer;
+    int                framebuffer_copy_valid;
     /* P8: the host texture holds the texels expanded through a palette, and
      * this is the checksum of that palette (0: not known, bake again). */
     int                p8;
@@ -557,15 +558,21 @@ static IDirect3DTexture8 *framebuffer_texture(IDirect3DDevice8 *dev, uint32_t va
                 "host's frame\n", va, t->width, t->height, t->fmt, data);
         fflush(stderr);
     }
+    if (e->data != data || e->format != format || e->size != size)
+        e->framebuffer_copy_valid = 0;
     e->data = data;
     e->format = format;
     e->size = size;
     e->used_swap = now;
-    /* Once per frame: the picture it should hold is this frame's, so far. */
-    if (e->checked_swap != now) {
-        e->checked_swap = now;
-        host_CopyBackBufferToTexture(e->host);
-        framebuffer_probe(e, now);
+    /* Keep one snapshot for consecutive taps of a screen effect. Rebinding
+     * after other textures starts a new pass, which must see intervening
+     * geometry even within the same frame (Khallos Express's final glow). */
+    if (!e->framebuffer_copy_valid || e->checked_swap != now) {
+        e->framebuffer_copy_valid = SUCCEEDED(host_CopyBackBufferToTexture(e->host));
+        if (e->framebuffer_copy_valid) {
+            e->checked_swap = now;
+            framebuffer_probe(e, now);
+        }
     }
     return e->host;
 }
@@ -1291,6 +1298,17 @@ static void report(void)
 HLE_ORIGINAL(D3DDevice_SetTexture);
 
 #if defined(_WIN32) || defined(__APPLE__)
+/* A frame can sample its own image before and after opaque geometry. The
+ * old once-per-swap cache replayed the earlier background over the train.
+ * Invalidate on a binding transition, while retaining a stable image for
+ * adjacent taps of the same effect. This also covers unbinds and cubes. */
+static void framebuffer_binding_changed(uint32_t stage, uint32_t texture)
+{
+    texture_entry *previous = g_bound_entry[stage];
+    if (previous && previous->framebuffer && previous->va != texture)
+        previous->framebuffer_copy_valid = 0;
+}
+
 static void shadow_set_texture(uint32_t stage, uint32_t texture);
 static void op_set_texture(const void *arg)
 {
@@ -1341,6 +1359,7 @@ static void shadow_set_texture(uint32_t stage, uint32_t texture)
 
         if (!dev || stage >= MAX_STAGES)
             return;
+        framebuffer_binding_changed(stage, texture);
         if (texture) {
             /* A cube the title rendered into is bound as itself, and one it
              * filled from memory as a copy of those bytes (static_cube). */
