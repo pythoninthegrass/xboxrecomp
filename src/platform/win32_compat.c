@@ -1466,8 +1466,17 @@ static size_t view_take(const void *addr)
 static int anon_map_fd(const char *name)
 {
 #if defined(__APPLE__)
-    // TODO: use shm_open on macOS 10.12+ or mkstemp + unlink for older versions
-    return 0;
+    /* A real private backing file is required: descriptor 0 is stdin, not
+     * an anonymous mapping. Keep an owned descriptor after fclose unlinks
+     * the temporary file; all views then share these same backing pages. */
+    (void)name;
+    FILE *backing = tmpfile();
+    if (!backing) return -1;
+    int fd = dup(fileno(backing));
+    int saved_errno = errno;
+    fclose(backing);
+    if (fd < 0) errno = saved_errno;
+    return fd;
 #else
     return memfd_create(name ? name : "xbox_map", 0);
 #endif
