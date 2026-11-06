@@ -30,23 +30,23 @@ def _lift(mnemonic, src_reg="eax"):
 class AtomicLiftTest(unittest.TestCase):
     def test_xadd_is_atomic_and_returns_the_old_value(self):
         generated = _lift("xadd", "edx")
-        self.assertIn("RECOMP_ATOMIC_ADD32", generated)
+        self.assertIn("tsfp_atomic_add32", generated)
         self.assertIn("_old", generated)
         self.assertNotIn("TODO", generated)
 
     def test_cmpxchg_is_a_real_compare_and_swap(self):
         generated = _lift("cmpxchg", "edx")
-        self.assertIn("RECOMP_ATOMIC_CAS32", generated)
+        self.assertIn("tsfp_atomic_cas32", generated)
         # eax is only replaced when the comparand did not match.
-        self.assertIn("if (_old != _cmp) eax = _old;", generated)
+        self.assertIn("if (_exchange_compare != _exchange_old) {", generated)
         self.assertNotIn("TODO", generated)
 
     def test_cmpxchg_snapshots_the_flags_before_touching_eax(self):
         # The ZF a following jz reads must come from the compare cmpxchg did,
         # not from eax after it may have been overwritten.
         generated = _lift("cmpxchg", "edx")
-        cmp_at = generated.index("_fa = _old; _fb = _cmp;")
-        eax_at = generated.index("if (_old != _cmp) eax = _old;")
+        cmp_at = generated.index("_fa = _exchange_result;")
+        eax_at = generated.index("if (_exchange_compare != _exchange_old) {")
         self.assertLess(cmp_at, eax_at)
 
     def test_lock_prefixed_forms_lift_the_same_way(self):
@@ -54,4 +54,4 @@ class AtomicLiftTest(unittest.TestCase):
             with self.subTest(mnemonic=m):
                 generated = _lift(m, "edx")
                 self.assertNotIn("TODO", generated)
-                self.assertIn("RECOMP_ATOMIC_", generated)
+                self.assertIn("tsfp_atomic_", generated)

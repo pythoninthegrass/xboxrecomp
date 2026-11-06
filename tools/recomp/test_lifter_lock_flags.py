@@ -108,7 +108,9 @@ class LockPrefixFlagsTest(unittest.TestCase):
     def test_the_branch_reads_the_sum(self):
         """xadd sets ZF from the sum, which is what its destination now holds."""
         out = _lift(_release_sequence("lock xadd"))
-        self.assertIn("MEM32(eax)", out, out)
+        self.assertIn("_fa = _exchange_result;", out, out)
+        self.assertIn("if (!!_fa)", out, out)
+        self.assertNotIn("MEM32(eax)", out, out)
 
     def test_lock_cmpxchg_does_not_inherit_stale_flags(self):
         """A `cmp` before a `lock cmpxchg` must not decide the cmpxchg's jcc.

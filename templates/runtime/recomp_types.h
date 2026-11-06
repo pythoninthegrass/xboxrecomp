@@ -273,27 +273,82 @@ extern RECOMP_TLS uint32_t g_seh_ebp;
  * for a buffer that has no native counterpart, leaving the caller to fall back
  * to the guest's own longjmp.
  */
-/* Atomic read-modify-write, for the lock-prefixed instructions.
- *
- * "lock xadd" and "lock cmpxchg" are what InterlockedIncrement and
- * InterlockedCompareExchange compile to, so they carry a title's reference
- * counts and its lock-free lists. They used to lift to a TODO comment, which
- * meant a refcount that never moved and a compare-and-swap that never swapped
- * -- harmless while every guest thread ran synchronously, and not once the
- * runtime began spawning real ones.
- *
- * Genuinely atomic, not merely correct in isolation: the guest's own threads
- * now run on real host threads, so a read-modify-write that races is exactly
- * the bug these instructions exist to prevent.
- */
+/* TSFP own atomics begin: sequentially consistent operations on mapped RAM.
+ * Naturally aligned operands follow the host intrinsic contract. Guest MMIO,
+ * alignment/page-crossing faults and guest exception delivery are separate.
+ * Unlocked XADD/CMPXCHG retain the existing stronger atomic-memory policy. */
+#ifndef TSFP_GUEST_ATOMIC_PRIMITIVES
+#define TSFP_GUEST_ATOMIC_PRIMITIVES
+#include <stdint.h>
 #if defined(_MSC_VER)
 #include <intrin.h>
-#define RECOMP_ATOMIC_ADD32(p, v)     ((uint32_t)_InterlockedExchangeAdd((volatile long *)(p), (long)(v)))
-#define RECOMP_ATOMIC_CAS32(p, cmp, val)     ((uint32_t)_InterlockedCompareExchange((volatile long *)(p),                                            (long)(val), (long)(cmp)))
+static inline uint8_t tsfp_atomic_exchange8(void *address, uint32_t value) {
+    return (uint8_t)_InterlockedExchange8((volatile char *)address, (char)value);
+}
+static inline uint8_t tsfp_atomic_add8(void *address, uint32_t value) {
+    return (uint8_t)_InterlockedExchangeAdd8((volatile char *)address, (char)value);
+}
+static inline uint8_t tsfp_atomic_cas8(void *address, uint32_t compare, uint32_t value) {
+    return (uint8_t)_InterlockedCompareExchange8((volatile char *)address, (char)value, (char)compare);
+}
+static inline uint16_t tsfp_atomic_exchange16(void *address, uint32_t value) {
+    return (uint16_t)_InterlockedExchange16((volatile short *)address, (short)value);
+}
+static inline uint16_t tsfp_atomic_add16(void *address, uint32_t value) {
+    return (uint16_t)_InterlockedExchangeAdd16((volatile short *)address, (short)value);
+}
+static inline uint16_t tsfp_atomic_cas16(void *address, uint32_t compare, uint32_t value) {
+    return (uint16_t)_InterlockedCompareExchange16((volatile short *)address, (short)value, (short)compare);
+}
+static inline uint32_t tsfp_atomic_exchange32(void *address, uint32_t value) {
+    return (uint32_t)_InterlockedExchange((volatile long *)address, (long)value);
+}
+static inline uint32_t tsfp_atomic_add32(void *address, uint32_t value) {
+    return (uint32_t)_InterlockedExchangeAdd((volatile long *)address, (long)value);
+}
+static inline uint32_t tsfp_atomic_cas32(void *address, uint32_t compare, uint32_t value) {
+    return (uint32_t)_InterlockedCompareExchange((volatile long *)address, (long)value, (long)compare);
+}
 #else
-#define RECOMP_ATOMIC_ADD32(p, v)     ((uint32_t)__sync_fetch_and_add((volatile uint32_t *)(p), (uint32_t)(v)))
-#define RECOMP_ATOMIC_CAS32(p, cmp, val)     ((uint32_t)__sync_val_compare_and_swap((volatile uint32_t *)(p),                                            (uint32_t)(cmp), (uint32_t)(val)))
+static inline uint8_t tsfp_atomic_exchange8(void *address, uint32_t value) {
+    return __atomic_exchange_n((uint8_t *)address, (uint8_t)value, __ATOMIC_SEQ_CST);
+}
+static inline uint8_t tsfp_atomic_add8(void *address, uint32_t value) {
+    return __atomic_fetch_add((uint8_t *)address, (uint8_t)value, __ATOMIC_SEQ_CST);
+}
+static inline uint8_t tsfp_atomic_cas8(void *address, uint32_t compare, uint32_t value) {
+    uint8_t expected = (uint8_t)compare;
+    __atomic_compare_exchange_n((uint8_t *)address, &expected, (uint8_t)value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return expected;
+}
+static inline uint16_t tsfp_atomic_exchange16(void *address, uint32_t value) {
+    return __atomic_exchange_n((uint16_t *)address, (uint16_t)value, __ATOMIC_SEQ_CST);
+}
+static inline uint16_t tsfp_atomic_add16(void *address, uint32_t value) {
+    return __atomic_fetch_add((uint16_t *)address, (uint16_t)value, __ATOMIC_SEQ_CST);
+}
+static inline uint16_t tsfp_atomic_cas16(void *address, uint32_t compare, uint32_t value) {
+    uint16_t expected = (uint16_t)compare;
+    __atomic_compare_exchange_n((uint16_t *)address, &expected, (uint16_t)value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return expected;
+}
+static inline uint32_t tsfp_atomic_exchange32(void *address, uint32_t value) {
+    return __atomic_exchange_n((uint32_t *)address, (uint32_t)value, __ATOMIC_SEQ_CST);
+}
+static inline uint32_t tsfp_atomic_add32(void *address, uint32_t value) {
+    return __atomic_fetch_add((uint32_t *)address, (uint32_t)value, __ATOMIC_SEQ_CST);
+}
+static inline uint32_t tsfp_atomic_cas32(void *address, uint32_t compare, uint32_t value) {
+    uint32_t expected = (uint32_t)compare;
+    __atomic_compare_exchange_n((uint32_t *)address, &expected, (uint32_t)value, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return expected;
+}
 #endif
+/* Existing consumers can keep the old interface while the runtime is replaced. */
+#define RECOMP_ATOMIC_ADD32(p, v) tsfp_atomic_add32((void *)(p), (v))
+#define RECOMP_ATOMIC_CAS32(p, c, v) tsfp_atomic_cas32((void *)(p), (c), (v))
+#endif /* TSFP_GUEST_ATOMIC_PRIMITIVES */
+/* TSFP own atomics end */
 
 #include <setjmp.h>
 jmp_buf *recomp_setjmp_slot(uint32_t buf_va);

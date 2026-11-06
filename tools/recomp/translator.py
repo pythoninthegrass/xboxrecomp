@@ -892,6 +892,8 @@ class FunctionTranslator:
 
         last_setter = None
         for insn in instructions:
+            if insn.mnemonic.removeprefix("lock ") in ("xadd", "cmpxchg"):
+                return True  # Own exchange arithmetic publishes captured carry.
             if insn.mnemonic in ("rcl", "rcr", "mul", "imul", "bt", "bts", "btr", "btc"):
                 return True  # Own carry producers publish their captured value.
             if _constant_bit_noop(insn):
@@ -1299,7 +1301,7 @@ class FunctionTranslator:
         # cmpxchg belongs here too: it snapshots the compare it performed,
         # because eax may be replaced before the branch reads the result.
         if any(insn.mnemonic in ("cmp", "test", "bsf", "bsr", "cmpxchg",
-                                 "lock cmpxchg", "inc", "dec")
+                                 "lock cmpxchg", "xadd", "lock xadd", "inc", "dec")
                or insn.mnemonic in _RESULT_SNAPSHOT_SETTERS
                for insn in instructions):
             lines.append("    uint32_t _fa = 0, _fb = 0;")

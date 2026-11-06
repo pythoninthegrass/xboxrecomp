@@ -25,6 +25,7 @@ import translation_integer as _project_integer
 import translation_bits as _project_bits
 import translation_product as _project_product
 import translation_bitops as _project_bitops
+import translation_exchange as _project_exchange
 
 # Function export names of the Windows libraries the host exe links
 # (kernel32/user32/gdi32/advapi32/winmm/ws2_32/ole32/dbghelp/...). A guest
@@ -352,6 +353,8 @@ def zf_expression(flag_state):
         return "_flags"
     if setter == "__zf_from_dest" and ops:
         return f"({_fmt_operand_read(ops[0])} == 0)"
+    if setter in ("xadd", "cmpxchg"):
+        return "!_fa"
     if setter == "cmp" and len(ops) >= 2:
         return "(_fa == _fb)"
     if setter == "test" and len(ops) >= 2:
@@ -373,6 +376,10 @@ def _make_condition(jcc, flag_setter, flag_ops):
     if not cond_info:
         return None
     cmp_macro, test_macro, desc = cond_info
+
+    if flag_setter in ("xadd", "cmpxchg"):
+        expression = _project_exchange.condition(jcc, flag_setter, flag_ops)
+        return (expression, desc) if expression is not None else None
 
     if flag_setter in ("bt", "bts", "btr", "btc", "bsf", "bsr"):
         expression = _project_bitops.condition(jcc, flag_setter)
@@ -829,25 +836,6 @@ def _make_condition(jcc, flag_setter, flag_ops):
         if jcc in ("jae", "jnb", "jnc"):
             return "!_cf", desc
         # ZF/SF not modified by rotations - can't resolve most conditions
-        return None
-
-    # ── cmpxchg: compares accumulator with dest, sets ZF on match ──
-    if flag_setter == "cmpxchg":
-        # ZF comes from the compare the instruction already did, and the lift
-        # snapshots it into _fa/_fb. Re-reading eax here would test a value
-        # cmpxchg may have just replaced.
-        if jcc in ("je", "jz"):
-            return "(_fa == _fb)", desc
-        if jcc in ("jne", "jnz"):
-            return "(_fa != _fb)", desc
-        return None
-
-    # ── xadd: exchange and add, flags from addition ──
-    if flag_setter == "xadd":
-        if jcc in ("je", "jz"):
-            return f"({lhs} == 0)", desc
-        if jcc in ("jne", "jnz"):
-            return f"({lhs} != 0)", desc
         return None
 
     # ── repe cmpsb / repne scasb: string comparison ──
@@ -1344,7 +1332,7 @@ class Lifter:
             return self._lift_movsx(insn, ops)
         if m == "lea":
             return self._lift_lea(insn, ops)
-        if m == "xchg":
+        if m in ("xchg", "lock xchg"):
             return self._lift_xchg(insn, ops)
 
         # ── Stack ──
@@ -1564,51 +1552,8 @@ class Lifter:
         if m in ("bsf", "bsr"):
             return self._lift_scan(insn, ops, m)
 
-        # ── Atomic read-modify-write ──
-        #
-        # "lock xadd" and "lock cmpxchg" are what InterlockedIncrement and
-        # InterlockedCompareExchange compile to, so they carry a title's
-        # reference counts and its lock-free lists. Both used to fall through
-        # to the TODO below: a refcount that never moved and a compare-and-swap
-        # that never swapped. Harmless while every guest thread ran
-        # synchronously, and not once the runtime began spawning real ones.
-        #
-        # Emitted through RECOMP_ATOMIC_*, which are genuinely atomic. A
-        # read-modify-write that races is the exact bug these instructions are
-        # there to prevent, so lowering them to a plain sequence would swap one
-        # silent race for another.
-        # Capstone keeps the prefix in the mnemonic, so the locked and
-        # unlocked spellings both arrive here. Both lift atomically: an
-        # unlocked xadd on memory is single-CPU-safe on the console and
-        # costs nothing extra to make safe here.
-        atomic_m = m[5:] if m.startswith("lock ") else m
-        if atomic_m in ("xadd", "cmpxchg") and len(ops) >= 2:
-            width = _operand_width(ops[0]) or 4
-            if width == 4 and ops[0].type == "mem":
-                addr = _fmt_mem(ops[0])
-                src = _fmt_operand_read(ops[1])
-                if atomic_m == "xadd":
-                    # dst = dst + src, and src receives dst's old value.
-                    return [
-                        "{ uint32_t _old = RECOMP_ATOMIC_ADD32("
-                        f"XBOX_PTR({addr}), {src});",
-                        "  " + _fmt_operand_write(ops[1], "_old") + " }"
-                        f"  /* {m} */",
-                    ]
-                # cmpxchg: compare eax with dst; on a match store src, else
-                # load dst into eax. ZF says which happened, and it is
-                # snapshotted rather than recomputed -- eax may have just been
-                # overwritten, so re-reading it to decide the branch would test
-                # the wrong pair.
-                return [
-                    "{ uint32_t _cmp = eax;",
-                    "  uint32_t _old = RECOMP_ATOMIC_CAS32("
-                    f"XBOX_PTR({addr}), _cmp, {src});",
-                    "  _fa = _old; _fb = _cmp;",
-                    "  _fas = (int32_t)_fa; _fbs = (int32_t)_fb;",
-                    "  if (_old != _cmp) eax = _old; }"
-                    f"  /* {m} */",
-                ]
+        if m in ("xadd", "lock xadd", "cmpxchg", "lock cmpxchg"):
+            return self._lift_exchange(insn, ops)
 
         # ── Unhandled ──
         #
@@ -1625,16 +1570,8 @@ class Lifter:
 
     _lift_lea = _project_moves.lea
 
-    def _lift_xchg(self, insn, ops):
-        if len(ops) < 2:
-            return [f"/* xchg: bad operands */"]
-        a = _fmt_operand_read(ops[0])
-        b = _fmt_operand_read(ops[1])
-        return [
-            f"{{ uint32_t _tmp = {a};",
-            _fmt_operand_write(ops[0], b),
-            _fmt_operand_write(ops[1], "_tmp") + " }",
-        ]
+    _lift_xchg = _project_exchange.exchange
+    _lift_exchange = _project_exchange.exchange
 
     # ── Stack ──
 
