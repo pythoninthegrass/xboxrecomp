@@ -278,6 +278,16 @@ void sub_00065420(void)
 #endif
 }
 
+extern void sub_000BABA0_gen(void);
+void sub_000BABA0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_departure_death(sub_000BABA0_gen);
+#else
+    sub_000BABA0_gen();
+#endif
+}
+
 extern void sub_00079860_gen(void);
 void sub_00079860(void)
 {
