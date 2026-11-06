@@ -42,7 +42,7 @@
 #include <string.h>
 #include "hle.h"
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 #include "d3d8_xbox.h"
 #include "d3d8_internal.h"
 #include "hle_d3d8_record.h"
@@ -1290,7 +1290,7 @@ static void report(void)
 
 HLE_ORIGINAL(D3DDevice_SetTexture);
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 static void shadow_set_texture(uint32_t stage, uint32_t texture);
 static void op_set_texture(const void *arg)
 {
@@ -1304,7 +1304,7 @@ HLE_EXPORT(D3DDevice_SetTexture)
 {
     static int seen;
     uint32_t stage = HLE_ARG(0);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t texture = HLE_ARG(1);
 #endif
 
@@ -1317,7 +1317,7 @@ HLE_EXPORT(D3DDevice_SetTexture)
         HLE_RETURN(0x80004005u);
     }
     HLE_CALL_ORIGINAL(D3DDevice_SetTexture);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     /* Deferred (RECOMP_HLE_D3D8_DEFER), the host side runs when the frame is
      * executed, so the texels are read then -- as the NV2A reads them when it
      * reaches the draw, not when the title issued it. */
@@ -1332,7 +1332,7 @@ HLE_EXPORT(D3DDevice_SetTexture)
 #endif
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 static void shadow_set_texture(uint32_t stage, uint32_t texture)
 {
     {
@@ -1419,7 +1419,7 @@ static void shadow_set_texture(uint32_t stage, uint32_t texture)
  * hle_d3d8.c uses it for RECOMP_HLE_D3D8_SKIP_FULLSCREEN. */
 int hle_d3d8_stage0_is_framebuffer(void)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     return g_stage0_framebuffer;
 #else
     return 0; /* No host framebuffer sampling on the POSIX renderer yet. */
@@ -1451,7 +1451,7 @@ HLE_ORIGINAL(D3DDevice_SetPalette);
 HLE_EXPORT(D3DDevice_SetPalette)
 {
     static int seen;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t stage = HLE_ARG(0), palette_va = HLE_ARG(1);
 #endif
 
@@ -1467,7 +1467,7 @@ HLE_EXPORT(D3DDevice_SetPalette)
         return;
     }
     HLE_CALL_ORIGINAL(D3DDevice_SetPalette);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     {
         IDirect3DDevice8 *dev = hle_d3d8_shadow_device();
         uint32_t data;

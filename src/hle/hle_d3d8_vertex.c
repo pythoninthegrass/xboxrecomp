@@ -44,7 +44,7 @@
 #include <string.h>
 #include "hle.h"
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 #include "d3d8_xbox.h"
 #include "d3d8_vsh.h"
 #include "hle_d3d8_record.h"
@@ -367,7 +367,7 @@ HLE_EXPORT(D3DDevice_SetStreamSource)
 {
     static int seen;
     uint32_t stream = HLE_ARG(0);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t vb = HLE_ARG(1), stride = HLE_ARG(2);
 #endif
 
@@ -375,7 +375,7 @@ HLE_EXPORT(D3DDevice_SetStreamSource)
     if (original_missing(hle_original_D3DDevice_SetStreamSource, "D3DDevice_SetStreamSource"))
         HLE_RETURN(0x80004005u);
     HLE_CALL_ORIGINAL(D3DDevice_SetStreamSource);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     hle_d3d8_push_arrays_off();          /* the XDK writes its own arrays again */
     if (stream == 0u) {
         g_stream0_vb = vb;
@@ -399,7 +399,7 @@ HLE_EXPORT(CDevice_SetStateVB)
     if (original_missing(hle_original_CDevice_SetStateVB, "CDevice_SetStateVB"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(CDevice_SetStateVB);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     g_base_vertex = base;
     g_base_vertex_seen = 1;
 #endif
@@ -411,7 +411,7 @@ HLE_EXPORT(D3DDevice_DrawVertices)
 {
     static int seen;
     uint32_t xpt = HLE_ARG(0);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t start = HLE_ARG(1), count = HLE_ARG(2);
 #endif
 
@@ -419,7 +419,7 @@ HLE_EXPORT(D3DDevice_DrawVertices)
     if (original_missing(hle_original_D3DDevice_DrawVertices, "D3DDevice_DrawVertices"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_DrawVertices);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     if (hle_d3d8_shadow_device() && count && g_push_active) {
         uint32_t stride;
         uint8_t *gathered = push_gather(start, count, &stride);
@@ -448,7 +448,7 @@ HLE_EXPORT(D3DDevice_DrawIndexedVertices)
 {
     static int seen;
     uint32_t xpt = HLE_ARG(0);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t count = HLE_ARG(1), index_va = HLE_ARG(2);
 #endif
 
@@ -457,7 +457,7 @@ HLE_EXPORT(D3DDevice_DrawIndexedVertices)
                          "D3DDevice_DrawIndexedVertices"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_DrawIndexedVertices);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     if (hle_d3d8_shadow_device() && count && index_va &&
         guest_readable(index_va, (uint64_t)count * 2u)) {
         const uint16_t *idx = (const uint16_t *)HLE_PTR(index_va);
@@ -509,7 +509,7 @@ HLE_EXPORT(D3DDevice_DrawIndexedVertices)
 #endif
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 static void forward_constants(uint32_t reg, uint32_t data, uint32_t count)
 {
     if (!hle_d3d8_shadow_device() || !data || !count || reg >= MAX_CONSTANT_REGISTERS)
@@ -528,7 +528,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant1)
 {
     static int seen;
     uint32_t reg = g_ecx;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t data = g_edx;
 #endif
 
@@ -537,7 +537,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant1)
                          "D3DDevice_SetVertexShaderConstant1"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_SetVertexShaderConstant1);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     forward_constants(reg, data, 1u);
 #endif
 }
@@ -555,7 +555,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant1Fast)
 {
     static int seen;
     uint32_t reg = g_ecx;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t data = g_edx;
 #endif
 
@@ -564,7 +564,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant1Fast)
                          "D3DDevice_SetVertexShaderConstant1Fast"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_SetVertexShaderConstant1Fast);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     forward_constants(reg, data, 1u);
 #endif
 }
@@ -575,7 +575,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant4)
 {
     static int seen;
     uint32_t reg = g_ecx;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t data = g_edx;
 #endif
 
@@ -584,7 +584,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant4)
                          "D3DDevice_SetVertexShaderConstant4"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_SetVertexShaderConstant4);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     forward_constants(reg, data, 4u);
 #endif
 }
@@ -600,7 +600,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstantNotInline)
 {
     static int seen;
     uint32_t reg = g_ecx;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t data = g_edx, floats = HLE_ARG(0);
 #endif
 
@@ -608,11 +608,11 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstantNotInline)
     if (original_missing(hle_original_D3DDevice_SetVertexShaderConstantNotInline,
                          "D3DDevice_SetVertexShaderConstantNotInline"))
         HLE_RETURN(0u);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     g_in_notinline++;
 #endif
     HLE_CALL_ORIGINAL(D3DDevice_SetVertexShaderConstantNotInline);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     g_in_notinline--;
     forward_constants(reg, data, floats / 4u);
 #endif
@@ -623,7 +623,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstantNotInlineFast)
 {
     static int seen;
     uint32_t reg = g_ecx;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     uint32_t data = g_edx, floats = HLE_ARG(0);
 #endif
 
@@ -632,7 +632,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstantNotInlineFast)
                          "D3DDevice_SetVertexShaderConstantNotInlineFast"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_SetVertexShaderConstantNotInlineFast);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     if (!g_in_notinline)
         forward_constants(reg, data, floats / 4u);
 #endif
@@ -686,7 +686,7 @@ HLE_EXPORT(D3DDevice_SetVertexShaderConstant)
                          "D3DDevice_SetVertexShaderConstant"))
         HLE_RETURN(0u);
     HLE_CALL_ORIGINAL(D3DDevice_SetVertexShaderConstant);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     forward_constants(reg, data, count);
 #endif
 }

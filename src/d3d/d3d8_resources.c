@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#ifndef TSFP_FORMAT_ONLY
 /* Forward declarations for mip/slice addressing helpers (defined below,
  * used early by d3d8_refresh_palette). */
 static UINT cube_level_width(const struct D3D8CubeTexture *cube, UINT level);
@@ -30,6 +31,8 @@ static void d3d8_upload_mip_level(RhiImage *image, D3DFORMAT fmt,
                                   UINT w, UINT h, UINT subresource,
                                   const BYTE *src_data, UINT src_row_pitch,
                                   UINT palette);
+
+#endif
 
 /* ================================================================
  * Format conversion: Xbox D3DFORMAT → DXGI_FORMAT
@@ -556,15 +559,15 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
     case D3DFMT_LIN_R5G5B5A1: {
         /* R5G5B5A1 → A1R5G5B5 (B5G5R5A1 UNORM) bit reorder. */
         for (y = 0; y < height; y++) {
-            const UINT16 *s = (const UINT16 *)(src + (size_t)y * width * 2);
-            UINT16 *d = (UINT16 *)(dst + (size_t)y * width * 2);
+            const uint16_t *s = (const uint16_t *)(src + (size_t)y * width * 2);
+            uint16_t *d = (uint16_t *)(dst + (size_t)y * width * 2);
             for (x = 0; x < width; x++) {
-                UINT16 w = s[x];
-                UINT16 a = (UINT16)(w & 1);
-                UINT16 r = (UINT16)((w >> 11) & 0x1F);
-                UINT16 g = (UINT16)((w >> 6) & 0x1F);
-                UINT16 b = (UINT16)((w >> 1) & 0x1F);
-                d[x] = (UINT16)((a << 15) | (r << 10) | (g << 5) | b);
+                uint16_t w = s[x];
+                uint16_t a = (uint16_t)(w & 1);
+                uint16_t r = (uint16_t)((w >> 11) & 0x1F);
+                uint16_t g = (uint16_t)((w >> 6) & 0x1F);
+                uint16_t b = (uint16_t)((w >> 1) & 0x1F);
+                d[x] = (uint16_t)((a << 15) | (r << 10) | (g << 5) | b);
             }
         }
         break;
@@ -574,15 +577,15 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
     case D3DFMT_LIN_R4G4B4A4: {
         /* R4G4B4A4 → A4R4G4B4 (B4G4R4A4 UNORM) bit reorder. */
         for (y = 0; y < height; y++) {
-            const UINT16 *s = (const UINT16 *)(src + (size_t)y * width * 2);
-            UINT16 *d = (UINT16 *)(dst + (size_t)y * width * 2);
+            const uint16_t *s = (const uint16_t *)(src + (size_t)y * width * 2);
+            uint16_t *d = (uint16_t *)(dst + (size_t)y * width * 2);
             for (x = 0; x < width; x++) {
-                UINT16 w = s[x];
-                UINT16 a = (UINT16)(w & 0xF);
-                UINT16 r = (UINT16)((w >> 12) & 0xF);
-                UINT16 g = (UINT16)((w >> 8) & 0xF);
-                UINT16 b = (UINT16)((w >> 4) & 0xF);
-                d[x] = (UINT16)((a << 12) | (r << 8) | (g << 4) | b);
+                uint16_t w = s[x];
+                uint16_t a = (uint16_t)(w & 0xF);
+                uint16_t r = (uint16_t)((w >> 12) & 0xF);
+                uint16_t g = (uint16_t)((w >> 8) & 0xF);
+                uint16_t b = (uint16_t)((w >> 4) & 0xF);
+                d[x] = (uint16_t)((a << 12) | (r << 8) | (g << 4) | b);
             }
         }
         break;
@@ -594,16 +597,16 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
          * bit10-5 = L (6-bit luminance), bit4-0 = V (5-bit signed).
          * Sign-extend V -> R and U -> G of an R8G8_SNORM texel. */
         for (y = 0; y < height; y++) {
-            const INT16 *s = (const INT16 *)(src + (size_t)y * width * 2);
+            const int16_t *s = (const int16_t *)(src + (size_t)y * width * 2);
             BYTE *d = dst + (size_t)y * width * 2;
             for (x = 0; x < width; x++) {
-                UINT16 w = (UINT16)s[x];
+                uint16_t w = (uint16_t)s[x];
                 INT v = ((w >> 0) & 0x1F);
                 INT u = ((w >> 11) & 0x1F);
                 if (v & 0x10) v -= 0x20;   /* sign-extend 5 bits */
                 if (u & 0x10) u -= 0x20;
-                d[x * 2 + 0] = (BYTE)(INT8)(v << 3);   /* V -> R, 8-bit SNORM */
-                d[x * 2 + 1] = (BYTE)(INT8)(u << 3);   /* U -> G, 8-bit SNORM */
+                d[x * 2 + 0] = (BYTE)(int8_t)(v << 3);   /* V -> R, 8-bit SNORM */
+                d[x * 2 + 1] = (BYTE)(int8_t)(u << 3);   /* U -> G, 8-bit SNORM */
             }
         }
         break;
@@ -677,11 +680,11 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
         /* In-memory BGRA16: [A][B][G][R] each 16-bit little-endian.
          * DXGI R16G16B16A16 expects [R][G][B][A]. Swap channels. */
         for (y = 0; y < height; y++) {
-            const UINT16 *s = (const UINT16 *)(src + (size_t)y * width * 8);
-            UINT16 *d = (UINT16 *)(dst + (size_t)y * width * 8);
+            const uint16_t *s = (const uint16_t *)(src + (size_t)y * width * 8);
+            uint16_t *d = (uint16_t *)(dst + (size_t)y * width * 8);
             for (x = 0; x < width; x++) {
-                const UINT16 *p = &s[x * 4];       /* A, B, G, R */
-                UINT16 *q = &d[x * 4];             /* R, G, B, A */
+                const uint16_t *p = &s[x * 4];       /* A, B, G, R */
+                uint16_t *q = &d[x * 4];             /* R, G, B, A */
                 q[0] = p[3];  /* R */
                 q[1] = p[2];  /* G */
                 q[2] = p[1];  /* B */
@@ -698,11 +701,11 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
         /* In-memory BGRA32: [A][B][G][R] each 32-bit. DXGI R32G32B32A32
          * expects [R][G][B][A]. Swap channels. */
         for (y = 0; y < height; y++) {
-            const UINT32 *s = (const UINT32 *)(src + (size_t)y * width * 16);
-            UINT32 *d = (UINT32 *)(dst + (size_t)y * width * 16);
+            const uint32_t *s = (const uint32_t *)(src + (size_t)y * width * 16);
+            uint32_t *d = (uint32_t *)(dst + (size_t)y * width * 16);
             for (x = 0; x < width; x++) {
-                const UINT32 *p = &s[x * 4];       /* A, B, G, R */
-                UINT32 *q = &d[x * 4];             /* R, G, B, A */
+                const uint32_t *p = &s[x * 4];       /* A, B, G, R */
+                uint32_t *q = &d[x * 4];             /* R, G, B, A */
                 q[0] = p[3];  /* R */
                 q[1] = p[2];  /* G */
                 q[2] = p[1];  /* B */
@@ -719,14 +722,14 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
         /* Xbox A2R10G10B10: bits 30-31=A, 20-29=R, 10-19=G, 0-9=B.
          * DXGI R10G10B10A2 needs R at 0-9, so swap the A and R fields. */
         for (y = 0; y < height; y++) {
-            const UINT32 *s = (const UINT32 *)(src + (size_t)y * width * 4);
-            UINT32 *d = (UINT32 *)(dst + (size_t)y * width * 4);
+            const uint32_t *s = (const uint32_t *)(src + (size_t)y * width * 4);
+            uint32_t *d = (uint32_t *)(dst + (size_t)y * width * 4);
             for (x = 0; x < width; x++) {
-                UINT32 w = s[x];
-                UINT32 a = (w >> 30) & 0x3;
-                UINT32 r = (w >> 20) & 0x3FF;
-                UINT32 g = (w >> 10) & 0x3FF;
-                UINT32 b = (w >>  0) & 0x3FF;
+                uint32_t w = s[x];
+                uint32_t a = (w >> 30) & 0x3;
+                uint32_t r = (w >> 20) & 0x3FF;
+                uint32_t g = (w >> 10) & 0x3FF;
+                uint32_t b = (w >>  0) & 0x3FF;
                 d[x] = (r) | (g << 10) | (b << 20) | (a << 30);
             }
         }
@@ -743,6 +746,7 @@ void d3d8_convert_linear_pixels(D3DFORMAT fmt, UINT width, UINT height,
     }
 }
 
+#ifndef TSFP_FORMAT_ONLY
 /* ================================================================
  * Vertex Buffer Implementation
  * ================================================================ */
@@ -2522,3 +2526,5 @@ HRESULT d3d8_CreateImageSurfaceImpl(UINT Width, UINT Height, D3DFORMAT Format, I
     rhi_image_destroy(img);
     return *ppSurface ? S_OK : E_OUTOFMEMORY;
 }
+
+#endif /* TSFP_FORMAT_ONLY */

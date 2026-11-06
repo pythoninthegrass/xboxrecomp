@@ -61,3 +61,7 @@ if(WIN32)
     # window of their own for it.
     target_link_libraries(xbox_hle PRIVATE xbox_d3d8 xbox_video user32)
 endif()
+
+if(APPLE)
+    target_link_libraries(xbox_hle PRIVATE xbox_d3d8)
+endif()

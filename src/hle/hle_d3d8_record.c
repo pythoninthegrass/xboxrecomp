@@ -38,7 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 
 #include "d3d8_xbox.h"
 #include "d3d8_internal.h"
