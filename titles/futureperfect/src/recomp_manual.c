@@ -277,6 +277,17 @@ void sub_000D2B80(void)
  *       g_eax = result;
  *   }
  */
+extern void sub_00151CF0_gen(void);
+void sub_00151CF0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_decal_projection(sub_00151CF0_gen);
+#else
+    sub_00151CF0_gen();
+#endif
+}
+
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
