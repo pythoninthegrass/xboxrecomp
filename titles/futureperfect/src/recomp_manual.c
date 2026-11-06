@@ -146,6 +146,11 @@ void sub_0018FF70(void) { pc_native_input_guest(sub_0018FF70_gen); }
 #include "pc_native_weapon_guest.h"
 extern void sub_00244F30_gen(void);
 void sub_00244F30(void) { pc_native_weapon_fire_guest(sub_00244F30_gen); }
+#include "pc_native_surface_trace.h"
+extern void sub_001956A0_gen(void);
+extern void sub_00195280_gen(void);
+void sub_001956A0(void) { pc_surface_dispatch_guest(sub_001956A0_gen); }
+void sub_00195280(void) { pc_surface_final_guest(sub_00195280_gen); }
 
 
 /* Fractional kind-35 projectile motion, scoped to the original updater. */
