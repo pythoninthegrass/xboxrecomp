@@ -33,6 +33,11 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_io_stack.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_io_request.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_io_owner.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_io_registry.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_io_pool.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_kernel_boot.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_objects.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_object_scope.c"

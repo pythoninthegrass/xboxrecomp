@@ -4714,7 +4714,8 @@ static void bridge_WRITE_PORT_BUFFER_USHORT(void)
  * The Xbox I/O manager is used internally by the XDK libraries we replace, so
  * these are all stubs whose contract is a return value plus occasional writes
  * to caller-supplied guest structures (IRP, IO_STATUS_BLOCK, symlink table).
- * None of them hands back a pointer the title dereferences.
+ * Request storage is project-owned guest memory, dereferenced by title code.
+ * Device driver dispatch and completion remain transitional.
  *
  * IofCallDriver / IofCompleteRequest are __fastcall on Xbox, so their
  * arguments live in ecx/edx, never on the stack -- the arg-size entries are 0
@@ -4755,12 +4756,7 @@ static void bridge_IoDeleteSymbolicLink(void)
     g_eax = (uint32_t)xbox_IoDeleteSymbolicLink(&name);
 }
 
-static void bridge_IoInitializeIrp(void)
-{
-    xbox_IoInitializeIrp(XBOX_TO_NATIVE(STACK_ARG(0)),
-        (USHORT)STACK_ARG(1), (CCHAR)STACK_ARG(2));
-    g_eax = 0;
-}
+#include "guest_kernel_requests.inc"
 
 static void bridge_IoInvalidDeviceRequest(void)
 {
@@ -4801,7 +4797,7 @@ static void bridge_IoStartPacket(void)
 {
     xbox_IoStartPacket(XBOX_TO_NATIVE(STACK_ARG(0)),
         XBOX_TO_NATIVE(STACK_ARG(1)), (PULONG)XBOX_TO_NATIVE(STACK_ARG(2)),
-        XBOX_TO_NATIVE(STACK_ARG(3)));
+        NULL); /* Xbox has no fourth CancelFunction argument. */
     g_eax = 0;
 }
 
@@ -6670,25 +6666,7 @@ static void bridge_InterlockedPushEntrySList(void)
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-/* --- IoAllocateIrp (ordinal 59, 2 args = 8 bytes)
- * PIRP IoAllocateIrp(CCHAR StackSize, BOOLEAN ChargeQuota);
- * Allocates an IRP header plus StackSize IO_STACK_LOCATIONs from the guest
- * heap. Pair with IoFreeIrp (ordinal 72), which frees through the same heap. */
-static void bridge_IoAllocateIrp(void)
-{
-    uint32_t stack_size = STACK_ARG(0);
-    uint32_t charge_quota = STACK_ARG(1);
-    uint32_t total = 0x28 + stack_size * 0x20;  /* header + stack locations */
-    uint32_t va;
 
-    (void)charge_quota;
-    va = xbox_HeapAlloc(total, 16);
-    if (va)
-        memset((void *)((uintptr_t)va + g_xbox_mem_offset), 0, total);
-    else
-        fprintf(stderr, "  [KERNEL] IoAllocateIrp: %u bytes REFUSED\n", total);
-    g_eax = va;
-}
 
 /* --- IoBuildAsynchronousFsdRequest (ordinal 60, 7 args = 28 bytes) --- */
 static void bridge_IoBuildAsynchronousFsdRequest(void)
@@ -6714,12 +6692,7 @@ static void bridge_IoCheckShareAccess(void)
     g_eax = 0;
 }
 
-/* --- IoFreeIrp (ordinal 72, 1 arg = 4 bytes) --- */
-static void bridge_IoFreeIrp(void)
-{
-    xbox_HeapFree(STACK_ARG(0));
-    g_eax = 0;
-}
+
 
 /* --- IoQueryFileInformation (ordinal 75, 5 args = 20 bytes) --- */
 static void bridge_IoQueryFileInformation(void)
@@ -8169,7 +8142,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     case  79: return 20;  /* IoSetIoCompletion (5) */
     case  81: return  4;  /* IoStartNextPacket (1) */
     case  82: return 12;  /* IoStartNextPacketByKey (3) */
-    case  83: return 16;  /* IoStartPacket (4) */
+    case  83: return 12;  /* IoStartPacket (3) */
     case  84: return 32;  /* IoSynchronousDeviceIoControlRequest (8) */
     case  85: return 20;  /* IoSynchronousFsdRequest (5) */
     case  86: return  0;  /* IofCallDriver (fastcall: args in ecx/edx) */
@@ -8466,7 +8439,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     case  58: return  0;  /* InterlockedPushEntrySList (fastcall) */
 
     /* Io */
-    case  59: return  8;  /* IoAllocateIrp (2) */
+    case  59: return  4;  /* IoAllocateIrp (1) */
     case  60: return 28;  /* IoBuildAsynchronousFsdRequest (7) */
     case  63: return 20;  /* IoCheckShareAccess (5) */
     case  72: return  4;  /* IoFreeIrp (1) */
@@ -8876,8 +8849,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      * clears the memory-model bar, split by category:
      *
      *  - HAL/AV/port-I/O and the I/O Manager stubs all take or produce value
-     *    arguments and caller-supplied guest structures; none of them returns
-     *    a pointer the title dereferences. IofCallDriver/IofCompleteRequest
+     *    arguments and caller-supplied guest structures. Request allocation
+     *    returns project-owned guest storage. IofCallDriver/IofCompleteRequest
      *    are __fastcall (ns in ecx/edx).
      *  - The Xc* entries are documented stubs (no Xbox Live, no on-console key
      *    derivation); pointers are translated but never dereferenced.
@@ -9535,6 +9508,7 @@ void xbox_kernel_bridge_init(void)
     /* Initialize kernel data export values first */
     kernel_data_init();
     bridge_object_init();
+    bridge_request_init();
 
     for (i = 0; i < g_thunk_table_count; i++) {
         uint32_t va = g_thunk_table_base + i * 4;

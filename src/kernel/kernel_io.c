@@ -103,12 +103,6 @@ VOID __stdcall xbox_IoDeleteDevice(PVOID DeviceObject)
  * Since we don't use real drivers, these are all stubs.
  * ============================================================================ */
 
-VOID __stdcall xbox_IoInitializeIrp(PVOID Irp, USHORT PacketSize, CCHAR StackSize)
-{
-    (void)StackSize;
-    if (Irp)
-        memset(Irp, 0, PacketSize);
-}
 
 VOID __stdcall xbox_IoStartNextPacket(PVOID DeviceObject, BOOLEAN Cancelable)
 {
