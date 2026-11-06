@@ -86,3 +86,8 @@ else()
 endif()
 
 target_compile_definitions(xbox_kernel PRIVATE $<$<CONFIG:Debug>:_DEBUG>)
+
+# Original native Mm ownership and thin OS page operations, shared by both hosts.
+target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/host_blocks.c"
+    "${TSFP_SHARED_SOURCE}/native/host_pages.c")
