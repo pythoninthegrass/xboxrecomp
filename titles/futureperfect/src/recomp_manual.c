@@ -31,6 +31,17 @@
 #include "pc_display_menu.h"
 #endif
 
+/* Optional Arcade feed after the original per-view HUD. */
+extern void sub_0014F0B0_gen(void);
+void sub_0014F0B0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_kill_feed_hud(sub_0014F0B0_gen);
+#else
+    sub_0014F0B0_gen();
+#endif
+}
+
 /* One diagnostic report, one piece.
  *
  * Each report below is a dozen fprintf calls and the CRT takes its lock per
