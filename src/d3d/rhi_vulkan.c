@@ -1274,6 +1274,7 @@ static int binding_declared(uint32_t binding, uint32_t kind)
  * cache does not remove. The driver keys the cache's entries by the shaders'
  * contents, so it is valid across runs on the same device and driver; the
  * header is checked against this device first and a mismatch starts empty. */
+#include "graphics/pipeline_cache_file.h"
 #define PIPELINE_CACHE_DIR  "vulkan-pipelines"
 #define PIPELINE_CACHE_FILE "pipelines.bin"
 
@@ -1281,7 +1282,7 @@ static void *pcache_load(size_t *bytes)
 {
     char path[1024];
     FILE *f;
-    long n;
+    size_t n=0;
     unsigned char *data = NULL;
 
     *bytes = 0;
@@ -1290,16 +1291,15 @@ static void *pcache_load(size_t *bytes)
     f = fopen(path, "rb");
     if (!f)
         return NULL;
-    if (fseek(f, 0, SEEK_END) == 0 && (n = ftell(f)) >= 32 && n < 256L * 1024 * 1024 &&
-        fseek(f, 0, SEEK_SET) == 0 && (data = malloc((size_t)n)) != NULL &&
-        fread(data, 1, (size_t)n, f) == (size_t)n) {
+    data=tsfp_pipeline_file_read(f,&n);
+    if (data) {
         uint32_t hsize, hver, vendor, device;
 
         memcpy(&hsize, data + 0, 4);
         memcpy(&hver, data + 4, 4);
         memcpy(&vendor, data + 8, 4);
         memcpy(&device, data + 12, 4);
-        if (hsize >= 32 && hver == VK_PIPELINE_CACHE_HEADER_VERSION_ONE &&
+        if (hsize >= 32 && hsize <= n && hver == VK_PIPELINE_CACHE_HEADER_VERSION_ONE &&
             vendor == V.props.vendorID && device == V.props.deviceID &&
             memcmp(data + 16, V.props.pipelineCacheUUID, VK_UUID_SIZE) == 0) {
             *bytes = (size_t)n;
@@ -1327,7 +1327,7 @@ static void pcache_save(void)
     if (!V.pcache || !rhi_cache_file_path(PIPELINE_CACHE_DIR, PIPELINE_CACHE_FILE,
                                           path, sizeof path))
         return;
-    if (vkGetPipelineCacheData(V.dev, V.pcache, &n, NULL) != VK_SUCCESS || !n)
+    if (vkGetPipelineCacheData(V.dev, V.pcache, &n, NULL) != VK_SUCCESS || n<32 || n>=TSFP_PIPELINE_CACHE_LIMIT)
         return;
     data = malloc(n);
     if (!data)
@@ -1337,7 +1337,8 @@ static void pcache_save(void)
         return;
     }
 #if defined(_WIN32)
-    snprintf(tmp, sizeof tmp, "%s.%lu.tmp", path, (unsigned long)GetCurrentThreadId());
+    snprintf(tmp, sizeof tmp, "%s.%lu.%lu.tmp", path,
+             (unsigned long)GetCurrentProcessId(), (unsigned long)GetCurrentThreadId());
     f = fopen(tmp, "wb");
 #else
     snprintf(tmp,sizeof tmp,"%s.XXXXXX",path);
@@ -1346,7 +1347,7 @@ static void pcache_save(void)
     if(fd>=0 && !f){close(fd);unlink(tmp);}
 #endif
     if (f) {
-        ok = fwrite(data, 1, n, f) == n;
+        ok = tsfp_pipeline_file_write(f,data,n);
         ok = (fclose(f) == 0) && ok;
 #if defined(_WIN32)
         if (!ok || !MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING))
