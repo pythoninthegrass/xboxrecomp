@@ -168,3 +168,15 @@ if(TSFP_PC_CONTROLS_DIR)
     add_executable(tsfp_pc_settings_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_settings.c")
     target_link_libraries(tsfp_pc_settings_test PRIVATE xbox_input)
 endif()
+
+if(TSFP_PC_CONTROLS_DIR)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_display_menu.c")
+    set_source_files_properties("${TSFP_PC_CONTROLS_DIR}/pc_display_menu.c" PROPERTIES
+        INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/gen")
+endif()
+
+if(TSFP_PC_CONTROLS_DIR)
+    add_executable(tsfp_pc_display_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_display.c" "${TSFP_PC_CONTROLS_DIR}/pc_display.c")
+    target_include_directories(tsfp_pc_display_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
+    target_link_libraries(tsfp_pc_display_test PRIVATE user32)
+endif()

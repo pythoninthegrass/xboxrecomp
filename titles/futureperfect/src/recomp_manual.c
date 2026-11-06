@@ -24,6 +24,7 @@
 #include <string.h>   /* strcmp: RECOMP_ICALL_FATAL */
 #ifdef TSFP_PC_CONTROLS
 #include "pc_controls.h"
+#include "pc_display_menu.h"
 #endif
 
 /* One diagnostic report, one piece.
@@ -198,8 +199,32 @@ void sub_000D2B80(void)
  *       g_eax = result;
  *   }
  */
+extern void sub_000C77C0_gen(void);
+void sub_000C77C0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_display_camera(sub_000C77C0_gen);
+#else
+    sub_000C77C0_gen();
+#endif
+}
+
+extern void sub_00079D60_gen(void);
+void sub_00079D60(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_display_menu_button(sub_00079D60_gen);
+#else
+    sub_00079D60_gen();
+#endif
+}
+
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
 {
+#ifdef TSFP_PC_CONTROLS
+    recomp_func_t display_callback=pc_display_menu_lookup(xbox_va);
+    if(display_callback) return display_callback;
+#endif
     /*
      * TODO: Add your overrides here. Examples:
      *
