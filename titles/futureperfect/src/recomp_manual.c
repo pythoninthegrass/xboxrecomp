@@ -642,6 +642,18 @@ void sub_00079D60(void)
 #endif
 }
 
+/* US 45410066: scope the spirit compatibility rules to the game's effect
+ * renderer and its model nodes / billboard batches, never shader hashes. */
+#include "pc_ghost_render_guest.inc"
+extern void sub_0024A1A0_gen(void);
+void sub_0024A1A0(void) { pc_ghost_render(sub_0024A1A0_gen); }
+extern void sub_0018EA90_gen(void);
+void sub_0018EA90(void) { pc_ghost_model_node(sub_0018EA90_gen); }
+extern void sub_0001D3E0_gen(void);
+void sub_0001D3E0(void) { pc_ghost_billboard_begin(sub_0001D3E0_gen); }
+extern void sub_0001D380_gen(void);
+void sub_0001D380(void) { pc_ghost_billboard_end(sub_0001D380_gen); }
+
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
 {
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)

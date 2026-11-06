@@ -106,6 +106,19 @@ static enum rs_layout g_layout = LAYOUT_4627;
 static uint32_t g_prev_rs[XRS_COUNT];
 static uint32_t g_prev_tss[STAGES][STAGE_SIZE];
 static int      g_prev_valid;
+static unsigned g_effect_override;
+
+unsigned hle_d3d8_effect_override(unsigned flags)
+{
+    unsigned previous = g_effect_override;
+    if (previous != flags) {
+        g_effect_override = flags;
+        /* The cache holds guest values. Re-emit when entering OR leaving an
+         * override even if the guest never changed its corresponding state. */
+        g_prev_valid = 0;
+    }
+    return previous;
+}
 
 /* Each value is logged once. Texture operations are converted on every draw,
  * so logging each occurrence would bury every other value under one. */
@@ -840,6 +853,12 @@ void hle_d3d8_shadow_apply_states(IDirect3DDevice8 *dev)
             continue;
         g_prev_rs[x] = v;
         host_value = rs_to_host(g_rs_map[i].kind, v);
+        if (g_rs_map[i].host == D3DRS_CULLMODE &&
+            (g_effect_override & HLE_D3D8_EFFECT_CULL_CW))
+            host_value = D3DCULL_CW;
+        if (g_rs_map[i].host == D3DRS_FOGENABLE &&
+            (g_effect_override & HLE_D3D8_EFFECT_NO_FOG))
+            host_value = FALSE;
         host_SetRenderState(dev, (D3DRENDERSTATETYPE)g_rs_map[i].host, host_value);
     }
 

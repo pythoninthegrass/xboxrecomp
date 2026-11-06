@@ -70,4 +70,11 @@ extern ptrdiff_t g_xbox_mem_offset;
         return;                                                                \
     } while (0)
 
+/* Scoped title compatibility overrides. Zero preserves guest render states.
+ * Render-thread only, like the shadow device. Restore the returned flags
+ * after the effect has flushed its last draw. */
+#define HLE_D3D8_EFFECT_CULL_CW 1u
+#define HLE_D3D8_EFFECT_NO_FOG  2u
+unsigned hle_d3d8_effect_override(unsigned flags);
+
 #endif /* XBOXRECOMP_HLE_H */
