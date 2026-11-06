@@ -1,0 +1,12 @@
+[project]
+name = "xboxrecomp"
+version = "0.1.0"
+description = "Static recompilation toolkit for original Xbox titles, with the TimeSplitters Future Perfect lifter"
+requires-python = ">=3.12"
+dependencies = ["capstone==5.0.9"]
+
+[dependency-groups]
+dev = ["pytest>=9.1.1,<10", "pytest-xdist>=3.8,<4"]
+
+[tool.uv]
+package = false
