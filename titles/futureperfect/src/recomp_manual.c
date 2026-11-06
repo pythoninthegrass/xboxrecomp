@@ -1286,6 +1286,16 @@ void sub_000245C0(void)
     g_esp += 4u;            /* ret: the caller pops the arguments (cdecl) */
 }
 
+extern void sub_002CBD20_gen(void);
+void sub_002CBD20(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_profile_accept(sub_002CBD20_gen);
+#else
+    sub_002CBD20_gen();
+#endif
+}
+
 /* ── Manual function overrides ─────────────────────────────── */
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
 #include "pc_auto_look_guest.inc"
