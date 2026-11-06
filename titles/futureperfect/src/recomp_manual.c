@@ -175,6 +175,15 @@ void pc_native_physics_random(void)
 extern void sub_0018FF70_gen(void);
 void sub_0018FF70(void) { pc_native_input_guest(sub_0018FF70_gen); }
 #include "pc_native_weapon_guest.h"
+#include "pc_native_minigun_guest.h"
+extern void sub_001C74D0_gen(void);
+void sub_001C74D0(void)
+{
+    PcMinigunIntent intent=pc_native_minigun_prepare(g_esp,g_xbox_mem_offset);
+    sub_001C74D0_gen();
+    pc_native_minigun_restore(intent);
+}
+
 extern void sub_00244F30_gen(void);
 void sub_00244F30(void) { pc_native_weapon_fire_guest(sub_00244F30_gen); }
 #include "pc_native_surface_trace.h"
