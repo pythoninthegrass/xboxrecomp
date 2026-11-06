@@ -272,6 +272,26 @@ void sub_000D4BE0(void)
 #endif
 }
 
+extern void sub_0025EF80_gen(void);
+void sub_0025EF80(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_checkpoint_capture(sub_0025EF80_gen);
+#else
+    sub_0025EF80_gen();
+#endif
+}
+
+extern void sub_0025F010_gen(void);
+void sub_0025F010(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_checkpoint_restore(sub_0025F010_gen);
+#else
+    sub_0025F010_gen();
+#endif
+}
+
 extern void sub_000653B0_gen(void);
 void sub_000653B0(void)
 {
