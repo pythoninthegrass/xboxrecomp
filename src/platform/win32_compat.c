@@ -14,6 +14,7 @@
 #define _GNU_SOURCE
 
 #include "win32_compat.h"
+#include "guest_arena_service.h"
 
 #include <pthread.h>
 #include <stdlib.h>
@@ -1122,80 +1123,29 @@ static int prot_from_page(DWORD protect)
 }
 
 #ifdef __APPLE__
-typedef struct { uintptr_t base; size_t size; } arena_view;
-static void mmio_aliases_release(void);
-static uintptr_t s_arena;
-static size_t s_arena_size;
-static arena_view s_arena_views[512];
-static pthread_mutex_t s_arena_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static int arena_contains(const void *address, size_t size)
-{
-    uintptr_t a = (uintptr_t)address;
-    return s_arena && a >= s_arena && size <= s_arena_size && a - s_arena <= s_arena_size - size;
-}
-
+/* Project arena forwarding. Shared/private mappings use one ownership ledger. */
+static int arena_contains(const void *address,size_t size)
+{ return tsfp_guest_arena_contains(address,size); }
 LPVOID w32_guest_arena_reserve(SIZE_T size)
-{
-    pthread_mutex_lock(&s_arena_lock);
-    if (s_arena) { pthread_mutex_unlock(&s_arena_lock); return NULL; }
-    void *p = mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (p != MAP_FAILED) { s_arena = (uintptr_t)p; s_arena_size = size; }
-    pthread_mutex_unlock(&s_arena_lock);
-    return p == MAP_FAILED ? NULL : p;
-}
-
+{ return tsfp_guest_arena_reserve(size); }
 BOOL w32_guest_arena_release(void)
+{ return tsfp_guest_arena_release(); }
+static void *arena_map(void *address,size_t size,int prot,int flags,int fd,off_t offset)
 {
-    mmio_aliases_release();
-    pthread_mutex_lock(&s_arena_lock);
-    int ok = !s_arena || munmap((void *)s_arena, s_arena_size) == 0;
-    if (ok) { s_arena = 0; s_arena_size = 0; memset(s_arena_views, 0, sizeof s_arena_views); }
-    pthread_mutex_unlock(&s_arena_lock);
-    return ok;
-}
-
-static void *arena_map(void *address, size_t size, int prot, int flags, int fd, off_t offset)
-{
-    size_t page = (size_t)getpagesize();
-    uintptr_t a = (uintptr_t)address;
-    if (!size || size > SIZE_MAX - (page - 1) || a % page) return NULL;
-    size = (size + page - 1) & ~(page - 1);
-    pthread_mutex_lock(&s_arena_lock);
-    int slot = -1;
-    if (!arena_contains(address, size)) goto fail;
-    for (int i = 0; i < 512; i++) {
-        arena_view v = s_arena_views[i];
-        if (!v.base) { slot = i; continue; }
-        if (a < v.base + v.size && v.base < a + size) goto fail;
+    void *mapped;
+    unsigned access=((prot&PROT_READ)?TSFP_ARENA_READ:0)|
+        ((prot&PROT_WRITE)?TSFP_ARENA_WRITE:0)|((prot&PROT_EXEC)?TSFP_ARENA_EXECUTE:0);
+    (void)flags;
+    if(offset<0 || (uintmax_t)offset>SIZE_MAX) {
+        SetLastError(ERROR_INVALID_PARAMETER);return NULL;
     }
-    if (slot < 0) goto fail;
-    void *p = mmap(address, size, prot, flags | MAP_FIXED, fd, offset);
-    if (p == MAP_FAILED) goto fail;
-    s_arena_views[slot] = (arena_view){a, size};
-    pthread_mutex_unlock(&s_arena_lock);
-    return p;
-fail:
-    pthread_mutex_unlock(&s_arena_lock);
-    SetLastError(ERROR_INVALID_ADDRESS);
-    return NULL;
+    mapped=tsfp_guest_arena_place(address,size,fd,(size_t)offset,access);
+    if(!mapped)SetLastError(ERROR_INVALID_ADDRESS);
+    return mapped;
 }
-
 static BOOL arena_unmap(const void *address)
-{
-    pthread_mutex_lock(&s_arena_lock);
-    for (int i = 0; i < 512; i++) {
-        arena_view *v = &s_arena_views[i];
-        if (v->base != (uintptr_t)address) continue;
-        void *p = mmap((void *)v->base, v->size, PROT_NONE,
-                       MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (p != MAP_FAILED) memset(v, 0, sizeof *v);
-        pthread_mutex_unlock(&s_arena_lock);
-        return p != MAP_FAILED;
-    }
-    pthread_mutex_unlock(&s_arena_lock);
-    return FALSE;
-}
+{ return tsfp_guest_arena_unmap((void *)address); }
+/* End project arena forwarding. */
 #endif
 
 LPVOID VirtualAlloc(LPVOID address, SIZE_T size, DWORD allocationType, DWORD protect)
@@ -1723,9 +1673,7 @@ LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow
 
 #ifdef __APPLE__
     if (arena_contains(baseAddr, len)) {
-        void *owned = arena_map(baseAddr, len, prot, MAP_SHARED, o->fd, off);
-        if (owned) view_register(owned, len);
-        return owned;
+        return arena_map(baseAddr, len, prot, MAP_SHARED, o->fd, off);
     }
 #endif
     void *p = mmap(baseAddr, len, prot, flags, o->fd, off);
@@ -1749,53 +1697,24 @@ LPVOID MapViewOfFile(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow, 
 
 BOOL UnmapViewOfFile(LPCVOID baseAddr)
 {
+#ifdef __APPLE__
+    /* The project owner retains lengths and failed cleanup. Do not consume an
+     * inherited registry entry before knowing whether restoration succeeded. */
+    if (arena_contains(baseAddr, 0)) return arena_unmap(baseAddr);
+#endif
     size_t len = view_take(baseAddr);
     if (len == 0) return FALSE;
-#ifdef __APPLE__
-    if (arena_contains(baseAddr, len)) return arena_unmap(baseAddr);
-#endif
     return munmap((void *)baseAddr, len) == 0;
 }
 
 #ifdef __APPLE__
-/* MMIO guest pages can stay protected while handlers write through an alias.
- * Setup precedes guest threads. Lookup is read-only and signal-handler safe. */
-static struct { uintptr_t guest; size_t size; void *alias; } s_mmio_aliases[2];
-static void mmio_aliases_release(void)
-{
-    for (unsigned i = 0; i < 2; i++) {
-        if (s_mmio_aliases[i].alias) UnmapViewOfFile(s_mmio_aliases[i].alias);
-        if (s_mmio_aliases[i].guest) UnmapViewOfFile((void *)s_mmio_aliases[i].guest);
-        memset(&s_mmio_aliases[i], 0, sizeof s_mmio_aliases[i]);
-    }
-}
-LPVOID w32_guest_mmio_map(LPVOID address, SIZE_T size)
-{
-    unsigned slot;
-    for (slot = 0; slot < 2 && s_mmio_aliases[slot].guest; slot++) {}
-    if (slot == 2 || size > UINT32_MAX) return NULL;
-    HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, (DWORD)size, NULL);
-    if (!h) return NULL;
-    void *guest = MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, size, address);
-    void *alias = guest ? MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, size) : NULL;
-    CloseHandle(h);
-    if (!alias) { if (guest) UnmapViewOfFile(guest); return NULL; }
-    s_mmio_aliases[slot].guest = (uintptr_t)guest;
-    s_mmio_aliases[slot].size = size;
-    s_mmio_aliases[slot].alias = alias;
-    return guest;
-}
-LPVOID w32_guest_mmio_alias(LPCVOID address, SIZE_T size)
-{
-    uintptr_t a = (uintptr_t)address;
-    for (unsigned i = 0; i < 2; i++) {
-        uintptr_t g = s_mmio_aliases[i].guest;
-        size_t n = s_mmio_aliases[i].size;
-        if (g && a >= g && size <= n && a - g <= n - size)
-            return (uint8_t *)s_mmio_aliases[i].alias + (a - g);
-    }
-    return NULL;
-}
+/* Project MMIO forwarding. Lookup remains allocation/lock-free and immutable
+ * between quiescent setup and teardown. Both backing views have owned lengths. */
+LPVOID w32_guest_mmio_map(LPVOID address,SIZE_T size)
+{ return tsfp_guest_mmio_map(address,size); }
+LPVOID w32_guest_mmio_alias(LPCVOID address,SIZE_T size)
+{ return tsfp_guest_mmio_alias(address,size); }
+/* End project MMIO forwarding. */
 #endif
 
 /* ===================================================================== */

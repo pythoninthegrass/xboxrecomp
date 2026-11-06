@@ -14,6 +14,7 @@
 
 #include "xbox_memory_layout.h"
 #include "guest_image.h"
+#include "guest_map_layout.h"
 #include "guest_allocation.h"
 #include "guest_thread_memory.h"
 #include "guest_virtual_memory.h"
@@ -55,7 +56,9 @@ const char *xbox_XbeTitleName(void)
 
 static void *g_memory_base = NULL;
 static size_t g_memory_size = 0;
-static ptrdiff_t g_memory_offset = 0;  /* actual_base - XBOX_BASE_ADDRESS */
+static ptrdiff_t g_memory_offset = 0;
+static tsfp_guest_map_layout g_host_layout;
+static tsfp_guest_host_session g_host_session;
 
 /* Actual mapped RAM for this run; see the header. Default retail 64 MB. */
 size_t g_xbox_total_ram = XBOX_TOTAL_RAM;
@@ -71,13 +74,6 @@ void xbox_SetMapSize(size_t bytes)
 {
     g_xbox_map_size = bytes;
 }
-
-/* File mapping handle for the Xbox memory region.
- * Using CreateFileMapping + MapViewOfFileEx allows mirror views to alias
- * the same physical pages as the base region, so writes to mirror addresses
- * (which wrap modulo 64 MB on real Xbox hardware) correctly modify the
- * underlying data. */
-static HANDLE g_mapping_handle = NULL;
 
 /* Mirror view pointers for cleanup */
 static void *g_mirror_views[XBOX_NUM_MIRRORS] = {0};
@@ -123,12 +119,6 @@ static void *g_mcpx_memory = NULL;
 #define XBOX_FLASH_BASE 0xFF000000u
 #define XBOX_FLASH_SIZE (1u * 1024u * 1024u)
 static void *g_flash_memory = NULL;
-/* The contiguous window's backing section. It is a file mapping rather than
- * plain committed memory for one reason: the tiled aperture has to be a
- * second view of the very same bytes, and only a mapping can be mapped
- * twice. See the tiled aperture below for why that matters.
- */
-static HANDLE g_contig_mapping = NULL;
 /* How much of the tiled aperture can exist.
  *
  * Two ceilings, both below the mapped RAM size once that is large:
@@ -155,10 +145,8 @@ size_t xbox_GetMappedSize(void)
 
 static size_t xbox_TiledApertureSize(void)
 {
-    uint64_t end = XBOX_NV2A_BASE < 0x100000000ULL
-                 ? XBOX_NV2A_BASE : 0x100000000ULL;
-    size_t max = (size_t)(end - XBOX_TILED_BASE);
-    return g_memory_size < max ? g_memory_size : max;
+    /* Actual mapped extent, including the physical backing cap. */
+    return g_host_layout.tiled_bytes;
 }
 
 static HANDLE g_nv2a_ack_thread = NULL;
@@ -1729,6 +1717,49 @@ static int xbox_AllocationInit(void)
 }
 /* End project allocation initialization. */
 
+/* Project host-layout binding. Image loading and device register semantics
+ * stay with their existing providers; this owner controls all map lifetimes. */
+static BOOL xbox_MapHostLayout(void)
+{
+    _Static_assert(XBOX_NUM_MIRRORS==28,"project layout mirror count must match the ABI");
+    tsfp_layout_host host;
+    tsfp_guest_map_config config={0};
+    unsigned mirrors=0;
+    config.ram_bytes=g_xbox_map_size?g_xbox_map_size:g_xbox_total_ram;
+    config.physical_bytes=XBOX_CONTIG_SIZE;
+    config.high_alias=xbox_EnvSwitch("RECOMP_ALIAS_HIGH",0)!=0;
+    if(!tsfp_guest_map_host(&host,&g_host_session) ||
+       !tsfp_guest_map_init(&g_host_layout,&host,&config)) {
+        fprintf(stderr,"Project guest host-layout construction failed\n");return FALSE;
+    }
+    g_memory_base=g_host_layout.ram;g_memory_size=g_host_layout.ram_bytes;
+    g_memory_offset=(ptrdiff_t)(uintptr_t)g_memory_base;
+    g_contig_memory=g_host_layout.physical;g_kernel_memory=g_host_layout.kernel;
+    g_nv2a_memory=g_host_layout.nv2a;g_mcpx_memory=g_host_layout.mcpx;
+    g_flash_memory=g_host_layout.flash;g_tiled_view=g_host_layout.tiled;
+    memcpy(g_mirror_views,g_host_layout.mirrors,sizeof g_mirror_views);
+    for(unsigned i=0;i<XBOX_NUM_MIRRORS;++i)mirrors+=g_mirror_views[i]!=NULL;
+    fprintf(stderr,"  Project guest maps: RAM %zu MiB, mirrors %u/%u, physical %s, tiled %zu MiB\n",
+        g_memory_size/(1024*1024),mirrors,(unsigned)XBOX_NUM_MIRRORS,
+        g_contig_memory?"mapped":"unavailable",g_host_layout.tiled_bytes/(1024*1024));
+    if(g_tiled_view && g_contig_memory) {
+        size_t probe=g_host_layout.tiled_bytes>=0x1004?0x1000:0;
+        volatile uint32_t *physical=(volatile uint32_t *)((unsigned char *)g_contig_memory+probe);
+        volatile uint32_t *tiled=(volatile uint32_t *)((unsigned char *)g_tiled_view+probe);
+        uint32_t saved=*physical;
+        int same;
+        *tiled=0xa5c30f17u;same=*physical==0xa5c30f17u;*physical=saved;
+        if(!same) {
+            fprintf(stderr,"Project tiled/physical alias verification failed\n");
+            xbox_MemoryLayoutShutdown();return FALSE;
+        }
+        fprintf(stderr,"  Tiled aperture alias verified (project shared backing)\n");
+    }
+    if(config.high_alias)fprintf(stderr,"  Project high alias: %s\n",g_host_layout.high?"mapped":"unavailable");
+    return TRUE;
+}
+/* End project host-layout binding. */
+
 BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
 {
     DWORD old_protect;
@@ -1737,7 +1768,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     uint32_t image_low_shift = 0, image_tls_total = 0;
     size_t image_limit = g_xbox_map_size ? g_xbox_map_size : g_xbox_total_ram;
 
-    if (g_memory_base) {
+    if (g_memory_base || g_host_layout.started) {
         fprintf(stderr, "xbox_MemoryLayoutInit: already initialized\n");
         return FALSE;
     }
@@ -1754,98 +1785,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     }
     g_force_return = getenv("RECOMP_FORCE_RETURN") != NULL;
 
-    /*
-     * Calculate the full range we need to map.
-     * From XBOX_MAP_START (0x0) to the end of the furthest section.
-     * This includes low memory (KPCR at 0x0-0xFF) which game code reads
-     * from, the XBE sections, and the simulated stack.
-     */
-    /* Map the full Xbox address space (covers all sections + stack + heap).
-     * Size is runtime-configurable: retail 64 MB, devkit debug builds 128 MB. */
-    /* The mapped range, which is not necessarily RAM. Mirrors are placed
-     * at multiples of this, so growing it is what stops a title's
-     * above-RAM allocations from aliasing low memory. */
-    g_memory_size = g_xbox_map_size ? g_xbox_map_size : g_xbox_total_ram;
-
-    /*
-     * Create a file mapping backed by the page file.
-     *
-     * Using file mapping instead of VirtualAlloc allows us to map the same
-     * physical pages at multiple virtual addresses via MapViewOfFileEx.
-     * This is critical for the Xbox RAM mirror: the Xbox memory controller
-     * uses a 26-bit address bus, so ALL addresses wrap modulo 64 MB.
-     * Code that writes to address 0x20000448 is really writing to 0x00000448.
-     * With file mapping views, we create aliased mappings at 64 MB intervals
-     * that all point to the same physical memory.
-     */
-    g_mapping_handle = CreateFileMappingA(
-        INVALID_HANDLE_VALUE,   /* page file backed */
-        NULL,                   /* default security */
-        PAGE_READWRITE,         /* read-write access */
-        0,                      /* high DWORD of size */
-        (DWORD)g_memory_size,   /* low DWORD of size (64 MB) */
-        NULL                    /* unnamed mapping */
-    );
-    if (!g_mapping_handle) {
-        fprintf(stderr, "xbox_MemoryLayoutInit: CreateFileMapping failed (error %lu)\n",
-                GetLastError());
-        return FALSE;
-    }
-
-    /*
-     * Map the base view at the desired virtual address.
-     * Try the original Xbox base address first. If that fails (common on
-     * Windows 11 where low addresses are often reserved), try page-aligned
-     * addresses upward until we find a free region.
-     */
-    {
-#ifdef __APPLE__
-        void *arena = w32_guest_arena_reserve((SIZE_T)0x100000000ull);
-        if (arena)
-            g_memory_base = MapViewOfFileEx(g_mapping_handle, FILE_MAP_ALL_ACCESS,
-                                            0, 0, g_memory_size, arena);
-        if (!g_memory_base) w32_guest_arena_release();
-#else
-        static const uintptr_t try_bases[] = {
-            XBOX_BASE_ADDRESS,      /* 0x00010000 - original Xbox address */
-            0x00800000,             /* 8 MB - above typical PEB/TEB region */
-            0x01000000,             /* 16 MB */
-            0x02000000,             /* 32 MB */
-            0x10000000,             /* 256 MB */
-            0,                      /* sentinel - let OS choose */
-        };
-
-        for (size_t i = 0; i < sizeof(try_bases) / sizeof(try_bases[0]); i++) {
-            LPVOID hint = try_bases[i] ? (LPVOID)try_bases[i] : NULL;
-            g_memory_base = MapViewOfFileEx(
-                g_mapping_handle,
-                FILE_MAP_ALL_ACCESS,
-                0, 0,           /* offset into mapping */
-                g_memory_size,  /* size */
-                hint            /* desired base address */
-            );
-            if (g_memory_base) {
-                if (try_bases[i] != 0 && (uintptr_t)g_memory_base != try_bases[i]) {
-                    /* OS gave us a different address, retry */
-                    UnmapViewOfFile(g_memory_base);
-                    g_memory_base = NULL;
-                    continue;
-                }
-                break;
-            }
-        }
-    #endif
-    }
-
-    if (!g_memory_base) {
-        fprintf(stderr, "xbox_MemoryLayoutInit: failed to map base view (%zu KB)\n",
-                g_memory_size / 1024);
-        CloseHandle(g_mapping_handle);
-        g_mapping_handle = NULL;
-        return FALSE;
-    }
-
-    g_memory_offset = (uintptr_t)g_memory_base - XBOX_MAP_START;
+    if(!xbox_MapHostLayout())return FALSE;
 
     /* Guest page zero: no access.
      *
@@ -1931,50 +1871,6 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     g_xbox_mem_offset = g_memory_offset;
 
     /*
-     * Contiguous / physical memory window at 0x80000000.
-     *
-     * MmAllocateContiguousMemory hands back addresses in this window: physical
-     * page P is visible at 0x80000000 + P. Titles that pin buffers at fixed
-     * physical addresses then use the whole range, so it has to be backed for
-     * its full length - Halo pins 3.4 MB at 0x61000 and 22 MB at 0x3A6000, and
-     * with only the fake kernel page mapped here a write walked off the end of
-     * it a few pages in.
-     *
-     * Deliberately NOT a view of the 64 MB RAM mapping. On hardware this window
-     * aliases physical RAM, but we load the XBE image into the low addresses of
-     * that same region, so aliasing would put a title's pinned pools on top of
-     * its own code. Separate storage costs an extra mapping and behaves
-     * correctly; nothing here depends on the aliasing.
-     *
-     * Reserved before the kernel page below, which lives inside it.
-     */
-    {
-        uintptr_t contig_native = XBOX_CONTIG_BASE + g_memory_offset;
-        g_contig_mapping = CreateFileMappingW(
-            INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
-            0, (DWORD)XBOX_CONTIG_SIZE, NULL);
-        g_contig_memory = g_contig_mapping
-            ? MapViewOfFileEx(g_contig_mapping, FILE_MAP_ALL_ACCESS,
-                              0, 0, XBOX_CONTIG_SIZE, (LPVOID)contig_native)
-            : NULL;
-        if (!g_contig_memory)
-            g_contig_memory = VirtualAlloc(
-                (LPVOID)contig_native,
-                XBOX_CONTIG_SIZE,
-                MEM_RESERVE | MEM_COMMIT,
-                PAGE_READWRITE
-            );
-        if (g_contig_memory) {
-            fprintf(stderr, "  Contiguous window: %u MB at Xbox VA 0x%08X\n",
-                    XBOX_CONTIG_SIZE / (1024 * 1024), XBOX_CONTIG_BASE);
-        } else {
-            fprintf(stderr, "  WARNING: contiguous window at 0x%08X failed "
-                    "(error %lu); pinned physical allocations will fault\n",
-                    XBOX_CONTIG_BASE, GetLastError());
-        }
-    }
-
-    /*
      * NV2A hardware register aperture at 0xFD000000 (16 MB).
      *
      * The GPU's registers are memory-mapped here on real hardware. A title
@@ -1994,17 +1890,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
      * emulating NV2A. Nothing has needed that yet.
      */
     {
-        uintptr_t nv2a_native = XBOX_NV2A_BASE + g_memory_offset;
-#ifdef __APPLE__
-        g_nv2a_memory = w32_guest_mmio_map((LPVOID)nv2a_native, XBOX_NV2A_SIZE);
-#else
-        g_nv2a_memory = VirtualAlloc(
-            (LPVOID)nv2a_native,
-            XBOX_NV2A_SIZE,
-            MEM_RESERVE | MEM_COMMIT,
-            PAGE_READWRITE
-        );
-#endif
+        /* Mapping supplied by the project layout owner. */
         /* The pushbuffer survey rides on the same poll, so either
          * variable arms it. */
         s_nv2a_trace = getenv("RECOMP_NV2A_TRACE") != NULL
@@ -2071,17 +1957,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
      * emulating the device.
      */
     {
-        uintptr_t mcpx_native = XBOX_MCPX_BASE + g_memory_offset;
-#ifdef __APPLE__
-        g_mcpx_memory = w32_guest_mmio_map((LPVOID)mcpx_native, XBOX_MCPX_SIZE);
-#else
-        g_mcpx_memory = VirtualAlloc(
-            (LPVOID)mcpx_native,
-            XBOX_MCPX_SIZE,
-            MEM_RESERVE | MEM_COMMIT,
-            PAGE_READWRITE
-        );
-#endif
+        /* Mapping supplied by the project layout owner. */
         g_mcpx_regs = g_mcpx_memory;
         if (g_mcpx_memory) {
             /* AC'97 codec ready.
@@ -2195,27 +2071,6 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
         }
     }
 
-    /* Flash ROM aperture -- see XBOX_FLASH_BASE for why. */
-    {
-        uintptr_t flash_native = XBOX_FLASH_BASE + g_memory_offset;
-
-        g_flash_memory = VirtualAlloc(
-            (LPVOID)flash_native,
-            XBOX_FLASH_SIZE,
-            MEM_RESERVE | MEM_COMMIT,
-            PAGE_READWRITE
-        );
-        if (g_flash_memory) {
-            fprintf(stderr, "  Flash ROM aperture: %u MB at Xbox VA "
-                    "0x%08X (zeroed, not a real BIOS image)\n",
-                    XBOX_FLASH_SIZE / (1024 * 1024), XBOX_FLASH_BASE);
-        } else {
-            fprintf(stderr, "  WARNING: flash aperture at 0x%08X failed "
-                    "(error %lu); a title reading flash will fault\n",
-                    XBOX_FLASH_BASE, GetLastError());
-        }
-    }
-
     if (!xbox_AllocationInit()) {
         fprintf(stderr, "Project guest allocator rejected the mapped memory layout\n");
         xbox_MemoryLayoutShutdown();
@@ -2236,6 +2091,11 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     fprintf(stderr, "  Project allocations: heap 0x%08X..0x%08X, physical %s\n",
             (unsigned)XBOX_HEAP_BASE, (unsigned)g_memory_size,
             g_contig_memory ? "available" : "unavailable");
+    /* Publication precedes any device worker; normal shutdown cannot free
+     * escaped memory until every worker has an explicit quiescence boundary. */
+    if(!tsfp_guest_map_publish(&g_host_layout)) {
+        xbox_MemoryLayoutShutdown();return FALSE;
+    }
     if (g_nv2a_memory) {
         xbox_Nv2aAckStart();
     }
@@ -2253,13 +2113,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     {
         #define XBOX_KERNEL_BASE 0x80010000u
         #define KERNEL_PAGE_SIZE 4096
-        uintptr_t kernel_native = XBOX_KERNEL_BASE + g_memory_offset;
-        /* Already committed if the contiguous window above succeeded -
-         * 0x80010000 sits inside it - so just use that storage. */
-        g_kernel_memory = g_contig_memory
-            ? (void *)kernel_native
-            : VirtualAlloc((LPVOID)kernel_native, KERNEL_PAGE_SIZE,
-                           MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        /* Borrowed physical storage or independently owned fallback. */
         if (g_kernel_memory) {
             /* Zero-fill then set e_lfanew = 0x80 (offset to PE header).
              * With the rest zeroed, NumberOfSections = 0 and the INIT
@@ -2280,171 +2134,6 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     fprintf(stderr, "  Heap: %u MB at Xbox VA 0x%08X-0x%08X\n",
             (unsigned)((XBOX_HEAP_TOP - XBOX_HEAP_BASE) / (1024 * 1024)),
             XBOX_HEAP_BASE, XBOX_HEAP_TOP);
-
-    /*
-     * Map mirror views of the 64 MB region.
-     *
-     * On retail Xbox, physical RAM wraps at 64 MB due to the 26-bit
-     * address bus. Address 0x04070000 reads the same data as 0x00070000.
-     * The RenderWare engine's memory walker crosses 64 MB and accesses
-     * mirrored data for an extended walk covering 256+ MB of virtual
-     * addresses. Game init code also writes large data structures past
-     * 64 MB that on real hardware wrap into physical RAM.
-     *
-     * We map additional views of the SAME file mapping section at 64 MB
-     * intervals. All views alias the same physical pages, so reads and
-     * writes at any mirror address correctly access the base data.
-     */
-    {
-        int mirrors_ok = 0;
-        /* The tiled aperture is a specific architectural alias -- physical RAM
-         * a second time at 0xF0000000, which is where titles render -- while
-         * these mirrors are a generic emulation of the address wrap. When the
-         * mapped size is large enough that a mirror would cover 0xF0000000,
-         * the mirror wins the address and the tiled mapping fails with
-         * ERROR_INVALID_ADDRESS; Half-Life 2 then faults on its first surface
-         * write. The specific alias is worth more than one wrap mirror, so
-         * skip any that would overlap it.
-         *
-         * Guest addresses, not host: mirror m covers guest
-         * (m + 1) * g_memory_size. */
-        uint64_t tiled_lo = XBOX_TILED_BASE;
-        uint64_t tiled_hi = tiled_lo + xbox_TiledApertureSize();
-
-        for (int m = 0; m < XBOX_NUM_MIRRORS; m++) {
-            uintptr_t mirror_base = (uintptr_t)g_memory_base +
-                                    (uintptr_t)(m + 1) * g_memory_size;
-            uint64_t guest_lo = (uint64_t)(m + 1) * g_memory_size;
-            uint64_t guest_hi = guest_lo + g_memory_size;
-
-            if (guest_lo < tiled_hi && tiled_lo < guest_hi) {
-                fprintf(stderr, "  Mirror %d: skipped, overlaps the tiled"
-                                " aperture at 0x%08X\n",
-                        m + 1, (unsigned)XBOX_TILED_BASE);
-                continue;
-            }
-            g_mirror_views[m] = MapViewOfFileEx(
-                g_mapping_handle,
-                FILE_MAP_ALL_ACCESS,
-                0, 0,
-                g_memory_size,
-                (LPVOID)mirror_base
-            );
-            if (g_mirror_views[m]) {
-                mirrors_ok++;
-            } else {
-                fprintf(stderr, "  Mirror %d: FAILED at %p (error %lu)\n",
-                        m + 1, (void *)mirror_base, GetLastError());
-            }
-        }
-        fprintf(stderr, "  RAM mirror: %d/%d views mapped (covers %d MB)\n",
-                mirrors_ok, XBOX_NUM_MIRRORS,
-                (int)((mirrors_ok + 1) * g_memory_size / (1024 * 1024)));
-    }
-
-    /*
-     * Tiled / write-combined aperture at 0xF0000000.
-     *
-     * The NV2A exposes physical RAM a second time here and titles render
-     * through it. Wreckless's first surface write goes to guest 0xF1954000 --
-     * the tiled alias of physical 0x01954000, already inside our RAM -- and
-     * faulted because nothing was mapped there.
-     *
-     * A view of the same section rather than fresh storage: the title writes a
-     * surface through the tiled address and reads it back through the normal
-     * one, so the two have to be the same bytes. That is the whole reason the
-     * RAM lives in a file mapping.
-     */
-    {
-        uintptr_t tiled_native = XBOX_TILED_BASE + g_memory_offset;
-        size_t tiled_size = xbox_TiledApertureSize();
-        /* A view of the CONTIGUOUS window, not of RAM.
-         *
-         * On hardware all three -- physical P, 0x80000000+P and 0xF0000000+P
-         * -- are one and the same memory. Here they cannot be: the XBE image
-         * is loaded at its own VA in the RAM mapping, so aliasing the
-         * contiguous window onto RAM would drop a title's pinned physical
-         * pools on top of its own code (Halo pins 3.4 MB at 0x61000, which is
-         * inside its image). The contiguous window therefore has separate
-         * storage, and the question becomes which of the two the tiled
-         * aperture should be a view of.
-         *
-         * It is the contiguous one. A tiled address is a GPU surface address
-         * by construction, and GPU surfaces come from
-         * MmAllocateContiguousMemory -- so the pairing that has to hold is
-         * tiled to contiguous. Against RAM instead, Half-Life 2's loader wrote
-         * every decoded video frame through 0xF1C63000 while D3D sampled the
-         * texture at 0x81C63000, and the sampler read zeros: 1.8 billion black
-         * pixels rasterised, perfectly, from an empty texture.
-         */
-        if (tiled_size > XBOX_CONTIG_SIZE)
-            tiled_size = XBOX_CONTIG_SIZE;
-        g_tiled_view = g_contig_mapping
-            ? MapViewOfFileEx(
-                g_contig_mapping,
-                FILE_MAP_ALL_ACCESS,
-                0, 0,
-                tiled_size,
-                (LPVOID)tiled_native)
-            : NULL;
-        if (g_tiled_view) {
-            /* Prove the alias rather than assert it. Everything the title
-             * renders goes through this window and is read back through the
-             * physical address, so if the two are not the same bytes the GPU
-             * sees empty buffers and the screen stays black -- with nothing
-             * anywhere to say why. One write and one read turns that into a
-             * startup line. */
-            {
-                volatile uint32_t *via_tiled =
-                    (volatile uint32_t *)((uintptr_t)(XBOX_TILED_BASE + 0x1000)
-                                          + g_memory_offset);
-                volatile uint32_t *via_contig =
-                    (volatile uint32_t *)((uintptr_t)(XBOX_CONTIG_BASE + 0x1000)
-                                          + g_memory_offset);
-                uint32_t saved = *via_contig;
-
-                *via_tiled = 0xA5C30F17u;
-                if (*via_contig != 0xA5C30F17u)
-                    fprintf(stderr, "  WARNING: tiled aperture does NOT alias"
-                            " the contiguous window (wrote A5C30F17, read"
-                            " %08X) -- the GPU will sample empty textures\n",
-                            *via_contig);
-                else
-                    fprintf(stderr, "  Tiled aperture alias verified"
-                            " (tiled 0x%08X == contiguous 0x%08X)\n",
-                            XBOX_TILED_BASE, XBOX_CONTIG_BASE);
-                *via_contig = saved;
-            }
-            /* RECOMP_ALIAS_HIGH=1: a second alias of the same window at
-             * 0xF8000000, for finding out whether a title that dereferences
-             * an address there means physical memory or is simply holding a
-             * bad pointer. Outrun 2 faults on a this-pointer of 0xF8604020,
-             * which is a valid cached pointer 0x80604020 biased by
-             * 0x78000000 -- suggestive, but suggestive is not evidence, and
-             * mapping it settles the question in one run: real memory and
-             * the title carries on, garbage and it faults again at once.
-             *
-             * Off by default. Nothing is known to need it, and silently
-             * backing an address no console ever had would hide the next
-             * title's bad pointer instead of reporting it. */
-            if (xbox_EnvSwitch("RECOMP_ALIAS_HIGH", 0) && g_contig_mapping) {
-                void *high = MapViewOfFileEx(
-                    g_contig_mapping, FILE_MAP_ALL_ACCESS, 0, 0, tiled_size,
-                    (LPVOID)(uintptr_t)(0xF8000000u + g_memory_offset));
-                fprintf(stderr, "  RECOMP_ALIAS_HIGH: 0x%08X %s\n", 0xF8000000u,
-                        high ? "aliased to the contiguous window (an experiment)"
-                             : "could not be mapped");
-            }
-            fprintf(stderr, "  Tiled aperture: %u MB at Xbox VA 0x%08X"
-                    " (aliases the contiguous window)\n",
-                    (unsigned)(g_memory_size / (1024 * 1024)),
-                    XBOX_TILED_BASE);
-        } else {
-            fprintf(stderr, "  WARNING: tiled aperture at 0x%08X failed"
-                    " (error %lu); rendering writes will fault\n",
-                    XBOX_TILED_BASE, GetLastError());
-        }
-    }
 
     fprintf(stderr, "xbox_MemoryLayoutInit: complete\n");
     return TRUE;
@@ -2479,56 +2168,45 @@ void xbox_ProtectMirrorsForDebug(void)
             n, XBOX_NUM_MIRRORS);
 }
 
+/* Project map shutdown binding: timeout is not proof of worker termination. */
+static int xbox_StopMemoryWorker(void)
+{
+    DWORD started=GetTickCount();
+    InterlockedExchange(&g_nv2a_ack_stop,1);
+    while(InterlockedCompareExchange(&g_nv2a_ack_notifiers,0,0)) {
+        if((DWORD)(GetTickCount()-started)>=1000)return 0;
+        Sleep(0);
+    }
+    if(g_nv2a_ack_thread) {
+        if(g_nv2a_ack_wake)SetEvent(g_nv2a_ack_wake);
+        if(WaitForSingleObject(g_nv2a_ack_thread,1000)!=WAIT_OBJECT_0)return 0;
+        CloseHandle(g_nv2a_ack_thread);g_nv2a_ack_thread=NULL;
+    }
+    if(g_nv2a_ack_wake) { CloseHandle(g_nv2a_ack_wake);g_nv2a_ack_wake=NULL; }
+    return 1;
+}
 void xbox_MemoryLayoutShutdown(void)
 {
-    /* Reject subsequent ownership requests before their mappings disappear. */
+    int result,worker_stopped;
     tsfp_thread_memory_stop(&g_guest_threads);
     tsfp_allocations_stop(&g_guest_allocations);
-    if (g_kernel_memory) {
-        VirtualFree(g_kernel_memory, 0, MEM_RELEASE);
-        g_kernel_memory = NULL;
+    worker_stopped=xbox_StopMemoryWorker();
+    if(!worker_stopped && g_host_layout.started)g_host_layout.published=1;
+    result=tsfp_guest_map_stop(&g_host_layout);
+    if(result==2) {
+        fprintf(stderr,"Project guest mappings retained through process exit; all-worker quiescence is unproven%s\n",
+            worker_stopped?"":" (ack worker still pending)");
+        return;
     }
-    if (g_nv2a_ack_thread) {
-        InterlockedExchange(&g_nv2a_ack_stop, 1);
-        while (InterlockedCompareExchange(&g_nv2a_ack_notifiers, 0, 0))
-            Sleep(0);
-        if (g_nv2a_ack_wake)
-            SetEvent(g_nv2a_ack_wake);
-        WaitForSingleObject(g_nv2a_ack_thread, 1000);
-        CloseHandle(g_nv2a_ack_thread);
-        g_nv2a_ack_thread = NULL;
-    }
-    if (g_nv2a_ack_wake) {
-        CloseHandle(g_nv2a_ack_wake);
-        g_nv2a_ack_wake = NULL;
-    }
-    if (g_nv2a_memory) {
-        VirtualFree(g_nv2a_memory, 0, MEM_RELEASE);
-        g_nv2a_memory = NULL;
-    }
-    /* Unmap mirror views first */
-    for (int m = 0; m < XBOX_NUM_MIRRORS; m++) {
-        if (g_mirror_views[m]) {
-            UnmapViewOfFile(g_mirror_views[m]);
-            g_mirror_views[m] = NULL;
-        }
-    }
-    /* Unmap base view */
-    if (g_memory_base) {
-        UnmapViewOfFile(g_memory_base);
-        g_memory_base = NULL;
-        g_memory_size = 0;
-    }
-    /* Close file mapping handle */
-    if (g_mapping_handle) {
-        CloseHandle(g_mapping_handle);
-        g_mapping_handle = NULL;
-    }
-#ifdef __APPLE__
-    w32_guest_arena_release();
-#endif
-    fprintf(stderr, "xbox_MemoryLayoutShutdown: released\n");
+    /* Unpublished rollback may have partially released views. Withdraw every
+     * public pointer; remaining ownership stays in the provider for retry. */
+    g_memory_base=NULL;g_memory_size=0;g_memory_offset=0;g_xbox_mem_offset=0;
+    g_contig_memory=NULL;g_kernel_memory=NULL;g_tiled_view=NULL;
+    g_nv2a_memory=NULL;g_mcpx_memory=NULL;g_mcpx_regs=NULL;g_flash_memory=NULL;
+    memset(g_mirror_views,0,sizeof g_mirror_views);
+    fprintf(stderr,"Project guest layout rollback: %s\n",result?"released":"cleanup retained for retry");
 }
+/* End project map shutdown binding. */
 
 /* Project guest VM adapter: only known guest RAM views are admitted. */
 static int guest_vm_window(uintptr_t address, uint32_t bytes, const void *base, size_t size)
@@ -2715,7 +2393,4 @@ uint32_t xbox_ContiguousAllocatedBytes(void)
 }
 /* End project allocation ABI adapters. */
 
-HANDLE xbox_GetMappingHandle(void)
-{
-    return g_mapping_handle;
-}
+

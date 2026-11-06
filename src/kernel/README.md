@@ -85,7 +85,6 @@ void xbox_MemoryLayoutShutdown(void);
 void     *xbox_GetMemoryBase(void);    // Native pointer to Xbox VA 0
 ptrdiff_t xbox_GetMemoryOffset(void);  // g_xbox_mem_offset value
 BOOL      xbox_IsXboxAddress(uintptr_t address);
-HANDLE    xbox_GetMappingHandle(void); // For creating additional mirror views
 
 // Heap (bump allocator, no free)
 uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);

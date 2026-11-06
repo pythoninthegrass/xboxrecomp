@@ -570,12 +570,7 @@ void xbox_HeapFree(uint32_t xbox_va);
  */
 uint32_t xbox_HeapBlockSize(uint32_t xbox_va);
 
-/**
- * Get the file mapping handle for the Xbox memory region.
- * Used by the VEH handler to map additional mirror views on demand.
- * Returns NULL if file mapping is not available.
- */
-HANDLE xbox_GetMappingHandle(void);
+
 
 #ifdef __cplusplus
 }
