@@ -1,1 +1,1 @@
-"""Function identification tool for Xbox static recompilation."""
+"""Retired classification module; use project function_catalog instead."""
