@@ -1267,6 +1267,8 @@ HRESULT xbox_D3D8PrepareSharedDepthTarget(IDirect3DTexture8 *texture,
                                          IDirect3DSurface8 *depth);
 #endif
 HRESULT       xbox_D3D8CopyBackBufferToTexture(IDirect3DTexture8 *dst);
+HRESULT       xbox_D3D8CopyTextureRegionScaled(IDirect3DTexture8 *dst,
+                                               IDirect3DTexture8 *src, const RECT *region);
 /* The same for one of CopyRects' rectangles: `src` in the title's own
    pixels, copied to the same size at `at` in the texture (NULL: its
    corner), as CopyRects does -- it does not scale. A title draws a small

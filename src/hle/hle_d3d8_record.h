@@ -141,6 +141,8 @@ void hle_d3d8_interp_finish(void);
 HRESULT host_CopyBackBufferToTexture(IDirect3DTexture8 *dst);
 HRESULT host_CopyBackBufferRectToTexture(IDirect3DTexture8 *dst, const RECT *src,
                                          const POINT *at);
+HRESULT host_CopyTextureRegionScaled(IDirect3DTexture8 *dst,
+                                     IDirect3DTexture8 *src, const RECT *region);
 
 /* ----------------------------------------------------------- device calls */
 

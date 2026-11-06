@@ -1967,7 +1967,7 @@ void host_combiners_set_pixel_shader(DWORD token)
 
 /* ----------------------------------------------------------- screen copies */
 
-typedef struct { IDirect3DTexture8 *dst; int has_rect; RECT src; POINT at; } dq_screen_copy;
+typedef struct { IDirect3DTexture8 *dst, *source; int has_rect; RECT src; POINT at; } dq_screen_copy;
 
 static void op_screen_copy(const void *arg)
 {
@@ -1978,7 +1978,9 @@ static void op_screen_copy(const void *arg)
     if (hle_d3d8_interp_predicting) return;
 #endif
 
-    if (p->has_rect)
+    if (p->has_rect == 2)
+        host_CopyTextureRegionScaled(p->dst, p->source, &p->src);
+    else if (p->has_rect)
         host_CopyBackBufferRectToTexture(p->dst, &p->src, &p->at);
     else
         host_CopyBackBufferToTexture(p->dst);
@@ -2013,6 +2015,21 @@ HRESULT host_CopyBackBufferRectToTexture(IDirect3DTexture8 *dst, const RECT *src
         hle_d3d8_interp_op(op_screen_copy, &p, sizeof p);
     }
     return xbox_D3D8CopyBackBufferRectToTexture(dst, src, at);
+}
+
+HRESULT host_CopyTextureRegionScaled(IDirect3DTexture8 *dst,
+                                     IDirect3DTexture8 *src, const RECT *region)
+{
+    if (hle_d3d8_interp_rec && region) {
+        dq_screen_copy p;
+        memset(&p, 0, sizeof p);
+        p.dst = dst;
+        p.source = src;
+        p.has_rect = 2;
+        p.src = *region;
+        hle_d3d8_interp_op(op_screen_copy, &p, sizeof p);
+    }
+    return xbox_D3D8CopyTextureRegionScaled(dst, src, region);
 }
 
 /* --------------------------------------------- the frame-start state, kept

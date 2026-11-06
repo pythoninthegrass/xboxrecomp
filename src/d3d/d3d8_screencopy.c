@@ -190,17 +190,33 @@ static void probe_source(const RhiOutputState *saved, const D3D8Texture *tex,
  * texture. With src: that rectangle of the frame, in the title's own
  * pixels, to the same size at `at` in the texture -- CopyRects does not
  * scale. */
-static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at, RhiView *source);
+static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at,
+                               RhiView *source, const RECT *scaled_region);
 
 HRESULT xbox_D3D8CopyBackBufferToTexture(IDirect3DTexture8 *dst)
 {
-    return copy_to_texture(dst, NULL, NULL, NULL);
+    return copy_to_texture(dst, NULL, NULL, NULL, NULL);
+}
+
+HRESULT xbox_D3D8CopyTextureRegionScaled(IDirect3DTexture8 *dst,
+                                         IDirect3DTexture8 *src, const RECT *region)
+{
+    D3D8Texture *texture = (D3D8Texture *)src;
+    if (!texture || !texture->srv || !region) return E_INVALIDARG;
+    RhiImageDesc desc;
+    RECT physical;
+    rhi_image_get_desc(texture->image, &desc);
+    physical.left=(LONG)((double)region->left*desc.width/texture->width);
+    physical.right=(LONG)((double)region->right*desc.width/texture->width);
+    physical.top=(LONG)((double)region->top*desc.height/texture->height);
+    physical.bottom=(LONG)((double)region->bottom*desc.height/texture->height);
+    return copy_to_texture(dst, NULL, NULL, texture->srv, &physical);
 }
 
 HRESULT xbox_D3D8CopyBackBufferRectToTexture(IDirect3DTexture8 *dst, const RECT *src,
                                              const POINT *at)
 {
-    return copy_to_texture(dst, src, at, NULL);
+    return copy_to_texture(dst, src, at, NULL, NULL);
 }
 
 /* Snapshot an offscreen colour image before a draw samples its own target.
@@ -208,10 +224,11 @@ HRESULT xbox_D3D8CopyBackBufferRectToTexture(IDirect3DTexture8 *dst, const RECT 
 HRESULT d3d8_CopyTextureView(IDirect3DTexture8 *dst, RhiView *source)
 {
     if (!source) return E_INVALIDARG;
-    return copy_to_texture(dst, NULL, NULL, source);
+    return copy_to_texture(dst, NULL, NULL, source, NULL);
 }
 
-static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at, RhiView *source)
+static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const POINT *at,
+                               RhiView *source, const RECT *scaled_region)
 {
     D3D8Texture *tex = (D3D8Texture *)dst;
     RhiImage *dst_image;
@@ -262,6 +279,12 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     c.scale_x = dst_w ? (float)back_w / (float)dst_w : 1.0f;
     c.scale_y = dst_h ? (float)back_h / (float)dst_h : 1.0f;
     c.off_x = c.off_y = 0.0f;
+    if (scaled_region) {
+        c.scale_x = dst_w ? (float)(scaled_region->right - scaled_region->left) / dst_w : 1.0f;
+        c.scale_y = dst_h ? (float)(scaled_region->bottom - scaled_region->top) / dst_h : 1.0f;
+        c.off_x = (float)scaled_region->left;
+        c.off_y = (float)scaled_region->top;
+    }
     if (src) {
         /* The rectangle is in the title's pixels and the frame may be
          * rendered larger (RECOMP_RES_SCALE): one texture pixel is

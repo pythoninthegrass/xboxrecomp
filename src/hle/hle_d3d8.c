@@ -4390,6 +4390,8 @@ HLE_EXPORT(D3DDevice_CopyRects)
     static int seen;
 #if defined(_WIN32) || defined(__APPLE__)
     uint32_t src = HLE_ARG(0), dst = HLE_ARG(3);
+    static IDirect3DTexture8 *map_source;
+    static unsigned long map_source_swap;
 #endif
 
     first_call(&seen, "D3DDevice_CopyRects", HLE_ARG(0));
@@ -4462,13 +4464,25 @@ HLE_EXPORT(D3DDevice_CopyRects)
                 r.right = (LONG)dw;
                 r.bottom = (LONG)dh;
                 p.x = p.y = 0;
-                if (SUCCEEDED(host_CopyBackBufferRectToTexture(tex, &r, &p)))
+                if (sw == 640 && sh == 480 && dw == 128 && dh == 128 &&
+                    map_source_swap == g_shadow_swaps && map_source) {
+                    /* Future Perfect composes the Uplink's map in the screen
+                     * copy before clearing that screen. Its later 128x128
+                     * CopyRects must sample the saved map, not the cleared
+                     * back buffer. The 136x181 map area is in guest pixels;
+                     * the host copy scales it to the handheld texture. */
+                    RECT map_region = {176, 0, 312, 181};
+                    if (SUCCEEDED(host_CopyTextureRegionScaled(tex, map_source, &map_region)))
+                        from_screen++;
+                    map_source = NULL;
+                } else if (SUCCEEDED(host_CopyBackBufferRectToTexture(tex, &r, &p)))
                     from_screen++;
                 if (said_rect++ < 4)
                     fprintf(stderr, "[HLE-D3D8] the title copies the top left %ux%u of its "
                             "screen into texture 0x%08X\n", dw, dh, dst_parent);
             } else if (tex && SUCCEEDED(host_CopyBackBufferToTexture(tex))) {
                 from_screen++;
+                if (dw == sw && dh == sh) { map_source=tex; map_source_swap=g_shadow_swaps; }
                 if (from_screen == 1)
                     fprintf(stderr, "[HLE-D3D8] the title reads its own screen back: "
                             "copying the host frame into texture 0x%08X (%ux%u)\n",
