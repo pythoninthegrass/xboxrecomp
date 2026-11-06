@@ -31,7 +31,9 @@ void rhi_pump_events(void)
 #if defined(_WIN32)
     MSG msg;
     while(PeekMessageA(&msg,NULL,0,0,PM_REMOVE)) {
-        if(msg.message==WM_QUIT)ExitProcess(0);
+        /* Normal window close must run registered cleanup/health reports.
+         * ExitProcess bypasses CRT atexit handlers on Windows. */
+        if(msg.message==WM_QUIT)exit(0);
         TranslateMessage(&msg);DispatchMessageA(&msg);
     }
 #endif
