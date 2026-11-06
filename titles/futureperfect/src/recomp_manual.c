@@ -660,11 +660,31 @@ void sub_0007A7B0(void)
 #endif
 }
 
+extern void sub_00073870_gen(void);
+void sub_00073870(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_mouse_input(sub_00073870_gen);
+#else
+    sub_00073870_gen();
+#endif
+}
+
+extern void sub_000765A0_gen(void);
+void sub_000765A0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_menu_mouse_footer(sub_000765A0_gen);
+#else
+    sub_000765A0_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
 #ifdef TSFP_PC_CONTROLS
-    pc_controls_menu_mode((int32_t)FP_MEM32(0x0079094Cu)>100);
+    pc_display_menu_mouse_mode();
 #endif
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
     pc_display_camera(sub_000C77C0_gen);
