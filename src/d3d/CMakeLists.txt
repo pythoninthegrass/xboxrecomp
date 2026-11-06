@@ -100,6 +100,7 @@ if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
 else()
     if(APPLE AND TSFP_NATIVE_DIR)
         add_library(xbox_d3d8 STATIC "${TSFP_NATIVE_DIR}/renderer_gl.c"
+            "${TSFP_NATIVE_DIR}/../texture_mode.c"
             "${TSFP_NATIVE_DIR}/renderer_host_sdl.c" rhi.c)
     else()
         add_library(xbox_d3d8 STATIC d3d8_gl.c)
