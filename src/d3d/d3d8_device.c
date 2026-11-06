@@ -1350,7 +1350,9 @@ static HRESULT __stdcall dev_DrawPrimitiveUP(IDirect3DDevice8 *self, D3DPRIMITIV
      * the HUD, or spanning the picture like a backdrop or a fade. After
      * prepare_draw, which is what decides whether this is a screen-space
      * draw at all. */
-    d3d8_place_2d_draw(pVertexData, VertexStreamZeroStride, vertex_count);
+    /* Classification reads the original vertices, before fan/quad expansion. */
+    d3d8_place_2d_draw(pVertexData, VertexStreamZeroStride,
+                       d3d8_up_vertices_read(PrimitiveType, PrimitiveCount));
     d3d8_states_apply();
 
     rhi_set_topology(topology);
@@ -1764,6 +1766,7 @@ BOOL d3d8_GetTwoDSqueeze(void) { return g_2d_squeeze; }
  * the register it copies oPos from. */
 /* Whether the last draw_extent measured a fixed-function draw. */
 static BOOL g_extent_fixed_function;
+static BOOL g_extent_full_canvas;
 
 static BOOL draw_extent(const void *vertices, UINT stride, UINT count,
                         float *lo_out, float *hi_out)
@@ -1774,6 +1777,7 @@ static BOOL draw_extent(const void *vertices, UINT stride, UINT count,
     float lo = 3.4e38f, hi = -3.4e38f;
 
     g_extent_fixed_function = FALSE;
+    g_extent_full_canvas = FALSE;
     if (!p || !stride || !count)
         return FALSE;
     if (d3d8_vsh_is_programmable(handle)) {
@@ -1796,6 +1800,18 @@ static BOOL draw_extent(const void *vertices, UINT stride, UINT count,
     }
     if (offset + sizeof(float) > stride)
         return FALSE;
+
+#ifdef TSFP_PC_DISPLAY
+    /* Noise/tint textures are not framebuffer copies, but their complete
+     * canvas quad must cover the output just like a fade. A clipped menu
+     * panel must still follow the proportional widget canvas. */
+    if(pc_display_current().width &&
+       (!g_scissor_enabled || (g_scissor.left<=0 && g_scissor.top<=0 &&
+        g_scissor.right>=(LONG)d3d8_GetGuestWidth()-1 &&
+        g_scissor.bottom>=(LONG)d3d8_GetGuestHeight()-1)))
+        g_extent_full_canvas=pc_ui_full_canvas_quad(vertices,stride,count,offset,
+            (float)d3d8_GetGuestWidth(),(float)d3d8_GetGuestHeight());
+#endif
 
     /* Every vertex, not a sample of them. A backdrop is not always a
      * quad -- this title builds several out of long strips -- and
@@ -1911,7 +1927,8 @@ BOOL d3d8_draw_escapes_squeeze(const void *vertices, UINT stride, UINT count)
         || pc_display_current().width
 #endif
        )
-        return ((hi - lo) >= (float)guest_w * 0.98f && draw_is_screen_pass())
+        return ((hi - lo) >= (float)guest_w * 0.98f &&
+                 (draw_is_screen_pass() || g_extent_full_canvas))
                ? TRUE : FALSE;
     /* A fixed-function draw escapes only if it covers the whole width. The
      * 75% gap above was measured on program draws; OutRun 2 batches HUD
