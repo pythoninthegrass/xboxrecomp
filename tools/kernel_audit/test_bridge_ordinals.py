@@ -11,7 +11,7 @@ ExQueryPoolBlockSize, and 67 (IoCreateSymbolicLink) to IoCreateFile. Both
 to see: the game got a pool size where it wanted EEPROM settings, and a
 file-not-found where it wanted a drive mount.
 
-KERNEL_EXPORTS in tools/xbe_parser is the reference. It is ordinal-indexed and
+xbe_kernel_exports.def in tools/compiler is the reference. It is ordinal-indexed and
 matches the published Xbox kernel export table.
 """
 
@@ -21,18 +21,15 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "tools", "compiler"))
+
+from xbe_image import kernel_names
 
 BRIDGE_C = os.path.join(ROOT, "src", "kernel", "kernel_bridge.c")
-PARSER_PY = os.path.join(ROOT, "tools", "xbe_parser", "xbe_parser.py")
 
 
 def load_exports():
-    with open(PARSER_PY, encoding="utf-8", errors="replace") as fh:
-        src = fh.read()
-    m = re.search(r"KERNEL_EXPORTS\s*[:=][^{]*\{(.*?)\n\}", src, re.S)
-    assert m, "could not locate KERNEL_EXPORTS in tools/xbe_parser"
-    pairs = re.findall(r"(\d+)\s*:\s*[\"']([A-Za-z_][A-Za-z0-9_]*)", m.group(1))
-    exports = {int(o): n for o, n in pairs}
+    exports = kernel_names()
     assert len(exports) > 300, f"only parsed {len(exports)} exports"
     return exports
 

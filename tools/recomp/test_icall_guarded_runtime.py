@@ -36,7 +36,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 HEADER = os.path.join(ROOT, "templates", "runtime", "recomp_types.h")
 FEEDBACK_C = os.path.join(ROOT, "src", "kernel", "icall_feedback.c")
 FEEDBACK_H_DIR = os.path.join(ROOT, "src", "kernel")
-PROJECT_RUNTIME = str(Path(translation_batch.__file__).resolve().parents[2] / "src/runtime")
+PROJECT_RUNTIME = str(Path(translation_batch.__file__).resolve().parents[2] / "templates/runtime")
 
 A, B, C = 0x00011000, 0x00011100, 0x00011200
 SITE = 0x00010040
