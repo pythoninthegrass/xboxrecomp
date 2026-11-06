@@ -2602,6 +2602,18 @@ static HRESULT __stdcall d3d8_CreateDevice(IDirect3D8 *self, UINT Adapter, DWORD
     if (FAILED(hr)) return hr;
 
     hr = create_render_targets(&g_device_state);
+#ifdef TSFP_PC_DISPLAY
+    while(FAILED(hr) && d3d8_display_reduce_supersampling()) {
+        pc_destroy_targets(&g_device_state);
+        g_device_state.scene_surface=NULL;
+        g_device_state.depth_image=NULL;g_device_state.depth_view=NULL;
+        g_device_state.rhi_scene_image=NULL;g_device_state.rhi_scene_srv=NULL;
+        g_device_state.rhi_scene_resolved=NULL;g_device_state.rhi_default_rtv=NULL;
+        d3d8_display_scene_size(g_device_state.present_width,g_device_state.present_height,
+                               &g_device_state.width,&g_device_state.height);
+        hr=create_render_targets(&g_device_state);
+    }
+#endif
     if (FAILED(hr)) return hr;
 
     /* The device's own depth buffer, bound as the current depth surface.

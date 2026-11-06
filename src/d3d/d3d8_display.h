@@ -62,6 +62,8 @@ void d3d8_display_frame_done(void);
  * guest_h. Equal to the guest's own size when nothing is scaled. */
 void d3d8_display_scene_size(UINT guest_w, UINT guest_h,
                              UINT *scene_w, UINT *scene_h);
+void d3d8_display_supersample_size(UINT width,UINT height,UINT *out_w,UINT *out_h);
+int d3d8_display_reduce_supersampling(void);
 
 /* Where the scene lands inside a back buffer of bb_w by bb_h: the largest
  * centred rectangle with the scene's own shape. Equal to the whole buffer

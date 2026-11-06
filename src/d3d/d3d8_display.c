@@ -15,6 +15,7 @@
 #define TSFP_GRAPHICS_DEFAULT_ANISOTROPY recomp_config_int("RECOMP_ANISO", "anisotropy", 1)
 #define TSFP_GRAPHICS_SETTINGS_IMPLEMENTATION
 #include "graphics/graphics_settings.h"
+#include "graphics/supersampling.h"
 #include "graphics/fxaa_resolve.h"
 #include "rhi_shader_cache.h"
 int pc_graphics_clear_cache(void) { return rhi_shader_cache_clear(); }
@@ -138,6 +139,26 @@ void d3d8_display_frame_done(void)
     }
 }
 
+/* Latch at first scene allocation; other graphics preferences remain live. */
+static int g_supersampling = -1;
+void d3d8_display_supersample_size(UINT w,UINT h,UINT *out_w,UINT *out_h)
+{
+    unsigned sw,sh;
+    int actual;
+    if(g_supersampling<0)g_supersampling=pc_graphics_get().supersampling;
+    actual=tsfp_supersampling_size(w,h,g_supersampling,&sw,&sh);
+    if(out_w)*out_w=sw;
+    if(out_h)*out_h=sh;
+    fprintf(stderr,"[SUPERSAMPLING] %u%% requested, %u%% effective: %ux%u -> %ux%u\n",
+        tsfp_supersampling_percent(g_supersampling),tsfp_supersampling_percent(actual),w,h,sw,sh);
+}
+int d3d8_display_reduce_supersampling(void)
+{
+    if(g_supersampling<=0)return 0;
+    --g_supersampling;
+    return 1;
+}
+
 void d3d8_display_scene_size(UINT guest_w, UINT guest_h,
                              UINT *scene_w, UINT *scene_h)
 {
@@ -148,6 +169,11 @@ void d3d8_display_scene_size(UINT guest_w, UINT guest_h,
 #ifdef TSFP_PC_DISPLAY
     pc_display_scene_size(guest_w*p->scale,guest_h*p->scale,scene_w,scene_h);
 #endif
+    {
+        UINT w=scene_w?*scene_w:guest_w*p->scale;
+        UINT h=scene_h?*scene_h:guest_h*p->scale;
+        d3d8_display_supersample_size(w,h,scene_w,scene_h);
+    }
 }
 
 void d3d8_display_output_shape(UINT scene_w, UINT scene_h,
@@ -230,7 +256,7 @@ static const char kSource[] =
     "Texture2D<float4> scene : register(t9);\n"
     "SamplerState smp : register(s9);\n"
     "float4 sample_resolved(float2 pixel) {\n"
-    "    float2 base = (pixel - p.xy) * p.zw;\n"
+    "    float2 base = (pixel - p.xy - 0.5) * p.zw;\n"
     "    float2 step = p.zw / TAPS;\n"
     "    float4 sum = 0;\n"
     "    [unroll] for (int y = 0; y < TAPS; y++)\n"
