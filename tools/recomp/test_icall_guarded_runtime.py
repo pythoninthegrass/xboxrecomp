@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -29,11 +30,13 @@ from tools.recomp.disasm import Instruction, Operand  # noqa: E402
 from tools.recomp.icall_feedback import parse_sites_dump  # noqa: E402
 from tools.recomp.lifter import Lifter  # noqa: E402
 from tools.recomp.translator import _fixup_icall_esp_save  # noqa: E402
+import translation_batch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 HEADER = os.path.join(ROOT, "templates", "runtime", "recomp_types.h")
 FEEDBACK_C = os.path.join(ROOT, "src", "kernel", "icall_feedback.c")
 FEEDBACK_H_DIR = os.path.join(ROOT, "src", "kernel")
+PROJECT_RUNTIME = str(Path(translation_batch.__file__).resolve().parents[2] / "src/runtime")
 
 A, B, C = 0x00011000, 0x00011100, 0x00011200
 SITE = 0x00010040
@@ -200,7 +203,7 @@ def test_runtime_site_dump_round_trips_through_the_merge_parser():
         with open(p, "w") as f:
             f.write(RECORDER)
         r = _run(tmp, [p, FEEDBACK_C],
-                 ["-DRECOMP_ICALL_FEEDBACK", "-I", FEEDBACK_H_DIR])
+                 ["-DRECOMP_ICALL_FEEDBACK", "-I", FEEDBACK_H_DIR, "-I", PROJECT_RUNTIME])
         assert r.returncode == 0, r.stdout + r.stderr
         sites = parse_sites_dump(os.path.join(tmp, "icall_sites.dump"))
         assert sites[0x00010040] == ({0x00011000}, False)
