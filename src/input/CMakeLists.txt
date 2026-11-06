@@ -14,6 +14,8 @@ add_library(xbox_input STATIC
 target_include_directories(xbox_input PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(xbox_input PUBLIC platform SDL3::SDL3)
+# Shared debug overlay reads the same native update target as the title clock.
+target_link_libraries(xbox_input PRIVATE xbox_config)
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
     target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_controls.c"
                                       "${TSFP_PC_CONTROLS_DIR}/texture_mode.c"
