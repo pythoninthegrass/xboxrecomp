@@ -843,22 +843,13 @@ NTSTATUS __stdcall xbox_PhyInitialize(BOOLEAN ForceReset, PVOID Param2);
  * Object Manager (kernel_ob.c)
  * ============================================================================ */
 
-VOID    __fastcall xbox_ObfDereferenceObject(PVOID Object);
-VOID    __fastcall xbox_ObfReferenceObject(PVOID Object);
-NTSTATUS __stdcall xbox_ObReferenceObjectByHandle(HANDLE Handle, PVOID ObjectType, PVOID* Object);
-NTSTATUS __stdcall xbox_ObReferenceObjectByName(PXBOX_ANSI_STRING ObjectName, ULONG Attributes, PVOID ObjectType, PVOID ParseContext, PVOID* Object);
 
-extern PVOID xbox_PsThreadObjectType;
-extern PVOID xbox_ExEventObjectType;
 
 /* ============================================================================
  * I/O Manager (kernel_io.c)
  * ============================================================================ */
 
-NTSTATUS __stdcall xbox_IoCreateDevice(PVOID DriverObject, ULONG DeviceExtensionSize, PXBOX_ANSI_STRING DeviceName, ULONG DeviceType, BOOLEAN Exclusive, PVOID* DeviceObject);
-VOID     __stdcall xbox_IoDeleteDevice(PVOID DeviceObject);
 
-extern PVOID xbox_IoDeviceObjectType;
 extern PVOID xbox_IoCompletionObjectType;
 extern PVOID xbox_IoFileObjectType;
 

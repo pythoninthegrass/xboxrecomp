@@ -257,7 +257,7 @@ static void kernel_data_init(void)
     /* IoCompletionObjectType (ordinal 64) - type object */
     BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_IO_COMPLETION_TYPE) = 0;
 
-    /* IoDeviceObjectType (ordinal 71) - type object (stub: 0) */
+    /* IoDeviceObjectType (ordinal 70) - type object (stub: 0) */
     BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_IO_DEVICE_TYPE) = 0;
 
     /* XboxHDKey (ordinal 323) - 16 bytes of zeros (no key) */
@@ -418,6 +418,10 @@ static int g_thread_mode = XBOX_THREAD_MODE_INLINE;
 void xbox_SetThreadMode(int mode) { g_thread_mode = mode; }
 
 #include "guest_kernel_objects.inc"
+#include "guest_kernel_device_host.inc"
+#include "guest_kernel_devices.inc"
+#include "guest_kernel_names.inc"
+#include "guest_kernel_device_events.inc"
 #include "guest_kernel_threads.inc"
 
 static void bridge_PsCreateSystemThreadEx(void)
@@ -1157,7 +1161,7 @@ static uint32_t bridge_wait_guest_events(volatile LONG **state, const int *sync,
     }
 }
 
-static void bridge_KeSetEvent(void)
+static void bridge_KeSetEvent_legacy(void)
 {
     uint32_t guest_va = STACK_ARG(0);
     wait_log_note("sets    ", guest_va, g_kernel_caller);
@@ -1196,7 +1200,7 @@ static void bridge_KeSetEvent(void)
 }
 
 /* ── KeWaitForSingleObject (ordinal 159) ─────────────────── */
-static void bridge_KeWaitForSingleObject(void)
+static void bridge_KeWaitForSingleObject_legacy(void)
 {
     uint32_t object = STACK_ARG(0);
     uint32_t wait_reason = STACK_ARG(1);
@@ -4025,65 +4029,10 @@ static void bridge_ExFreePool(void)
     g_eax = 0;
 }
 
-/* ── IoCreateDevice (ordinal 65, 6 args) ────────────────
- *
- * NTSTATUS IoCreateDevice(PDRIVER_OBJECT DriverObject,
- *                         ULONG DeviceExtensionSize,
- *                         PANSI_STRING DeviceName,
- *                         DEVICE_TYPE DeviceType,
- *                         BOOLEAN Exclusive,
- *                         PDEVICE_OBJECT *DeviceObject);
- *
- * Deliberately does NOT call xbox_IoCreateDevice. That one allocates from the
- * host heap and writes a 64-bit native pointer through this 4-byte guest
- * out-parameter -- the memory-model mismatch the NOT ROUTED note below
- * describes. The object has to live in guest memory because the caller
- * immediately walks it, so allocate it there.
- *
- * Leaving the ordinal unbridged was not the safe option it looked like: the
- * unresolved thunk returns 0, which is STATUS_SUCCESS, so the title proceeds
- * with a NULL device. Wreckless reads DeviceExtension from it and `rep stosd`s
- * DeviceExtensionSize bytes through the NULL, erasing the fake TIB at guest
- * VA 0. The crash surfaced in SetLastError, thousands of calls later.
- *
- * Layout is the Xbox DEVICE_OBJECT: Flags at 0x14, DeviceExtension at 0x18,
- * DeviceType at 0x1C, StackSize at 0x1D, header 0x38 bytes. Only the fields a
- * title actually reads are filled; the rest is zero, which is what a freshly
- * created device object holds anyway.
- */
+/* Project device/namespace adapters are selected above. */
 #define XBOX_DEVICE_OBJECT_SIZE 0x38u
 
-static void bridge_IoCreateDevice(void)
-{
-    uint32_t extension_size = STACK_ARG(1);
-    uint32_t device_type    = STACK_ARG(3);
-    uint32_t out_va         = STACK_ARG(5);
-    uint32_t object_va;
 
-    if (!out_va) {
-        g_eax = 0xC000000Du;   /* STATUS_INVALID_PARAMETER */
-        return;
-    }
-
-    object_va = xbox_HeapAlloc(XBOX_DEVICE_OBJECT_SIZE + extension_size, 16);
-    if (!object_va) {
-        g_eax = 0xC000009Au;   /* STATUS_INSUFFICIENT_RESOURCES */
-        return;
-    }
-
-    memset(XBOX_TO_NATIVE(object_va), 0,
-           XBOX_DEVICE_OBJECT_SIZE + extension_size);
-    BRIDGE_MEM16(object_va + 0x02) = (uint16_t)XBOX_DEVICE_OBJECT_SIZE;
-    BRIDGE_MEM32(object_va + 0x04) = 1;                 /* ReferenceCount   */
-    BRIDGE_MEM32(object_va + 0x08) = STACK_ARG(0);      /* DriverObject     */
-    BRIDGE_MEM32(object_va + 0x18) =                    /* DeviceExtension  */
-        extension_size ? object_va + XBOX_DEVICE_OBJECT_SIZE : 0;
-    BRIDGE_MEM8(object_va + 0x1C)  = (uint8_t)device_type;
-    BRIDGE_MEM8(object_va + 0x1D)  = 1;                 /* StackSize        */
-
-    BRIDGE_MEM32(out_va) = object_va;
-    g_eax = 0;                                          /* STATUS_SUCCESS   */
-}
 
 /* ── KeCancelTimer (ordinal 97, 1 arg)
  * BOOLEAN KeCancelTimer(PKTIMER Timer) -- returns whether it was set. */
@@ -4319,17 +4268,8 @@ static void bridge_MmUnmapIoSpace(void)
     g_eax = 0;
 }
 
-/* ── IoDeleteDevice (ordinal 68, 1 arg)
- *
- * Same memory model as MmUnmapIoSpace: bridge_IoCreateDevice allocates the
- * device object on the guest heap, so deletion has to answer there too --
- * HeapFree (what xbox_IoDeleteDevice calls) would free a pointer that heap
- * never saw. */
-static void bridge_IoDeleteDevice(void)
-{
-    xbox_HeapFree(STACK_ARG(0));
-    g_eax = 0;
-}
+/* Project device/namespace adapters are selected above. */
+
 
 /* ── KeQueryInterruptTime (ordinal 125, void)
  * Returns a 64-bit tick count; the caller reads it as edx:eax, so the high
@@ -4412,7 +4352,7 @@ static void bridge_KeAlertThread(void)
  * the array is taken as handle tokens and each is resolved. */
 #define BRIDGE_MAXIMUM_WAIT_OBJECTS 64
 
-static void bridge_KeWaitForMultipleObjects(void)
+static void bridge_KeWaitForMultipleObjects_legacy(void)
 {
     uint32_t count      = STACK_ARG(0);
     uint32_t objects_va = STACK_ARG(1);
@@ -4496,33 +4436,8 @@ static void bridge_NtSetSystemTime(void)
         prev_va ? (PLARGE_INTEGER)XBOX_TO_NATIVE(prev_va) : NULL);
 }
 
-/* ── ObReferenceObjectByName (ordinal 247, 5 args)
- *
- * The ANSI_STRING is rebuilt by hand (native struct has a 64-bit Buffer at
- * offset 8, the guest one a 32-bit Buffer at offset 4) and the Object
- * out-parameter is filled through a local so the 8-byte NULL store lands in a
- * local instead of spilling past a 4-byte guest slot. */
-static void bridge_ObReferenceObjectByName(void)
-{
-    uint32_t name_va   = STACK_ARG(0);
-    uint32_t object_va = STACK_ARG(4);
-    XBOX_ANSI_STRING name;
-    PVOID object_local = NULL;
+/* Project device/namespace adapters are selected above. */
 
-    if (!name_va) {
-        g_eax = (uint32_t)STATUS_INVALID_PARAMETER;
-        return;
-    }
-    name.Length        = BRIDGE_MEM16(name_va);
-    name.MaximumLength = BRIDGE_MEM16(name_va + 2);
-    name.Buffer        = (PCHAR)XBOX_TO_NATIVE(BRIDGE_MEM32(name_va + 4));
-
-    g_eax = (uint32_t)xbox_ObReferenceObjectByName(
-        &name, STACK_ARG(1), XBOX_TO_NATIVE(STACK_ARG(2)),
-        XBOX_TO_NATIVE(STACK_ARG(3)), &object_local);
-    if (object_va)
-        BRIDGE_MEM32(object_va) = (uint32_t)(uintptr_t)object_local;
-}
 
 /* ── RtlInitUnicodeString (ordinal 290, 2 args)
  *
@@ -6874,7 +6789,7 @@ static void bridge_KeInitializeSemaphore(void)
 }
 
 /* --- KePulseEvent (ordinal 123, 3 args = 12 bytes) --- */
-static void bridge_KePulseEvent(void)
+static void bridge_KePulseEvent_legacy(void)
 {
     uint32_t guest_va = STACK_ARG(0);
     uint32_t increment = STACK_ARG(1);
@@ -6948,7 +6863,7 @@ static void bridge_KeReleaseSemaphore(void)
 }
 
 /* --- KeResetEvent (ordinal 138, 1 arg = 4 bytes) --- */
-static void bridge_KeResetEvent(void)
+static void bridge_KeResetEvent_legacy(void)
 {
     uint32_t guest_va = STACK_ARG(0);
     HANDLE h;
@@ -7177,7 +7092,7 @@ static void bridge_KeRundownQueue(void)
 }
 
 /* --- KeSetEventBoostPriority (ordinal 146, 2 args = 8 bytes) --- */
-static void bridge_KeSetEventBoostPriority(void)
+static void bridge_KeSetEventBoostPriority_legacy(void)
 {
     uint32_t guest_va = STACK_ARG(0);
     uint32_t increment = STACK_ARG(1);
@@ -8357,7 +8272,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
     /* ── I/O Manager ── */
     /* ordinal 64 is the IoCompletionObjectType data export; see
      * kernel_thunks.c. 65 is IoCreateDevice, a real function. */
-    /* case  71: DATA export - IoDeviceObjectType */
+    /* case  70: DATA export - IoDeviceObjectType */
 
     /* ── Kernel Synchronization ── */
     /* case 156: DATA export - KeTickCount */
@@ -9335,6 +9250,8 @@ static void kernel_thunk_dispatch(void)
         if(!tsfp_guest_scope_leave(&bridge_object_scopes,&_object_scope)) abort();
         xbox_GuestLockRestore(_guest_held);
         xbox_GuestLiftedEnter();
+        /* Guest callbacks run only after lock/lifted-state restoration. */
+        bridge_device_pump();
         if (g_esp != _esp_before) {
             static uint8_t said[XBOX_KERNEL_THUNK_TABLE_SIZE];
             if (!said[slot]) {
@@ -9508,6 +9425,7 @@ void xbox_kernel_bridge_init(void)
     /* Initialize kernel data export values first */
     kernel_data_init();
     bridge_object_init();
+    bridge_device_init();
     bridge_request_init();
 
     for (i = 0; i < g_thunk_table_count; i++) {

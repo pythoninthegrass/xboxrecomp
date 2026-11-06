@@ -14,7 +14,6 @@ set(KERNEL_SOURCES
     kernel_sync.c
     kernel_hal.c
     kernel_xbox.c
-    kernel_ob.c
     kernel_io.c
     kernel_crypto.c
     kernel_bridge.c
@@ -33,6 +32,16 @@ set(KERNEL_SOURCES
 add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_object_names.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_name_service.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_factory.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_body.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_callback.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_callback_call.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_dispatch.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_event.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_event_scope.c"
+    "${TSFP_SHARED_SOURCE}/runtime/guest_device_event_batch.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_io_stack.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_io_request.c"
     "${TSFP_SHARED_SOURCE}/runtime/guest_io_owner.c"

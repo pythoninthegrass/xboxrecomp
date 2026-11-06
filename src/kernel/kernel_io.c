@@ -1,8 +1,8 @@
 /*
  * kernel_io.c - I/O Manager Stubs
  *
- * Implements IoCreateDevice, IoDeleteDevice, IRP management, and I/O
- * completion stubs.
+ * Transitional request and completion services. Device ownership and
+ * create/delete adapters are selected from project providers.
  *
  * The Xbox I/O manager is used internally by XDK libraries (DSOUND, D3D,
  * storage drivers). Since we replace those libraries entirely with Win32
@@ -20,81 +20,13 @@
  * XDK libraries we're replacing.
  * ============================================================================ */
 
-static ULONG g_device_object_type_data     = 0x44455643; /* 'DEVC' */
 static ULONG g_completion_object_type_data = 0x434F4D50; /* 'COMP' */
 static ULONG g_file_object_type_data       = 0x46494C45; /* 'FILE' */
 
-PVOID xbox_IoDeviceObjectType     = &g_device_object_type_data;
 PVOID xbox_IoCompletionObjectType = &g_completion_object_type_data;
 PVOID xbox_IoFileObjectType       = &g_file_object_type_data;
 
-/* ============================================================================
- * Device Management
- *
- * IoCreateDevice/IoDeleteDevice create kernel device objects. Since we
- * don't have real kernel drivers, we allocate dummy objects that satisfy
- * the interface without actual device functionality.
- * ============================================================================ */
-
-/* Minimal device object - just enough to not crash if someone reads fields */
-typedef struct _XBOX_FAKE_DEVICE {
-    ULONG Type;
-    ULONG Size;
-    PVOID DeviceExtension;
-    PVOID DriverObject;
-} XBOX_FAKE_DEVICE;
-
-NTSTATUS __stdcall xbox_IoCreateDevice(
-    PVOID DriverObject,
-    ULONG DeviceExtensionSize,
-    PXBOX_ANSI_STRING DeviceName,
-    ULONG DeviceType,
-    BOOLEAN Exclusive,
-    PVOID* DeviceObject)
-{
-    XBOX_FAKE_DEVICE* device;
-    ULONG total_size;
-
-    (void)DriverObject;
-    (void)DeviceType;
-    (void)Exclusive;
-
-    if (!DeviceObject)
-        return STATUS_INVALID_PARAMETER;
-
-    total_size = sizeof(XBOX_FAKE_DEVICE) + DeviceExtensionSize;
-    device = (XBOX_FAKE_DEVICE*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, total_size);
-    if (!device) {
-        *DeviceObject = NULL;
-        return STATUS_NO_MEMORY;
-    }
-
-    device->Type = DeviceType;
-    device->Size = total_size;
-    device->DriverObject = DriverObject;
-    device->DeviceExtension = (DeviceExtensionSize > 0)
-        ? (PVOID)((UCHAR*)device + sizeof(XBOX_FAKE_DEVICE))
-        : NULL;
-
-    *DeviceObject = device;
-
-    xbox_log(XBOX_LOG_DEBUG, XBOX_LOG_IO,
-        "IoCreateDevice: '%.*s' type=%u ext_size=%u → %p",
-        DeviceName ? DeviceName->Length : 0,
-        DeviceName ? DeviceName->Buffer : "<null>",
-        DeviceType, DeviceExtensionSize, device);
-
-    return STATUS_SUCCESS;
-}
-
-VOID __stdcall xbox_IoDeleteDevice(PVOID DeviceObject)
-{
-    if (DeviceObject) {
-        xbox_log(XBOX_LOG_DEBUG, XBOX_LOG_IO,
-            "IoDeleteDevice: %p", DeviceObject);
-        HeapFree(GetProcessHeap(), 0, DeviceObject);
-    }
-}
+/* Device creation/deletion is owned by the project guest bridge. */
 
 /* ============================================================================
  * IRP Management Stubs
