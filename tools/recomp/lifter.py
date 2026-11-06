@@ -3373,10 +3373,16 @@ class Lifter:
         # ── Arithmetic ──
         if m in ("addss", "addsd"):
             if nops >= 2:
-                return [_sse_write(ops[0], f"{_sse_read(ops[0])} + {_sse_read(ops[1])}") + f" /* {m} */"]
+                a, b = _sse_read(ops[0]), _sse_read(ops[1])
+                value = (f"RECOMP_F32_ADD_AT(0x{insn.address:X}, {a}, {b})"
+                         if m == "addss" else f"{a} + {b}")
+                return [_sse_write(ops[0], value) + f" /* {m} */"]
         if m in ("subss", "subsd"):
             if nops >= 2:
-                return [_sse_write(ops[0], f"{_sse_read(ops[0])} - {_sse_read(ops[1])}") + f" /* {m} */"]
+                a, b = _sse_read(ops[0]), _sse_read(ops[1])
+                value = (f"RECOMP_F32_SUB_AT(0x{insn.address:X}, {a}, {b})"
+                         if m == "subss" else f"{a} - {b}")
+                return [_sse_write(ops[0], value) + f" /* {m} */"]
         if m in ("mulss", "mulsd"):
             if nops >= 2:
                 a, b = _sse_read(ops[0]), _sse_read(ops[1])

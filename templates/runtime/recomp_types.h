@@ -69,6 +69,12 @@
 #ifndef RECOMP_FLOAT_BRANCH_AT
 #define RECOMP_FLOAT_BRANCH_AT(site, taken) (taken)
 #endif
+#ifndef RECOMP_F32_ADD_AT
+#define RECOMP_F32_ADD_AT(site, left, right) ((left) + (right))
+#endif
+#ifndef RECOMP_F32_SUB_AT
+#define RECOMP_F32_SUB_AT(site, left, right) ((left) - (right))
+#endif
 #ifndef RECOMP_F32_MUL_AT
 #define RECOMP_F32_MUL_AT(site, left, right) ((left) * (right))
 #endif
