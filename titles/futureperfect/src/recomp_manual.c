@@ -1778,6 +1778,16 @@ void sub_002D0BE0(void)
 #endif
 }
 
+extern void sub_00076810_gen(void);
+void sub_00076810(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_video_menu_font(sub_00076810_gen);
+#else
+    sub_00076810_gen();
+#endif
+}
+
 extern void sub_00076150_gen(void);
 void sub_00076150(void)
 {
