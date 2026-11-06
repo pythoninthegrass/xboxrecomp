@@ -222,6 +222,16 @@ void sub_00357540(void)
 #endif
 }
 
+extern void sub_00060310_gen(void);
+void sub_00060310(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_movie_release(sub_00060310_gen);
+#else
+    sub_00060310_gen();
+#endif
+}
+
 extern void sub_00065C70_gen(void);
 void sub_00065C70(void)
 {
