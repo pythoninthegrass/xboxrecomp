@@ -35,6 +35,7 @@ static struct {
     uint32_t        frame_w, frame_h;
     int             dirty;       /* not uploaded yet */
     int             fill_width;  /* title-selected cinematic presentation */
+    unsigned        crop_left, crop_right;
     int             have;        /* a frame to draw */
 } g = { 0, 0, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, SRWLOCK_INIT };
 
@@ -173,7 +174,7 @@ static int movie_texture(uint32_t w, uint32_t h)
 }
 
 void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height,
-                            int fill_width)
+                            int fill_width, unsigned crop_left, unsigned crop_right)
 {
     size_t bytes = (size_t)width * height * 4u;
 
@@ -190,6 +191,8 @@ void d3d8_movie_set_frame(const uint8_t *bgra, uint32_t width, uint32_t height,
         memcpy(g.frame, bgra, bytes);
         g.dirty = g.have = 1;
         g.fill_width = fill_width;
+        g.crop_left = crop_left;
+        g.crop_right = crop_right;
     }
     ReleaseSRWLockExclusive(&g.lock);
 }
@@ -210,6 +213,7 @@ void d3d8_movie_draw(void)
     MovieConstants c;
     float blend_factor[4] = { 1, 1, 1, 1 }, black[4] = { 0, 0, 0, 1 };
     int fill_width;
+    unsigned crop_left, crop_right;
     uint32_t w, h;
     void *mapped;
 
@@ -220,6 +224,8 @@ void d3d8_movie_draw(void)
     w = g.frame_w;
     h = g.frame_h;
     fill_width = g.fill_width;
+    crop_left = g.crop_left;
+    crop_right = g.crop_right;
     if (!g.have || !g.frame || !movie_texture(w, h)) {
         ReleaseSRWLockExclusive(&g.lock);
         return;
@@ -232,15 +238,14 @@ void d3d8_movie_draw(void)
 
     rhi_output_save(&saved);
 
-    /* Fit logos intact; fill cinematic movies across the output width with
+    /* Fit default movies intact; fill opted-in movies across the output width with
      * a proportional vertical crop. This also removes their encoded matte
      * as the display becomes wider, without changing texture coordinates. */
     rhi_clear_color(rtv, black);
     if (!(mapped = rhi_buffer_map(g.cb, RHI_MAP_WRITE_DISCARD)))
         goto restore;
-    d3d8_movie_rectangle(bw, bh, fill_width, &c.w, &c.h);
-    c.x = -c.w / 2.0f;
-    c.y = c.h / 2.0f;
+    d3d8_movie_bounds(bw, bh, fill_width, w, crop_left, crop_right,
+                     &c.x, &c.y, &c.w, &c.h);
     c.tex_w = (float)w;
     c.tex_h = (float)h;
     c.pad0 = c.pad1 = 0.0f;

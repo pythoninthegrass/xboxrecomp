@@ -52,6 +52,7 @@ typedef struct {
     uint8_t *bgra;
     uint32_t w, h;
     int      fill_width;
+    unsigned crop_left, crop_right;
     int      started;
     LARGE_INTEGER start;
 
@@ -253,6 +254,9 @@ int xmv_play_open(uint32_t source_va, uint32_t *width, uint32_t *height)
     }
 #ifdef TSFP_PC_CONTROLS
     m->fill_width = pc_cutscene_movie_fill_width(path);
+    if (m->fill_width)
+        pc_cutscene_movie_crop(m->dm.width, m->dm.height,
+                               &m->crop_left, &m->crop_right);
 #endif
     m->w = m->dm.width;
     m->h = m->dm.height;
@@ -428,7 +432,8 @@ uint32_t xmv_play_update(int handle, uint32_t surface_va, uint32_t *pts_ms)
         if (pts_ms)
             *pts_ms = shown_pts;
         write_surface(m, surface_va);
-        d3d8_movie_set_frame(m->bgra, m->w, m->h, m->fill_width);
+        d3d8_movie_set_frame(m->bgra, m->w, m->h, m->fill_width,
+                             m->crop_left, m->crop_right);
         m->shown++;
         return 1u;
     }
