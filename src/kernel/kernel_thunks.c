@@ -38,6 +38,7 @@ ULONG_PTR xbox_kernel_thunk_table[XBOX_KERNEL_THUNK_TABLE_SIZE] = {0};
 
 static FILE* g_log_file = NULL;
 static int   g_log_level = XBOX_LOG_INFO;
+static int   g_log_quiet;
 static CRITICAL_SECTION g_log_cs;
 static BOOL  g_log_cs_init = FALSE;
 
@@ -59,7 +60,7 @@ void xbox_log(int level, const char* subsystem, const char* fmt, ...)
     char timestamp[32];
     SYSTEMTIME st;
 
-    if (level > g_log_level)
+    if (g_log_quiet || level > g_log_level)
         return;
 
     GetLocalTime(&st);
@@ -413,7 +414,13 @@ void xbox_kernel_init(void)
     g_log_cs_init = TRUE;
 
     /* Try to open log file, fall back to stderr */
-    g_log_file = fopen("xbox_kernel.log", "w");
+#ifdef _WIN32
+    {
+        const char *quiet = getenv("TSFP_DEBUG_QUIET");
+        g_log_quiet = quiet && !strcmp(quiet, "1");
+    }
+#endif
+    g_log_file = g_log_quiet ? NULL : fopen("xbox_kernel.log", "w");
 
     /* Set log level from environment variable if present */
     const char* log_env = getenv("XBOX_LOG_LEVEL");

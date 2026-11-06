@@ -36,6 +36,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#ifdef TSFP_PC_CONTROLS
+#include "pc_debug_output.h"
+#endif
 
 /* xboxrecomp runtime headers */
 #include <xbox/xboxrecomp.h>
@@ -458,6 +461,15 @@ static void setup_output(void)
     char *dot;
     FILE *f;
 
+#ifdef TSFP_PC_CONTROLS
+    /* Keep printf/error/report writes off console and disk for an A/B test.
+     * This affects this process only; the next normal launch logs normally. */
+    if (pc_debug_output_quiet()) {
+        if (!freopen("NUL", "w", stdout) || !freopen("NUL", "w", stderr))
+            ExitProcess(1);
+        return;
+    }
+#endif
     if (handle_is_real(STD_OUTPUT_HANDLE) || handle_is_real(STD_ERROR_HANDLE))
         return;                                  /* redirected: leave it */
 
