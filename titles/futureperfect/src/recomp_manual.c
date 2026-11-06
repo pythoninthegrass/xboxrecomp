@@ -746,6 +746,26 @@ void sub_002DB010(void)
 #endif
 }
 
+extern void sub_002D0BE0_gen(void);
+void sub_002D0BE0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_main_menu_font(sub_002D0BE0_gen,1);
+#else
+    sub_002D0BE0_gen();
+#endif
+}
+
+extern void sub_00076150_gen(void);
+void sub_00076150(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_main_menu_font(sub_00076150_gen,0);
+#else
+    sub_00076150_gen();
+#endif
+}
+
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
