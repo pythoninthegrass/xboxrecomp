@@ -17,6 +17,9 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_display.h"
+#ifdef TSFP_PC_DISPLAY
+#include "pc_display.h"
+#endif
 #include "d3d8_fvf.h"         /* d3d8_fvf_transformed: draw_extent */
 #include "recomp_config.h"   /* RECOMP_VRR */
 #include <stdio.h>
@@ -334,6 +337,10 @@ static BOOL two_d_squeeze(float *k_out, float *cx_out)
 
     if (!g_2d_squeeze || !g_device_state.height || g_cur_rt)
         return FALSE;
+#ifdef TSFP_PC_DISPLAY
+    if(pc_display_current().width) k=pc_display_hud_scale();
+    else
+#endif
     k = ((float)g_device_state.width * 9.0f) /
         ((float)g_device_state.height * 16.0f);
     if (!(k > 0.0f && k < 1.0f))
@@ -1677,6 +1684,10 @@ static void apply_host_viewport(void)
     rhi_set_viewports(1, &hv);
 }
 
+#ifdef TSFP_PC_DISPLAY
+#include "pc_display_renderer.inc"
+#endif
+
 /* Called once per draw, from the shader path that knows which kind of
  * draw it is. Cheap when nothing changes, which is the common case: a
  * frame is a run of 3D draws and then a run of 2D ones. */
@@ -1846,7 +1857,11 @@ BOOL d3d8_draw_escapes_squeeze(const void *vertices, UINT stride, UINT count)
      * colour -- a fade, a tint, a letterbox bar -- or that draws the frame
      * itself back over the frame, which squeezed would put a shrunken copy
      * of the picture in the middle of it. */
-    if (d3d8_display_policy()->centre_2d)
+    if (d3d8_display_policy()->centre_2d
+#ifdef TSFP_PC_DISPLAY
+        || pc_display_current().width
+#endif
+       )
         return ((hi - lo) >= (float)guest_w * 0.98f && draw_is_screen_pass())
                ? TRUE : FALSE;
     /* A fixed-function draw escapes only if it covers the whole width. The

@@ -12,6 +12,9 @@
  */
 #include "d3d8_display.h"
 #include "recomp_config.h"
+#ifdef TSFP_PC_DISPLAY
+#include "pc_display.h"
+#endif
 
 #if defined(_WIN32)
 
@@ -107,6 +110,9 @@ void xbox_D3D8SetWideFrames(BOOL wide)
 
 int d3d8_display_wide_now(void)
 {
+    #ifdef TSFP_PC_DISPLAY
+    if(pc_display_current().width) return pc_display_wide_now();
+#endif
     return d3d8_display_policy()->widescreen && !g_title_narrow;
 }
 
@@ -114,6 +120,9 @@ void d3d8_display_frame_done(void)
 {
     int wide = d3d8_display_wide_now();
 
+#ifdef TSFP_PC_DISPLAY
+    pc_display_frame_done();
+#endif
     g_frames++;
     if (g_title_said && d3d8_display_policy()->widescreen && wide != g_last_wide) {
         fprintf(stderr, "D3D8 display: frame %u on at %s\n", g_frames,
@@ -129,11 +138,17 @@ void d3d8_display_scene_size(UINT guest_w, UINT guest_h,
 
     if (scene_w) *scene_w = guest_w * p->scale;
     if (scene_h) *scene_h = guest_h * p->scale;
+#ifdef TSFP_PC_DISPLAY
+    pc_display_scene_size(guest_w*p->scale,guest_h*p->scale,scene_w,scene_h);
+#endif
 }
 
 void d3d8_display_output_shape(UINT scene_w, UINT scene_h,
                                UINT *shape_w, UINT *shape_h)
 {
+#ifdef TSFP_PC_DISPLAY
+    if(pc_display_current().width) { pc_display_shape(shape_w,shape_h); return; }
+#endif
     if (d3d8_display_wide_now()) {
         /* The frame is anamorphic: the title squeezed a 16:9 view into
          * whatever buffer it renders to, and the display is meant to
@@ -142,8 +157,12 @@ void d3d8_display_output_shape(UINT scene_w, UINT scene_h,
         if (shape_w) *shape_w = 16;
         if (shape_h) *shape_h = 9;
     } else {
+        #ifdef TSFP_PC_DISPLAY
+        pc_display_shape(shape_w,shape_h);
+#else
         if (shape_w) *shape_w = scene_w;
         if (shape_h) *shape_h = scene_h;
+#endif
     }
 }
 

@@ -1099,8 +1099,15 @@ void d3d8_shaders_prepare_draw(DWORD handle)
          * placing vertices in screen coordinates it worked out itself; one
          * that reads it but with an orthographic matrix in it is doing the
          * same through the matrix. */
+        #ifdef TSFP_PC_DISPLAY
+        /* FP world programs use both c[60] and c[68] projection matrices.
+           A direct position-input copy identifies screen-space programs;
+           computed world and weapon positions must use the whole viewport. */
+        d3d8_SetTwoDSqueeze(d3d8_vsh_bound_pos_input() >= 0);
+#else
         d3d8_SetTwoDSqueeze(!d3d8_vsh_bound_uses_projection()
                             || d3d8_vsh_bound_projection_is_ortho());
+#endif
     } else {
         ff_vs_prepare_draw(handle);
         /* The fixed-function equivalent: pre-transformed vertices arrive

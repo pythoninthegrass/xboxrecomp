@@ -836,10 +836,28 @@ int d3d8_vsh_generate_hlsl(const NV2AVshProgram *program,
 
         /* oPos written straight from an input: note where position came
          * from. See g_emit_pos_input. */
+#ifdef TSFP_PC_DISPLAY
+        /* FP's HUD copies xy through ILU MOV as well as MAC MOV. Track the
+           final xy writer: later matrix arithmetic invalidates a prior copy.
+           A z-only depth conversion must not lose an otherwise direct xy. */
+        if (mac_runs && inst->mac_dst.output_reg == NV2A_VSH_OUT_POS &&
+            (nv2a_vsh_output_write_mask(&inst->mac_dst) & 12))
+            g_emit_pos_input = inst->mac_op == NV2A_VSH_MAC_MOV &&
+                inst->mac_src[0].reg_type == NV2A_VSH_REG_INPUT &&
+                (nv2a_vsh_output_write_mask(&inst->mac_dst) & 12) == 12
+                ? inst->mac_src[0].reg_index : -1;
+        if (ilu_runs && inst->ilu_dst.output_reg == NV2A_VSH_OUT_POS &&
+            (nv2a_vsh_output_write_mask(&inst->ilu_dst) & 12))
+            g_emit_pos_input = inst->ilu_op == NV2A_VSH_ILU_MOV &&
+                inst->ilu_src.reg_type == NV2A_VSH_REG_INPUT &&
+                (nv2a_vsh_output_write_mask(&inst->ilu_dst) & 12) == 12
+                ? inst->ilu_src.reg_index : -1;
+#else
         if (mac_runs && inst->mac_op == NV2A_VSH_MAC_MOV &&
             inst->mac_dst.output_reg == NV2A_VSH_OUT_POS &&
             inst->mac_src[0].reg_type == NV2A_VSH_REG_INPUT)
             g_emit_pos_input = inst->mac_src[0].reg_index;
+#endif
 
         if (mac_runs && inst->mac_op == NV2A_VSH_MAC_ARL)
             sb_append(&sb, "        a0 = _a0;\n");

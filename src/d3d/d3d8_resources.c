@@ -8,6 +8,9 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_swizzle.h"
+#ifdef TSFP_TEXTURE_PACK
+#include "texture_pack.h"
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -1074,6 +1077,9 @@ static ULONG __stdcall tex_Release(IDirect3DTexture8 *self)
     D3D8Texture *tex = tex_from_iface(self);
     LONG ref = InterlockedDecrement(&tex->ref_count);
     if (ref <= 0) {
+#ifdef TSFP_TEXTURE_PACK
+        tsfp_texture_release(tex);
+#endif
         rhi_view_destroy(tex->srv);
         rhi_image_destroy(tex->image);
         free(tex->sys_mem);
@@ -1495,6 +1501,9 @@ static HRESULT __stdcall tex_UnlockRect(IDirect3DTexture8 *self, UINT Level)
                           tex_level_height(tex, Level), Level,
                           tex->sys_mem + tex_level_offset(tex, Level),
                           tex_level_pitch(tex, Level), tex->palette);
+#ifdef TSFP_TEXTURE_PACK
+    if(Level==0) tsfp_texture_upload(tex);
+#endif
     return S_OK;
 }
 
@@ -1672,6 +1681,11 @@ RhiView *d3d8_base_srv(IDirect3DBaseTexture8 *texture)
 {
     if (!texture) return NULL;
     d3d8_check_overlay();
+#ifdef TSFP_TEXTURE_PACK
+    if(texture->lpVtbl == (const IDirect3DBaseTexture8Vtbl *)&g_tex_vtbl &&
+       ((D3D8Texture *)texture)->pack_srv)
+        return ((D3D8Texture *)texture)->pack_srv;
+#endif
     return *(RhiView **)((BYTE *)texture + offsetof(D3D8Texture, srv));
 }
 

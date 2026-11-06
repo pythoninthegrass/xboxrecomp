@@ -174,6 +174,13 @@ typedef struct D3D8Texture {
     BOOL                    dirty;
     UINT                    palette;    /* Palette index (texture stage) this P8 texture bakes */
     BOOL                    screen_copy; /* the frame was copied into it (d3d8_screencopy.c) */
+#ifdef TSFP_TEXTURE_PACK
+    RhiImage *pack_image;
+    RhiView *pack_srv;
+    uint64_t pack_key;
+    uint32_t pack_bytes;
+    int pack_checked;
+#endif
 } D3D8Texture;
 
 typedef struct D3D8Surface {

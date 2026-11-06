@@ -19,6 +19,13 @@ if(WIN32)
         rhi_shader_cache.c
         rhi_d3d11.c
     )
+    if(TSFP_PC_CONTROLS_DIR)
+        target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/texture_pack.c")
+        target_include_directories(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}")
+        target_compile_definitions(xbox_d3d8 PUBLIC TSFP_TEXTURE_PACK)
+        add_executable(tsfp_texture_format_test "${TSFP_PC_CONTROLS_DIR}/../tests/texture_pack_format.c")
+        target_include_directories(tsfp_texture_format_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
+    endif()
     # gdi32: the overlay renders its text with GDI rather than an embedded font.
     target_link_libraries(xbox_d3d8 PUBLIC platform d3d11 dxgi dxguid d3dcompiler gdi32)
 
@@ -83,4 +90,9 @@ if(MSVC)
     target_compile_options(xbox_d3d8 PRIVATE /W4 $<$<NOT:$<CONFIG:Debug>>:/O2> /Zi)  # /Zi: see src/kernel/CMakeLists.txt
 else()
     target_compile_options(xbox_d3d8 PRIVATE -Wall -Wextra -Wno-unused-parameter -O2)
+endif()
+
+if(TSFP_PC_CONTROLS_DIR)
+    target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_display.c")
+    target_compile_definitions(xbox_d3d8 PRIVATE TSFP_PC_DISPLAY)
 endif()
