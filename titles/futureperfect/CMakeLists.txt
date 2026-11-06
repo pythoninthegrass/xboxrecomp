@@ -115,6 +115,12 @@ if(WIN32 AND TSFP_GAME_ICON_RESOURCE)
     target_sources(${PROJECT_NAME} PRIVATE "${TSFP_GAME_ICON_RESOURCE}")
 endif()
 
+# Merge DPI awareness with the linker's UAC and common-controls manifest.
+# Attach it to the game only; macOS keeps its existing native window policy.
+if(WIN32 AND TSFP_GAME_MANIFEST)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_GAME_MANIFEST}")
+endif()
+
 # Link against the xboxrecomp umbrella target (all 6 runtime libraries)
 target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp)
 
