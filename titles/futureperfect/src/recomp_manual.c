@@ -292,6 +292,16 @@ void sub_000A0130(void)
 #endif
 }
 
+extern void sub_000C2090_gen(void);
+void sub_000C2090(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_drop_replay(sub_000C2090_gen);
+#else
+    sub_000C2090_gen();
+#endif
+}
+
 extern void sub_0035BD70_gen(void);
 void sub_0035BD70(void)
 {
