@@ -22,6 +22,9 @@
 #include <stdint.h>
 #include <stdlib.h>   /* getenv, exit: the spin verdict below */
 #include <string.h>   /* strcmp: RECOMP_ICALL_FATAL */
+#ifdef TSFP_PC_CONTROLS
+#include "pc_controls.h"
+#endif
 
 /* One diagnostic report, one piece.
  *
@@ -149,6 +152,17 @@ void sub_000245C0(void)
 }
 
 /* ── Manual function overrides ─────────────────────────────── */
+/* 0x000D2B80 builds player-relative movement vectors from camera yaw.
+ * Apply raw mouse counts just before those vectors, after the game's own
+ * controller look step. Keep the generated original body and its ABI. */
+extern void sub_000D2B80_gen(void);
+void sub_000D2B80(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_controls_apply_mouse(FP_MEM32(0x007B0C7Cu), FP_MEM32(0x007B0CC0u), g_xbox_mem_offset);
+#endif
+    sub_000D2B80_gen();
+}
 
 /*
  * Return a function pointer to override the given Xbox VA, or NULL

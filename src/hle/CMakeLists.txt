@@ -48,6 +48,9 @@ target_link_libraries(xbox_hle PUBLIC xbox_kernel)
 # Host device choice and per-control bindings (src/input/input_bindings.c),
 # shared with the USB gamepad so one config file covers both input paths.
 target_link_libraries(xbox_hle PUBLIC xbox_input)
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_compile_definitions(xbox_hle PRIVATE TSFP_PC_CONTROLS)
+endif()
 if(WIN32)
     target_link_libraries(xbox_hle PRIVATE xaudio2 ole32 xinput9_1_0)
     # The D3D8 replacements drive the host renderer in src/d3d, and open a

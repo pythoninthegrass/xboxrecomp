@@ -19,6 +19,9 @@
  */
 #include "input_bindings.h"
 #include "recomp_pad.h"
+#ifdef TSFP_PC_CONTROLS
+#include "pc_controls.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,6 +163,10 @@ static Controller g_ctl[PORTS];
 static char g_path[520];
 static int g_have_path;
 static int g_ready;
+#ifdef TSFP_PC_CONTROLS
+static SRWLOCK g_pc_bindings_lock = SRWLOCK_INIT;
+static INIT_ONCE g_pc_bindings_once = INIT_ONCE_STATIC_INIT;
+#endif
 
 /* ---- names -> codes ---------------------------------------------------- */
 
@@ -167,6 +174,9 @@ static int g_ready;
  * their own code on Windows and are handled without a table entry; "key:#13"
  * passes a raw decimal code through for anything named nowhere. */
 static const struct { const char *name; int vk; } KEYS[] = {
+    { "LBUTTON", 0x01 }, { "RBUTTON", 0x02 }, { "MBUTTON", 0x04 },
+    { "XBUTTON1", 0x05 }, { "XBUTTON2", 0x06 },
+    { "F23", 0x86 }, { "F24", 0x87 },
     { "UP", 0x26 }, { "DOWN", 0x28 }, { "LEFT", 0x25 }, { "RIGHT", 0x27 },
     { "RETURN", 0x0D }, { "ENTER", 0x0D }, { "BACK", 0x08 },
     { "BACKSPACE", 0x08 }, { "SPACE", 0x20 }, { "TAB", 0x09 },
@@ -653,7 +663,7 @@ static void describe(Controller *c, char *out, size_t n)
         snprintf(out, n, "nothing");
 }
 
-void recomp_bindings_init(void)
+static void bindings_load(void)
 {
     char *text;
     int i;
@@ -683,6 +693,24 @@ void recomp_bindings_init(void)
     fflush(stderr);
 }
 
+#ifdef TSFP_PC_CONTROLS
+static BOOL CALLBACK bindings_load_once(PINIT_ONCE once, PVOID parameter, PVOID *context)
+{
+    (void)once; (void)parameter; (void)context;
+    bindings_load();
+    return TRUE;
+}
+#endif
+
+void recomp_bindings_init(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    InitOnceExecuteOnce(&g_pc_bindings_once, bindings_load_once, NULL, NULL);
+#else
+    bindings_load();
+#endif
+}
+
 const char *recomp_bindings_source_path(void)
 {
     recomp_bindings_init();
@@ -694,6 +722,10 @@ const char *recomp_bindings_device_name(unsigned port)
     recomp_bindings_init();
     return port < PORTS ? g_ctl[port].label : "nothing";
 }
+
+#ifdef TSFP_PC_CONTROLS
+#include "pc_bindings.inc"
+#endif
 
 /* ---- reading the host -------------------------------------------------- */
 
@@ -747,6 +779,9 @@ static int key_down(KeyCache *kc, int vk)
     if (vk <= 0 || vk > 255)
         return 0;
 #if defined(_WIN32)
+#ifdef TSFP_PC_CONTROLS
+    return pc_controls_key_down(vk);
+#endif
     if (!g_key_state[vk])
         g_key_state[vk] = (GetAsyncKeyState(vk) & 0x8000) ? 2 : 1;
     return g_key_state[vk] == 2;
@@ -839,6 +874,9 @@ static void say_first_press(unsigned port, const char *control)
 int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
 {
     Controller *c;
+#ifdef TSFP_PC_CONTROLS
+    Controller snapshot;
+#endif
     KeyCache kc;
     RecompPadState pad;
     int have_pad = 0, i;
@@ -851,6 +889,12 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     if (port >= PORTS)
         return 0;
     c = &g_ctl[port];
+#ifdef TSFP_PC_CONTROLS
+    AcquireSRWLockShared(&g_pc_bindings_lock);
+    snapshot = *c;
+    ReleaseSRWLockShared(&g_pc_bindings_lock);
+    c = &snapshot;
+#endif
     if (c->device == DEV_NONE)
         return 0;
     memset(&kc, 0, sizeof kc);
@@ -897,6 +941,9 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
         default:      out->sThumbRY = (SHORT)v; break;
         }
     }
+#ifdef TSFP_PC_CONTROLS
+    pc_input_normalize_movement(&out->sThumbLX, &out->sThumbLY);
+#endif
     return 1;
 }
 

@@ -14,6 +14,16 @@ add_library(xbox_input STATIC
 target_include_directories(xbox_input PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(xbox_input PUBLIC platform SDL3::SDL3)
+if(WIN32 AND TSFP_PC_CONTROLS_DIR)
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_controls.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/pc_input.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/pc_settings.c")
+    target_include_directories(xbox_input PUBLIC "${TSFP_PC_CONTROLS_DIR}")
+    # Keep the define private: adding it to generated game sources would
+    # recompile millions of unchanged lines for a host-input change.
+    target_compile_definitions(xbox_input PRIVATE TSFP_PC_CONTROLS)
+    target_link_libraries(xbox_input PUBLIC comctl32)
+endif()
 if(WIN32)
     target_link_libraries(xbox_input PUBLIC xinput)
 endif()

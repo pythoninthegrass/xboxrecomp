@@ -155,3 +155,11 @@ endif()
 #     ENABLE_ICALL_TRACE=1
 #     VERBOSE_KERNEL_LOG=1
 # )
+
+if(TSFP_PC_CONTROLS_DIR)
+    set_source_files_properties(src/recomp_manual.c PROPERTIES COMPILE_DEFINITIONS TSFP_PC_CONTROLS)
+    add_executable(tsfp_pc_controls_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_controls.c")
+    target_link_libraries(tsfp_pc_controls_test PRIVATE xbox_input)
+    add_executable(tsfp_pc_settings_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_settings.c")
+    target_link_libraries(tsfp_pc_settings_test PRIVATE xbox_input)
+endif()

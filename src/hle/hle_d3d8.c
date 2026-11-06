@@ -67,6 +67,9 @@
 #include <string.h>
 #include "hle.h"
 #include "recomp_config.h"
+#ifdef TSFP_PC_CONTROLS
+#include "pc_controls.h"
+#endif
 
 #ifdef _WIN32
 #include "d3d8_xbox.h"
@@ -252,6 +255,10 @@ static int  g_shadow_fullscreen;
 
 static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+#ifdef TSFP_PC_CONTROLS
+    LRESULT pc_result;
+    if (pc_controls_message(hwnd, msg, wp, lp, &pc_result)) return pc_result;
+#endif
     switch (msg) {
     case WM_SYSKEYDOWN:
         /* Alt+Enter, the usual Windows key for it: fullscreen and back. */
@@ -372,6 +379,9 @@ static DWORD WINAPI shadow_window_thread(LPVOID param)
                               CW_USEDEFAULT, CW_USEDEFAULT,
                               r.right - r.left, r.bottom - r.top,
                               NULL, NULL, wc.hInstance, NULL);
+#ifdef TSFP_PC_CONTROLS
+    if (req->hwnd) pc_controls_attach(req->hwnd);
+#endif
     /* RECOMP_WINDOW_BACKGROUND=1: open behind the other windows and without
      * the focus, for a run a script drives while someone works at the same
      * desk. The game neither needs nor notices the focus: a script is its
