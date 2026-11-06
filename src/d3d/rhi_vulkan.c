@@ -1174,6 +1174,9 @@ static int create_device(void)
     f2.features.depthClamp = V.feat_depth_clamp = have.features.depthClamp;
     f2.features.depthBiasClamp = V.feat_bias_clamp = have.features.depthBiasClamp;
     f2.features.samplerAnisotropy = V.feat_aniso = have.features.samplerAnisotropy;
+    /* Sample-index shaders require this device feature even without forcing
+     * sampleShadingEnable on every multisampled pipeline. */
+    f2.features.sampleRateShading = have.features.sampleRateShading;
     f12.timelineSemaphore = VK_TRUE;
     f12.scalarBlockLayout = have12.scalarBlockLayout;
     f12.samplerMirrorClampToEdge = have12.samplerMirrorClampToEdge;
@@ -3564,6 +3567,27 @@ static void v_draw_indexed(uint32_t n, uint32_t first, int32_t base)
     vkCmdDrawIndexed(cmd(), n, 1, first, base, 0);
 }
 
+static int v_image_resolve(RhiImage *source,RhiImage *destination)
+{
+    VkImageResolve region;VkImage src,dst;
+    VkImageLayout old_src=source->layout,old_dst=destination->layout;
+    if(source->swapchain || destination->swapchain || is_depth_format(image_format(source)))return -1;
+    src=image_handle(source);dst=image_handle(destination);
+    if(!src || !dst)return -1;
+    end_rendering();
+    to_layout(source,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    to_layout(destination,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    memset(&region,0,sizeof region);
+    region.srcSubresource.aspectMask=region.dstSubresource.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcSubresource.layerCount=region.dstSubresource.layerCount=1;
+    region.extent.width=source->desc.width;region.extent.height=source->desc.height;region.extent.depth=1;
+    vkCmdResolveImage(cmd(),src,source->layout,dst,destination->layout,1,&region);
+    full_barrier(cmd());
+    to_layout(source,old_src==VK_IMAGE_LAYOUT_UNDEFINED?source->steady:old_src);
+    to_layout(destination,old_dst==VK_IMAGE_LAYOUT_UNDEFINED?destination->steady:old_dst);
+    return 0;
+}
+
 const RhiBackend rhi_vulkan_backend = {
     "vulkan",
     v_device_create, v_device_destroy, v_device_ready, v_swapchain_view, v_swapchain_resize,
@@ -3578,7 +3602,7 @@ const RhiBackend rhi_vulkan_backend = {
     v_set_render_target, v_output_save, v_output_restore, v_output_color_is, v_set_viewports, v_set_scissor,
     v_set_topology, v_set_vertex_layout, v_set_vertex_buffer, v_set_index_buffer, v_set_shader,
     v_set_uniform_buffers, v_set_textures, v_set_samplers, v_set_blend_state, v_set_depth_state,
-    v_set_raster_state, v_draw, v_draw_indexed, v_clear_color, v_clear_depth,
+    v_set_raster_state, v_draw, v_draw_indexed, v_clear_color, v_clear_depth, v_image_resolve,
 };
 
 #endif /* RHI_HAVE_VULKAN */

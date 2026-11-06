@@ -1309,6 +1309,14 @@ static void d_clear_depth(RhiView *v, uint32_t flags, float z, uint8_t s)
         ID3D11DeviceContext_ClearDepthStencilView(g_ctx, (ID3D11DepthStencilView *)v->v, flags, z, s);
 }
 
+static int d_image_resolve(RhiImage *source,RhiImage *destination)
+{
+    if(!source->res || !destination->res)return -1;
+    ID3D11DeviceContext_ResolveSubresource(g_ctx,destination->res,0,source->res,0,
+                                          (DXGI_FORMAT)source->desc.format);
+    return 0;
+}
+
 const RhiBackend rhi_d3d11_backend = {
     "d3d11",
     d_device_create, d_device_destroy, d_device_ready, d_swapchain_view, d_swapchain_resize,
@@ -1323,7 +1331,7 @@ const RhiBackend rhi_d3d11_backend = {
     d_set_render_target, d_output_save, d_output_restore, d_output_color_is, d_set_viewports, d_set_scissor,
     d_set_topology, d_set_vertex_layout, d_set_vertex_buffer, d_set_index_buffer, d_set_shader,
     d_set_uniform_buffers, d_set_textures, d_set_samplers, d_set_blend_state, d_set_depth_state,
-    d_set_raster_state, d_draw, d_draw_indexed, d_clear_color, d_clear_depth,
+    d_set_raster_state, d_draw, d_draw_indexed, d_clear_color, d_clear_depth, d_image_resolve,
 };
 
 #endif /* _WIN32 */

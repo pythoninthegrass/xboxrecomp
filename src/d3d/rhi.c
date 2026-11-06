@@ -206,6 +206,20 @@ int rhi_image_readback(RhiImage *img, uint32_t sub, void *dst, uint32_t dst_pitc
     return g_rhi->image_readback(img, sub, dst, dst_pitch);
 }
 
+int rhi_image_resolve(RhiImage *source, RhiImage *destination)
+{
+    RhiImageDesc a,b;RhiOutputState saved;int result;
+    if(!source || !destination || source==destination || !g_rhi->image_resolve)return -1;
+    rhi_image_get_desc(source,&a);rhi_image_get_desc(destination,&b);
+    if(a.type!=RHI_IMAGE_2D || b.type!=RHI_IMAGE_2D || a.depth!=1 || b.depth!=1 ||
+       a.mip_levels!=1 || b.mip_levels!=1 || a.samples<=1 || b.samples>1 ||
+       a.width!=b.width || a.height!=b.height || a.format!=b.format ||
+       (a.bind & RHI_BIND_DEPTH) || (b.bind & RHI_BIND_DEPTH))return -1;
+    rhi_output_save(&saved);rhi_set_render_target(NULL,NULL);
+    result=g_rhi->image_resolve(source,destination);
+    rhi_output_restore(&saved);return result;
+}
+
 RhiView  *rhi_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *d) { return g_rhi->view_create(img, kind, d); }
 void      rhi_view_destroy(RhiView *v)       { if (v) g_rhi->view_destroy(v); }
 RhiImage *rhi_view_image(const RhiView *v)   { return v ? g_rhi->view_image(v) : NULL; }

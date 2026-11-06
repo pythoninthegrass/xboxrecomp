@@ -396,6 +396,11 @@ void       rhi_image_update(RhiImage *img, uint32_t subresource, const RhiBox *b
 int        rhi_image_readback(RhiImage *img, uint32_t subresource,
                               void *dst, uint32_t dst_pitch);
 
+/* Resolve a complete multisampled 2D color image to a single-sample image
+ * of identical size/format. No CPU readback. Returns 0 on success, -1 for an
+ * unsupported pair; restores output bindings. Arrays/depth are not supported. */
+int rhi_image_resolve(RhiImage *source, RhiImage *destination);
+
 /* desc may be NULL: the whole image, viewed as the image says. */
 RhiView   *rhi_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *desc);
 void       rhi_view_destroy(RhiView *v);
