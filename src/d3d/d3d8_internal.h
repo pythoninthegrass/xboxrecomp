@@ -184,6 +184,7 @@ typedef struct D3D8Texture {
 } D3D8Texture;
 
 typedef struct D3D8Surface {
+    /* Keep COM interface first; companion ownership is appended below. */
     IDirect3DSurface8       iface;
     LONG                    ref_count;
     RhiImage               *image;      /* held; often a parent texture's */
@@ -221,7 +222,12 @@ typedef struct D3D8Surface {
     const BYTE             *palette_sys;  /* raw level data (1 byte/texel) */
     UINT                    palette_pitch;
     UINT                    palette_index; /* stage palette baked into it */
+    struct TsfpMsaaColorSurface *msaa_color;
+    BOOL msaa_active;
 } D3D8Surface;
+
+RhiView *d3d8_surface_msaa_prepare(D3D8Surface *surface,unsigned samples);
+int d3d8_surface_msaa_resolve(D3D8Surface *surface);
 
 /* 2D texture. See tex_* implementation.
  *

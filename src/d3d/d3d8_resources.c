@@ -7,6 +7,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "graphics/msaa_color_surface.h"
 #include "d3d8_swizzle.h"
 #ifdef TSFP_TEXTURE_PACK
 #include "texture_pack.h"
@@ -1163,6 +1164,30 @@ static ULONG __stdcall sf_AddRef(IDirect3DSurface8 *self)
     return (ULONG)InterlockedIncrement(&sf_from_iface(self)->ref_count);
 }
 
+/* The device resolves the previous attachment before preparing the next one.
+ * Reseeding on bind preserves CPU/copy writes and aliases of the same guest
+ * texture. The normal guest pipeline is rebound after this copy pass. */
+int d3d8_surface_msaa_resolve(D3D8Surface *sf)
+{
+    return !sf || !sf->msaa_active || !sf->msaa_color || !sf->msaa_color->image || tsfp_msaa_color_resolve(sf->msaa_color);
+}
+RhiView *d3d8_surface_msaa_prepare(D3D8Surface *sf,unsigned samples)
+{
+    if(!sf || !sf->rtv || sf->locked)return NULL;
+    if(!d3d8_surface_msaa_resolve(sf))return NULL;
+    if(samples<=1){sf->msaa_active=FALSE;return sf->rtv;}
+    if(!sf->msaa_color){
+        sf->msaa_color=calloc(1,sizeof *sf->msaa_color);
+        if(!sf->msaa_color)return NULL;
+    }
+    if(sf->msaa_color->samples!=samples){
+        if(!d3d8_surface_msaa_resolve(sf) && sf->msaa_color->image)return NULL;
+        if(!tsfp_msaa_color_create(sf->msaa_color,sf->image,sf->subresource,samples))return NULL;
+    }else if(!tsfp_msaa_color_seed(sf->msaa_color))return NULL;
+    sf->msaa_active=TRUE;
+    return sf->msaa_color->rtv;
+}
+
 static ULONG __stdcall sf_Release(IDirect3DSurface8 *self)
 {
     D3D8Surface *sf = sf_from_iface(self);
@@ -1171,6 +1196,10 @@ static ULONG __stdcall sf_Release(IDirect3DSurface8 *self)
         if (sf->locked && !sf->palettized)
             free(sf->locked_bits);
         sf->locked = FALSE;
+        if(sf->msaa_color){
+            d3d8_surface_msaa_resolve(sf);
+            tsfp_msaa_color_destroy(sf->msaa_color);free(sf->msaa_color);
+        }
         rhi_view_destroy(sf->rtv);
         rhi_view_destroy(sf->dsv);
         rhi_image_destroy(sf->image);
