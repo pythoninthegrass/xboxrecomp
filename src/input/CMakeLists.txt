@@ -61,10 +61,11 @@ if(APPLE AND TSFP_NATIVE_DIR)
                                       "${TSFP_NATIVE_DIR}/../pc_input.c"
                                       "${TSFP_NATIVE_DIR}/config_files.c"
                                       "${TSFP_NATIVE_DIR}/settings_macos.m"
-                                      "${TSFP_NATIVE_DIR}/../pc_prompts.c")
+                                      "${TSFP_NATIVE_DIR}/../pc_prompts.c"
+                                      "${TSFP_NATIVE_DIR}/../pc_debug.c")
     enable_language(OBJC)
     set_source_files_properties("${TSFP_NATIVE_DIR}/settings_macos.m" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    target_link_libraries(xbox_input PUBLIC "-framework Cocoa")
+    target_link_libraries(xbox_input PUBLIC "-framework Cocoa" "-framework CoreText")
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/..")
     target_include_directories(xbox_input PRIVATE "${TSFP_NATIVE_DIR}")
     target_compile_definitions(xbox_input PRIVATE TSFP_NATIVE_INPUT)
