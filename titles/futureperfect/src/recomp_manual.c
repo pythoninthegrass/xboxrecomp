@@ -272,6 +272,26 @@ void sub_000D4BE0(void)
 #endif
 }
 
+extern void sub_001BA2B0_gen(void);
+void sub_001BA2B0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_loadout_ammo(sub_001BA2B0_gen);
+#else
+    sub_001BA2B0_gen();
+#endif
+}
+
+extern void sub_001BFCA0_gen(void);
+void sub_001BFCA0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_loadout_grant(sub_001BFCA0_gen);
+#else
+    sub_001BFCA0_gen();
+#endif
+}
+
 extern void sub_0009A420_gen(void);
 void sub_0009A420(void)
 {
