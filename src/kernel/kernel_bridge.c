@@ -1632,9 +1632,9 @@ static void bridge_PsTerminateSystemThread(void)
         /* The normal exit for a worker, and therefore the one that has to
          * return the stack -- ExitThread never comes back to bridge_thread_main
          * to do it. */
+        bridge_object_thread_exit();
         xbox_FreeThreadStack(g_thread_stack_top);
         g_thread_stack_top = 0;
-        bridge_object_thread_exit();
         ExitThread(exit_status);
     }
 }
@@ -7640,10 +7640,9 @@ static void kernel_thunk_dispatch(void)
          * to enumerate which ordinals block. It also costs one uncontended
          * acquire per kernel call, which is the price of not having to be
          * right about that list. */
-        tsfp_guest_object_scope _object_scope;
-        if(!tsfp_guest_scope_enter(&bridge_object_scopes,&_object_scope,&bridge_objects)) abort();
-        int _guest_held = xbox_GuestLockDrop();
-        xbox_GuestLiftedLeave();
+        tsfp_guest_execution_scope _execution_scope;
+        if(!tsfp_guest_execution_scope_enter(&bridge_object_scopes,&_execution_scope,
+            &bridge_objects,&tsfp_kernel_execution_ops)) abort();
         if (xbox_FpsWaitProfileOn()) {
             /* RECOMP_WAIT_PROFILE: how long this call held the thread. */
             LARGE_INTEGER _t0, _t1;
@@ -7660,9 +7659,7 @@ static void kernel_thunk_dispatch(void)
          * the lock on -- which is meant to make overlap impossible -- took
          * the reported overlaps from 1,625 to 8,265,550. The meter has to
          * read zero under the lock or it is not measuring what it claims. */
-        if(!tsfp_guest_scope_leave(&bridge_object_scopes,&_object_scope)) abort();
-        xbox_GuestLockRestore(_guest_held);
-        xbox_GuestLiftedEnter();
+        if(!tsfp_guest_execution_scope_leave(&bridge_object_scopes,&_execution_scope)) abort();
         /* Guest callbacks run only after lock/lifted-state restoration. */
         bridge_device_pump();
         if (g_esp != _esp_before) {

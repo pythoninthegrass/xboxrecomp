@@ -578,7 +578,7 @@ static const struct { int divisor, strict; const char *name; } g_gate_modes[] = 
 static CRITICAL_SECTION g_guest_cs;
 static int g_guest_cs_ready;
 static int g_guest_lock_on = -1;
-static RECOMP_TLS int g_guest_depth;
+/* Lock/active nesting is owned by guest_execution_state.c. */
 
 /* How often two guest threads are inside lifted code at the same time.
  *
@@ -680,13 +680,6 @@ void xbox_DispatchReleaseOthers(void)
         return;
     g_park_owner = 0;
     SetEvent(g_park_free);
-}
-
-/* A guest thread leaving lifted code for good (its thread function returned). */
-void xbox_GuestLiftedExit(void)
-{
-    if (park_on())
-        InterlockedDecrement(&g_park_running);
 }
 
 static void park_enter(void)
@@ -819,42 +812,7 @@ static DWORD_PTR guest_cpu_mask(void)
 
 #endif /* _WIN32: CPU affinity is optional, not a macOS correctness primitive. */
 
-void xbox_GuestLiftedEnter(void)
-{
-    LONG n;
-#ifdef _WIN32
-    {
-        static RECOMP_TLS int pinned;
-        if (!pinned) {
-            DWORD_PTR m = guest_cpu_mask();
-            pinned = 1;
-            if (m)
-                SetThreadAffinityMask(GetCurrentThread(), m);
-        }
-    }
-#endif
-    park_enter();
-    if (!xbox_GuestConcurrencyOn())
-        return;
-    n = InterlockedIncrement(&g_lifted_now);
-    if (n > 1)
-        InterlockedIncrement(&g_lifted_overlaps);
-    for (;;) {
-        LONG peak = g_lifted_peak;
-        if (n <= peak ||
-            InterlockedCompareExchange(&g_lifted_peak, n, peak) == peak)
-            break;
-    }
-}
 
-void xbox_GuestLiftedLeave(void)
-{
-    if (park_on())
-        InterlockedDecrement(&g_park_running);
-    if (!xbox_GuestConcurrencyOn())
-        return;
-    InterlockedDecrement(&g_lifted_now);
-}
 
 void xbox_GuestConcurrencyReport(void)
 {
@@ -886,46 +844,7 @@ void xbox_GuestLockInit(void)
     }
 }
 
-void xbox_GuestLockEnter(void)
-{
-    if (!xbox_GuestLockOn() || !g_guest_cs_ready)
-        return;
-    EnterCriticalSection(&g_guest_cs);
-    g_guest_depth++;
-}
-
-void xbox_GuestLockLeave(void)
-{
-    if (!xbox_GuestLockOn() || !g_guest_cs_ready || g_guest_depth <= 0)
-        return;
-    g_guest_depth--;
-    LeaveCriticalSection(&g_guest_cs);
-}
-
-/* Release every level this thread holds, so it cannot block while holding
- * the lock, and report how many to take back afterwards. */
-int xbox_GuestLockDrop(void)
-{
-    int held = 0;
-    if (!xbox_GuestLockOn() || !g_guest_cs_ready)
-        return 0;
-    while (g_guest_depth > 0) {
-        g_guest_depth--;
-        LeaveCriticalSection(&g_guest_cs);
-        held++;
-    }
-    return held;
-}
-
-void xbox_GuestLockRestore(int held)
-{
-    if (!xbox_GuestLockOn() || !g_guest_cs_ready)
-        return;
-    while (held-- > 0) {
-        EnterCriticalSection(&g_guest_cs);
-        g_guest_depth++;
-    }
-}
+#include "guest_kernel_execution.inc"
 
 int xbox_EnvSwitch(const char *name, int default_on)
 {
