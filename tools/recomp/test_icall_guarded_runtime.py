@@ -56,6 +56,18 @@ def _macro(name):
     raise AssertionError(f"{name} not defined in {HEADER}")
 
 
+def _dispatch():
+    # The public macro now uses shared project dispatch helpers. Compile the
+    # complete implementation, preserving the existing guarded-call oracle.
+    text = open(HEADER, encoding="utf-8").read()
+    blocks = []
+    for kind in ("support", "wrappers"):
+        start = text.index("/* TSFP indirect dispatch " + kind + " begin.")
+        end = text.index("/* TSFP indirect dispatch " + kind + " end. */", start)
+        blocks.append(text[start:end])
+    return "\n".join(blocks)
+
+
 def _lifted_site():
     lifter = Lifter(func_db={A: {"name": "sub_A"}, B: {"name": "sub_B"},
                              C: {"name": "sub_C"}})
@@ -143,7 +155,7 @@ def test_guarded_site_matches_generic_dispatch_for_every_target():
     if not _cc():
         pytest.skip("no C compiler on PATH")
     src = (HARNESS.replace("IS_CODE", _macro("RECOMP_ICALL_IS_CODE"))
-                  .replace("SAFE_AT", _macro("RECOMP_ICALL_SAFE_AT"))
+                  .replace("SAFE_AT", _dispatch())
                   .replace("LIFTED", _lifted_site()))
     with tempfile.TemporaryDirectory() as tmp:
         p = os.path.join(tmp, "h.c")
