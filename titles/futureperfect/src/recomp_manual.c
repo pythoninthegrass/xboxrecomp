@@ -422,6 +422,16 @@ void sub_00041DC0(void)
 #endif
 }
 /* US HUD groups: preserve proportions and anchor whole widgets. */
+extern void sub_0013FC50_gen(void);
+void sub_0013FC50(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_0013FC50_gen,0x0013FC50u);
+#else
+    sub_0013FC50_gen();
+#endif
+}
+
 extern void sub_001334D0_gen(void);
 void sub_001334D0(void)
 {
