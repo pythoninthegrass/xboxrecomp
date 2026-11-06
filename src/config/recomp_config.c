@@ -8,6 +8,9 @@
  * build from running.
  */
 #include "recomp_config.h"
+#define PC_SMAA_SETTINGS_IMPLEMENTATION
+#include "graphics/pc_smaa_settings.h"
+#undef PC_SMAA_SETTINGS_IMPLEMENTATION
 #include "pc_frame_rate_settings.h"
 #include "pc_frame_rate_live.inc"
 
@@ -240,6 +243,8 @@ int recomp_settings_read(const char *path, RecompSettings *s)
             snprintf(s->widescreen_2d, sizeof s->widescreen_2d, "%s", v);
         if ((v = from_table("anisotropy")) != NULL)
             s->anisotropy = clamp_int(atoi(v), 1, 16);
+        if ((v = from_table("smaa")) != NULL)
+            s->smaa = !off_word(v);
         if ((v = from_table("fps_overlay")) != NULL)
             s->fps_overlay = !off_word(v);
         if ((v = from_table("fullscreen")) != NULL)
@@ -332,6 +337,8 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "# Sharpen textures seen at a glancing angle, 1 to 16. The flat layer\n"
         "# is left alone, which wants no filtering.              [RECOMP_ANISO]\n"
         "anisotropy = %d\n"
+        "\n# SMAA 1x High anti-aliasing, 0 off / 1 on. [TSFP_SMAA]\n"
+        "smaa = %d\n"
         "\n"
         "# Fixed 60 FPS pacing.\n"
         "frame_cap = %s\n"
@@ -357,7 +364,7 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "#                                                   [RECOMP_GAME_DIR]\n",
         s->resolution_scale, s->widescreen, s->hor_plus, s->hor_plus_register,
         s->widescreen_2d[0] ? s->widescreen_2d : "auto",
-        s->anisotropy, "60", s->fps_overlay,
+        s->anisotropy, s->smaa, "60", s->fps_overlay,
         s->fullscreen, s->vrr, 1, 0, 0);
 
     if (s->game_dir[0])

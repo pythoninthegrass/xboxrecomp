@@ -79,6 +79,7 @@ typedef struct RecompSettings {
     int  hor_plus_register;     /* per title; 60 for TimeSplitters 2 */
     char widescreen_2d[16];     /* "auto" or "centre": where 2D goes in widescreen */
     int  anisotropy;            /* 1..16 */
+    int  smaa;                  /* optional SMAA 1x High, common RHI */
     char frame_cap[16];         /* "adaptive", "60", "30", "0" */
     int  fps_overlay;           /* 0 or 1 */
     int  fullscreen;            /* 0 or 1: borderless, on the window's monitor */

@@ -378,7 +378,9 @@ static int create(UINT taps)
     return 1;
 }
 
-HRESULT d3d8_display_resolve(RhiView *scene, UINT scene_w, UINT scene_h,
+#include "graphics/pc_smaa.inc"
+
+static HRESULT display_resolve_original(RhiView *scene, UINT scene_w, UINT scene_h,
                              RhiView *out, D3D8DisplayFit fit)
 {
     RhiOutputState saved;
@@ -452,8 +454,24 @@ HRESULT d3d8_display_resolve(RhiView *scene, UINT scene_w, UINT scene_h,
     return S_OK;
 }
 
+HRESULT d3d8_display_resolve(RhiView *scene, UINT scene_w, UINT scene_h,
+                             RhiView *out, D3D8DisplayFit fit)
+{
+    if (!scene || !out || !scene_w || !scene_h || !fit.w || !fit.h)
+        return E_INVALIDARG;
+    if (pc_smaa_prepare(fit.w, fit.h)) {
+        D3D8DisplayFit local = { 0, 0, fit.w, fit.h };
+        HRESULT hr = display_resolve_original(scene, scene_w, scene_h, smaa.color.rtv, local);
+        if (FAILED(hr)) return hr;
+        pc_smaa_apply(out, fit);
+        return S_OK;
+    }
+    return display_resolve_original(scene, scene_w, scene_h, out, fit);
+}
+
 void d3d8_display_shutdown(void)
 {
+    pc_smaa_shutdown();
     rhi_shader_destroy(g.vs);            g.vs = NULL;
     rhi_shader_destroy(g.ps);            g.ps = NULL;
     rhi_buffer_destroy(g.cb);            g.cb = NULL;
