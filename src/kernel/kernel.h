@@ -592,8 +592,6 @@ VOID    __stdcall xbox_RtlInitializeCriticalSection(PRTL_CRITICAL_SECTION Critic
 
 ULONG   __stdcall xbox_RtlNtStatusToDosError(NTSTATUS Status);
 
-BOOLEAN __stdcall xbox_RtlTimeFieldsToTime(PXBOX_TIME_FIELDS TimeFields, PLARGE_INTEGER Time);
-VOID    __stdcall xbox_RtlTimeToTimeFields(PLARGE_INTEGER Time, PXBOX_TIME_FIELDS TimeFields);
 
 VOID    __stdcall xbox_RtlUnwind(PVOID TargetFrame, PVOID TargetIp, PVOID ExceptionRecord, PVOID ReturnValue);
 VOID    __stdcall xbox_RtlRaiseException(PVOID ExceptionRecord);

@@ -591,54 +591,6 @@ ULONG __stdcall xbox_RtlNtStatusToDosError(NTSTATUS Status)
 }
 
 /* ============================================================================
- * Time Conversion
- * ============================================================================ */
-
-BOOLEAN __stdcall xbox_RtlTimeFieldsToTime(PXBOX_TIME_FIELDS TimeFields, PLARGE_INTEGER Time)
-{
-    SYSTEMTIME st;
-    FILETIME ft;
-
-    st.wYear         = (WORD)TimeFields->Year;
-    st.wMonth        = (WORD)TimeFields->Month;
-    st.wDayOfWeek    = (WORD)TimeFields->Weekday;
-    st.wDay          = (WORD)TimeFields->Day;
-    st.wHour         = (WORD)TimeFields->Hour;
-    st.wMinute       = (WORD)TimeFields->Minute;
-    st.wSecond       = (WORD)TimeFields->Second;
-    st.wMilliseconds = (WORD)TimeFields->Milliseconds;
-
-    if (!SystemTimeToFileTime(&st, &ft))
-        return FALSE;
-
-    Time->LowPart  = ft.dwLowDateTime;
-    Time->HighPart = ft.dwHighDateTime;
-    return TRUE;
-}
-
-VOID __stdcall xbox_RtlTimeToTimeFields(PLARGE_INTEGER Time, PXBOX_TIME_FIELDS TimeFields)
-{
-    FILETIME ft;
-    SYSTEMTIME st;
-
-    ft.dwLowDateTime  = Time->LowPart;
-    ft.dwHighDateTime = Time->HighPart;
-
-    if (FileTimeToSystemTime(&ft, &st)) {
-        TimeFields->Year         = (SHORT)st.wYear;
-        TimeFields->Month        = (SHORT)st.wMonth;
-        TimeFields->Day          = (SHORT)st.wDay;
-        TimeFields->Hour         = (SHORT)st.wHour;
-        TimeFields->Minute       = (SHORT)st.wMinute;
-        TimeFields->Second       = (SHORT)st.wSecond;
-        TimeFields->Milliseconds = (SHORT)st.wMilliseconds;
-        TimeFields->Weekday      = (SHORT)st.wDayOfWeek;
-    } else {
-        memset(TimeFields, 0, sizeof(XBOX_TIME_FIELDS));
-    }
-}
-
-/* ============================================================================
  * Exception Handling
  * ============================================================================ */
 

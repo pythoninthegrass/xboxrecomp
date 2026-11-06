@@ -1630,37 +1630,6 @@ WCHAR *xbox_wcscpy(WCHAR *dst, const WCHAR *src)
 /* Time conversion                                                        */
 /* ===================================================================== */
 
-BOOL SystemTimeToFileTime(const SYSTEMTIME *st, LPFILETIME ft)
-{
-    struct tm tm;
-    memset(&tm, 0, sizeof(tm));
-    tm.tm_year = st->wYear - 1900;
-    tm.tm_mon  = st->wMonth - 1;
-    tm.tm_mday = st->wDay;
-    tm.tm_hour = st->wHour;
-    tm.tm_min  = st->wMinute;
-    tm.tm_sec  = st->wSecond;
-    time_t t = timegm(&tm);
-    ULONGLONG ticks = FILETIME_EPOCH_DIFF
-                    + (ULONGLONG)t * 10000000ULL
-                    + (ULONGLONG)st->wMilliseconds * 10000ULL;
-    ft->dwLowDateTime  = (DWORD)(ticks & 0xFFFFFFFFULL);
-    ft->dwHighDateTime = (DWORD)(ticks >> 32);
-    return TRUE;
-}
-
-BOOL FileTimeToSystemTime(const FILETIME *ft, LPSYSTEMTIME st)
-{
-    ULONGLONG ticks = ((ULONGLONG)ft->dwHighDateTime << 32) | ft->dwLowDateTime;
-    if (ticks < FILETIME_EPOCH_DIFF) { memset(st, 0, sizeof(*st)); return FALSE; }
-    ULONGLONG since = ticks - FILETIME_EPOCH_DIFF;
-    time_t t = (time_t)(since / 10000000ULL);
-    struct tm tm;
-    gmtime_r(&t, &tm);
-    fill_systemtime(st, &tm, (long)((since % 10000000ULL) * 100ULL));
-    return TRUE;
-}
-
 /* ===================================================================== */
 /* Exception handling (compile-shim -- SEH not yet emulated on Linux)     */
 /* ===================================================================== */

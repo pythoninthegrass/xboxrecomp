@@ -4379,12 +4379,7 @@ static void bridge_RtlInitUnicodeString(void)
 /* ── RtlTimeFieldsToTime (ordinal 304, 2 args)
  * Counterpart of the routed RtlTimeToTimeFields: reads a XBOX_TIME_FIELDS and
  * writes a LARGE_INTEGER, both at caller-supplied guest addresses. */
-static void bridge_RtlTimeFieldsToTime(void)
-{
-    g_eax = (uint32_t)xbox_RtlTimeFieldsToTime(
-        (PXBOX_TIME_FIELDS)XBOX_TO_NATIVE(STACK_ARG(0)),
-        (PLARGE_INTEGER)XBOX_TO_NATIVE(STACK_ARG(1)));
-}
+#include "guest_kernel_time.inc"
 
 /* ── PhyGetLinkState (ordinal 252, 1 arg) */
 static void bridge_PhyGetLinkState(void)
@@ -4400,13 +4395,7 @@ static void bridge_PhyInitialize(void)
 }
 
 /* ── RtlTimeToTimeFields (ordinal 305, 2 args) */
-static void bridge_RtlTimeToTimeFields(void)
-{
-    xbox_RtlTimeToTimeFields(
-        (PLARGE_INTEGER)XBOX_TO_NATIVE(STACK_ARG(0)),
-        (PXBOX_TIME_FIELDS)XBOX_TO_NATIVE(STACK_ARG(1)));
-    g_eax = 0;
-}
+/* Calendar imports are supplied by guest_kernel_time.inc above. */
 
 /* ── XcSHAInit / XcSHAUpdate / XcSHAFinal (ordinals 335-337) */
 static void bridge_XcSHAInit(void)

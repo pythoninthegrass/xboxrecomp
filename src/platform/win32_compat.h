@@ -513,8 +513,6 @@ WCHAR *xbox_wcscat(WCHAR *dst, const WCHAR *src);
 WCHAR *xbox_wcscpy(WCHAR *dst, const WCHAR *src);
 
 /* ---- Time conversion ------------------------------------------------- */
-BOOL SystemTimeToFileTime(const SYSTEMTIME *st, LPFILETIME ft);
-BOOL FileTimeToSystemTime(const FILETIME *ft, LPSYSTEMTIME st);
 
 /* ---- Multimedia (winmm) shim: waveOut stubs that always report failure.
  * The APU has a waveOut fallback path; on Linux it just stays inactive
