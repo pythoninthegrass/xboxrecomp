@@ -4000,6 +4000,10 @@ def lift_basic_block(lifter, bb, flag_state=None):
                 curr.mnemonic, last_flag_setter, last_flag_ops)
             if result:
                 cond_expr, desc = result
+                if last_flag_setter in ('comiss', 'ucomiss', 'comisd', 'ucomisd'):
+                    # Optional title policy for a float-comparison branch.
+                    # Keep captured operands/flags and evaluate the condition once.
+                    cond_expr = f"RECOMP_FLOAT_BRANCH_AT(0x{curr.address:X}, ({cond_expr}))"
                 target = curr.jump_target
                 stmt = _emit_cond_goto(
                     cond_expr, curr.mnemonic, desc, target, lifter)

@@ -66,6 +66,9 @@
 #ifndef RECOMP_DIRECT_CALLEE_AT
 #define RECOMP_DIRECT_CALLEE_AT(site, function) (function)
 #endif
+#ifndef RECOMP_FLOAT_BRANCH_AT
+#define RECOMP_FLOAT_BRANCH_AT(site, taken) (taken)
+#endif
 #ifndef RECOMP_F32_MUL_AT
 #define RECOMP_F32_MUL_AT(site, left, right) ((left) * (right))
 #endif
