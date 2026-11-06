@@ -31,6 +31,17 @@
 #include "pc_display_menu.h"
 #endif
 
+/* World color AO before the original per-view HUD/effects. */
+extern void sub_001CE9A0_gen(void);
+void sub_001CE9A0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_graphics_world_finish(sub_001CE9A0_gen);
+#else
+    sub_001CE9A0_gen();
+#endif
+}
+
 /* Optional Arcade feed after the original per-view HUD. */
 extern void sub_0014F0B0_gen(void);
 void sub_0014F0B0(void)

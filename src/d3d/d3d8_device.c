@@ -629,7 +629,7 @@ static HRESULT create_render_targets(D3D8DeviceState *state)
     depth_desc.format = RHI_FORMAT_D24_UNORM_S8_UINT;
     depth_desc.samples = 1;
     depth_desc.usage = RHI_USAGE_DEFAULT;
-    depth_desc.bind = RHI_BIND_DEPTH;
+    depth_desc.bind = RHI_BIND_DEPTH | RHI_BIND_SAMPLED;
 
     state->depth_image = rhi_image_create(&depth_desc, NULL);
     if (!state->depth_image) return E_FAIL;
@@ -708,6 +708,8 @@ static void d3d8_init_default_states(D3D8DeviceState *state)
  * IDirect3DDevice8 method implementations
  * ================================================================ */
 
+#include "graphics/ssao_device.inc"
+
 static HRESULT __stdcall dev_QueryInterface(IDirect3DDevice8 *self, const IID *riid, void **ppv)
 {
     (void)self; (void)riid; (void)ppv;
@@ -749,6 +751,7 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
         if (g_cur_ds) { IDirect3DSurface8_Release(&g_cur_ds->iface); g_cur_ds = NULL; }
         if (g_auto_ds) { IDirect3DSurface8_Release(&g_auto_ds->iface); g_auto_ds = NULL; }
         interp_target_destroy();
+        tsfp_ssao_destroy(&g_scene_ao);
         rhi_view_destroy(s->depth_view); s->depth_view = NULL;
         rhi_image_destroy(s->depth_image); s->depth_image = NULL;
         rhi_view_destroy(s->rhi_scene_srv); s->rhi_scene_srv = NULL;
