@@ -32,6 +32,7 @@
 #include "d3d8_movie.h"
 #ifdef TSFP_PC_CONTROLS
 #include "pc_cutscene.h"
+#include "pc_native_movie_pacing.h"
 #endif
 
 /* hle_d3d8.c: where the playing movie's surface keeps its texels, so a frame
@@ -55,6 +56,9 @@ typedef struct {
     unsigned crop_left, crop_right;
     int      started;
     LARGE_INTEGER start;
+#ifdef TSFP_PC_CONTROLS
+    PcNativeMoviePacing pacing;
+#endif
 
     /* The next picture, read and not yet due. */
     int      have_next;
@@ -399,6 +403,9 @@ uint32_t xmv_play_update(int handle, uint32_t surface_va, uint32_t *pts_ms)
 
     if (!m)
         return 2u;
+#ifdef TSFP_PC_CONTROLS
+    pc_native_movie_pacing_wait(&m->pacing);
+#endif
     if (!m->started)
         xmv_play_start(handle);
 
@@ -470,6 +477,9 @@ void xmv_play_close(int handle)
         return;
     fprintf(stderr, "[XMV] movie closed after %u pictures\n", m->shown);
     fflush(stderr);
+#ifdef TSFP_PC_CONTROLS
+    pc_native_movie_pacing_close(&m->pacing);
+#endif
     recomp_audio_output_reset_voice(RECOMP_AUDIO_SLOT_MOVIE);
     hle_d3d8_movie_surface(0, 0);
     d3d8_movie_clear();
