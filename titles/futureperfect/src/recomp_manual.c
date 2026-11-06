@@ -703,7 +703,7 @@ void sub_002F3CA0(void)
 extern void sub_000C77C0_gen(void);
 void sub_000C77C0(void)
 {
-#ifdef TSFP_PC_CONTROLS
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
     pc_display_menu_mouse_mode();
 #endif
 #if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
