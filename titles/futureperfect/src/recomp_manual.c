@@ -198,6 +198,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
     return (recomp_func_t)0;
 }
 
+/* Positional gunfire range only: both call sites belong to the original
+ * weapon sound dispatcher, for one-shot and repeating fire respectively. */
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+#include "gameplay/pc_spatial_audio.h"
+#include "interface/pc_audio_settings.h"
+#endif
+extern void sub_00021FB0_gen(void);
+void sub_00021FB0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    uint32_t caller=0,argument=g_esp+8u,original=0;memcpy(&caller,(const void *)((uintptr_t)g_esp+g_xbox_mem_offset),4);memcpy(&original,(const void *)((uintptr_t)argument+g_xbox_mem_offset),4);
+    if(pc_audio_enhanced_enabled() && (caller==0x001B7216u || caller==0x001B71D6u)) {
+        float range;memcpy(&range,&original,4);range=recomp_weapon_sound_range(range);memcpy((void *)((uintptr_t)argument+g_xbox_mem_offset),&range,4);
+        sub_00021FB0_gen();
+        memcpy((void *)((uintptr_t)argument+g_xbox_mem_offset),&original,4); /* preserve cdecl arguments */
+        return;
+    }
+#endif
+    sub_00021FB0_gen();
+}
+
+
+
 /* ── ICALL failure logging ─────────────────────────────────── */
 
 /*
