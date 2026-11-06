@@ -477,6 +477,37 @@ void sub_000245C0(void)
 }
 
 /* ── Manual function overrides ─────────────────────────────── */
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+#include "pc_auto_look_guest.inc"
+#endif
+extern void sub_0025D520_gen(void);
+void sub_0025D520(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_auto_look_camera(sub_0025D520_gen);
+#else
+    sub_0025D520_gen();
+#endif
+}
+extern void sub_0007B7B0_gen(void);
+void sub_0007B7B0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_auto_look_choice(sub_0007B7B0_gen);
+#else
+    sub_0007B7B0_gen();
+#endif
+}
+extern void sub_002E9BC0_gen(void);
+void sub_002E9BC0(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_PROMPTS)
+    pc_auto_look_settings(sub_002E9BC0_gen);
+#else
+    sub_002E9BC0_gen();
+#endif
+}
+
 /* 0x000D2B80 builds player-relative movement vectors from camera yaw.
  * Apply raw mouse counts just before those vectors, after the game's own
  * controller look step. Keep the generated original body and its ABI. */
