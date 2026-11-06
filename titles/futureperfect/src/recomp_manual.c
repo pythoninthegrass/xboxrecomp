@@ -288,6 +288,16 @@ void sub_000BABA0(void)
 #endif
 }
 
+extern void sub_00356800_gen(void);
+void sub_00356800(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_network_rewards_context_slot(sub_00356800_gen);
+#else
+    sub_00356800_gen();
+#endif
+}
+
 extern void sub_001AF950_gen(void);
 void sub_001AF950(void)
 {
