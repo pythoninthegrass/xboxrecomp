@@ -852,6 +852,17 @@ void sub_0013FC50(void)
 }
 
 /* Keep the complete Arcade RANK widget at its authored left inset. */
+/* Assault objectives project their world target into the complete viewport. */
+extern void sub_00142D10_gen(void);
+void sub_00142D10(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_ui(sub_00142D10_gen,0x00142D10u);
+#else
+    sub_00142D10_gen();
+#endif
+}
+
 extern void sub_0012E3F0_gen(void);
 /* The shared panel measures/fits labels before their outlined draws. Reuse
  * read mappings only inside that synchronous original operation, excluding
