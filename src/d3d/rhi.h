@@ -82,6 +82,7 @@ enum {
     RHI_FORMAT_R32_FLOAT          = 41,
     RHI_FORMAT_R32_UINT           = 42,
     RHI_FORMAT_D24_UNORM_S8_UINT  = 45,
+    RHI_FORMAT_X24_TYPELESS_G8_UINT = 47, /* sampled stencil plane of D24S8/D32S8 */
     RHI_FORMAT_R8G8_UNORM         = 49,
     RHI_FORMAT_R8G8_SNORM         = 51,
     RHI_FORMAT_R16_FLOAT          = 54,

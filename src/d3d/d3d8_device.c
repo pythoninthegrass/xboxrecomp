@@ -183,7 +183,6 @@ static void rebind_stage_srvs(RhiImage *target);
 static int g_native_hud_active;
 static void native_hud_restore(void);
 static void native_hud_shutdown(void);
-static void native_hud_fallback(void);
 #include "d3d8_overlay.h"
 #include "d3d8_movie.h"
 
@@ -937,7 +936,6 @@ static HRESULT __stdcall dev_SetRenderState(IDirect3DDevice8 *self, D3DRENDERSTA
 {
     (void)self;
     g_d3d_setrs_count++;
-    if(State==D3DRS_STENCILENABLE && Value && g_native_hud_active)native_hud_fallback();
     if ((DWORD)State < MAX_RENDER_STATES) {
         g_device_state.render_states[(DWORD)State] = Value;
     }

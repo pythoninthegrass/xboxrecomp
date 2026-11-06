@@ -2158,6 +2158,7 @@ static RhiView *v_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *d
     VkImageViewCreateInfo ci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
     RhiView *v;
     RhiFormat rf = (d && d->format) ? d->format : img->desc.format;
+    int stencil_plane = kind==RHI_VIEW_SAMPLED && rf==RHI_FORMAT_X24_TYPELESS_G8_UINT;
     uint32_t layers_total = img->desc.type == RHI_IMAGE_3D ? 1 : img->desc.depth;
     uint32_t dim;
 
@@ -2180,9 +2181,12 @@ static RhiView *v_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *d
         dim = layers_total > 1 ? RHI_VIEW_DIM_2D_ARRAY : RHI_VIEW_DIM_2D;
     }
     ci.image = img->image;
-    ci.format = vk_format(rf);
+    ci.format = vk_format(stencil_plane?img->desc.format:rf);
     ci.subresourceRange.aspectMask = img->aspect;
-    if (kind == RHI_VIEW_SAMPLED && is_depth_format(ci.format))
+    if(stencil_plane) {
+        if(!has_stencil(ci.format)){free(v);return NULL;}
+        ci.subresourceRange.aspectMask=VK_IMAGE_ASPECT_STENCIL_BIT;
+    } else if (kind == RHI_VIEW_SAMPLED && is_depth_format(ci.format))
         ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     if (kind == RHI_VIEW_SAMPLED) {
         ci.subresourceRange.baseMipLevel = d ? d->base_mip : 0;

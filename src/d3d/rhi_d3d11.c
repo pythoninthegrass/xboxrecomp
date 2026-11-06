@@ -26,6 +26,7 @@
 
 #define SAME(a, b) typedef char rhi_same_##a[((int)(a) == (int)(b)) ? 1 : -1]
 SAME(RHI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN);
+SAME(RHI_FORMAT_X24_TYPELESS_G8_UINT, DXGI_FORMAT_X24_TYPELESS_G8_UINT);
 SAME(RHI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT);
 SAME(RHI_FORMAT_R32G32B32A32_SINT, DXGI_FORMAT_R32G32B32A32_SINT);
 SAME(RHI_FORMAT_R32G32B32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT);
@@ -800,7 +801,9 @@ static RhiView *d_view_create(RhiImage *img, uint32_t kind, const RhiViewDesc *d
         D3D11_SHADER_RESOURCE_VIEW_DESC sd;
         if (d) {
             memset(&sd, 0, sizeof sd);
-            sd.Format = typeless ? depth_sampled(img->desc.format) : (DXGI_FORMAT)d->format;
+            sd.Format = typeless ?
+                (d->format==RHI_FORMAT_X24_TYPELESS_G8_UINT && img->desc.format==RHI_FORMAT_D24_UNORM_S8_UINT
+                    ? DXGI_FORMAT_X24_TYPELESS_G8_UINT : depth_sampled(img->desc.format)) : (DXGI_FORMAT)d->format;
             switch (d->dim) {
             case RHI_VIEW_DIM_CUBE:
                 sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
