@@ -1301,7 +1301,8 @@ static HRESULT __stdcall sf_LockRect(IDirect3DSurface8 *self, D3DLOCKED_RECT *pL
 
     full = (BYTE *)malloc((size_t)full_pitch * full_rows);
     if (!full) return E_OUTOFMEMORY;
-    if (rhi_image_readback(sf->image, sf->subresource, full, full_pitch) != 0) {
+    if (!d3d8_surface_msaa_resolve(sf) ||
+        rhi_image_readback(sf->image, sf->subresource, full, full_pitch) != 0) {
         free(full);
         return E_FAIL;
     }
@@ -1342,6 +1343,7 @@ static HRESULT __stdcall sf_LockRect(IDirect3DSurface8 *self, D3DLOCKED_RECT *pL
 static HRESULT __stdcall sf_UnlockRect(IDirect3DSurface8 *self)
 {
     D3D8Surface *sf = sf_from_iface(self);
+    HRESULT result = S_OK;
 
     if (!sf->locked) return E_FAIL;
 
@@ -1377,12 +1379,16 @@ static HRESULT __stdcall sf_UnlockRect(IDirect3DSurface8 *self)
         box.back = 1;
         rhi_image_update(sf->image, sf->subresource, &box,
                          sf->locked_bits, (uint32_t)sf->locked_pitch, 0);
+        /* The bound coverage image must see this CPU edit before the next
+         * draw or resolve. Read-only locks leave its samples untouched. */
+        if (sf->msaa_active && sf->msaa_color &&
+            !tsfp_msaa_color_seed(sf->msaa_color)) result = E_FAIL;
     }
 
     free(sf->locked_bits);
     sf->locked = FALSE;
     sf->locked_bits = NULL;
-    return S_OK;
+    return result;
 }
 
 static const IDirect3DSurface8Vtbl g_sf_vtbl = {
