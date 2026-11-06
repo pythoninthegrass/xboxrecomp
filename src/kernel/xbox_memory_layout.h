@@ -577,27 +577,18 @@ HANDLE xbox_GetMappingHandle(void);
 #endif
 
 
-/* Carve a simulated stack for a spawned thread. Returns the Xbox VA of the
- * stack top, or 0 when the pool is exhausted. */
+/* Project-owned heap stacks, eight live at a time. Top is end minus 16.
+ * Release only a top owned by the caller; unmatched tops are ignored. */
 uint32_t xbox_AllocThreadStack(void);
-
-/* A TIB and TLS block for a newly spawned guest thread, copied from the
- * template the loader built. Returns the new TIB's Xbox VA, or 0. */
-uint32_t xbox_AllocThreadTib(void);
-
-/**
- * Return a worker's stack when the worker ends. Takes the value
- * xbox_AllocThreadStack returned. Without this the pool counts threads ever
- * created rather than threads alive, and a title that cycles workers exhausts
- * it -- after which PsCreateSystemThreadEx runs them inline, which deadlocks
- * any caller that then waits for the worker it thought it had spawned.
- */
 void xbox_FreeThreadStack(uint32_t stack_top);
 
-/* Worker stack slices for host-tick-driven titles (see XBOX_WORKER_STACK_* and
- * docs/technical/burnout3-reunification.md). Additive; unused by default-model
- * titles. */
-int  xbox_worker_stack_alloc(void);   /* slice index, or -1 if none free */
+/* Clone current main TIB/TLS/object fields using one owned allocation.
+ * Zero means no TLS or allocation failure. Published identity storage remains
+ * valid for the guest-memory lifetime; this is not host-thread teardown. */
+uint32_t xbox_AllocThreadTib(void);
+
+/* Shared fixed slices used by timer, USB and host-driven callbacks. */
+int xbox_worker_stack_alloc(void);
 void xbox_worker_stack_free(int slot);
 void   xbox_set_game_thread(void *h);  /* HANDLE, recorded for the host watchdog */
 void  *xbox_thread_debug_handle(void); /* the game thread, or NULL under inline model */

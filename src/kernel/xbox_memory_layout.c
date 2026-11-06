@@ -15,6 +15,7 @@
 #include "xbox_memory_layout.h"
 #include "guest_image.h"
 #include "guest_allocation.h"
+#include "guest_thread_memory.h"
 #include "kernel.h"
 #include "recomp_config.h"
 #include "xbox_watchpoint.h"
@@ -1555,40 +1556,7 @@ uint32_t g_xbox_code_hi = 0;
 /* How far the runtime's low memory moved to clear the image; see XBOX_LOW_VA. */
 uint32_t g_xbox_low_shift = 0;
 
-/* The current-thread object, reached through fs:[0x28].
- *
- * On the console fs points at the KPCR and the processor control block is
- * embedded at 0x28, whose first field is the pointer to the running thread.
- * Titles read it to find out which thread they are on: Black computes
- * MEM32(MEM32(fs:[0x28]) + 0x12C), compares it against a table of thread ids
- * it recorded earlier, and if they match it sets an error code and executes a
- * deliberate `jmp $`. That is a re-entrancy assertion -- "this must not be
- * the thread that already owns this" -- and it is a reasonable thing for a
- * title to check.
- *
- * It used to be one fixed address shared by every guest thread, because
- * xbox_AllocThreadTib copies the main thread's whole block. So every thread
- * reported the same identity, every such comparison said yes, and Black hung
- * itself on purpose after loading. Each thread now gets its own copy with a
- * distinct id, and everything else in the block is inherited exactly as
- * before so that nothing which already worked changes. */
-#define XBOX_THREAD_OBJ_MAIN XBOX_LOW_VA(0x00760000u) /* the main thread's */
-#define XBOX_THREAD_OBJ_SIZE 0x200u
-#define XBOX_THREAD_ID_OFF   0x12Cu
-
-static uint32_t g_next_guest_thread_id = 0x1000;
-
-uint32_t xbox_CurrentThreadObject(void)
-{
-    uintptr_t fs = (uintptr_t)g_fs_base + g_memory_offset;
-    return *(const uint32_t *)(fs + 0x28);
-}
-
-/* The shape of the TLS block the loader built, so a new thread can be
- * given one just like it: where the initialised image data starts, how
- * big the block is, and how big the per-thread structure slot 0 points
- * at is. Zero total means the image had no TLS directory. */
-static uint32_t g_tls_template_va, g_tls_total, g_tls_thread_size = 64;
+/* Thread storage and identity construction use the project provider. */
 
 /* Architectural storage and ABI reports live in project runtime providers.
  * Only the loader/watchdog's required public cells are declared here. */
@@ -1721,6 +1689,8 @@ void xbox_WatchdogStart(void)
     if (h)
         CloseHandle(h);
 }
+
+static tsfp_thread_memory g_guest_threads;
 
 /* Project allocation provider storage. Initialization precedes device workers. */
 static tsfp_allocations g_guest_allocations;
@@ -1928,7 +1898,6 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     g_xbox_low_shift = image_low_shift;
     g_xbox_image_lo = image.image_lo; g_xbox_image_hi = image.image_hi;
     g_xbox_code_lo = image.code_lo; g_xbox_code_hi = image.code_hi;
-    g_tls_template_va = 0; g_tls_total = 0;
     xbox_kernel_set_thunk_address(image.thunk, image.thunk_count);
     xbox_kernel_set_xbe_game_region(image.region);
     recomp_config_set_title(image.title_id);
@@ -1954,161 +1923,6 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
 
     /* Set the global offset for recompiled code MEM macros */
     g_xbox_mem_offset = g_memory_offset;
-
-    /*
-     * Initialize the Xbox stack for recompiled code.
-     * The stack area lives at XBOX_STACK_BASE in Xbox address space.
-     * g_esp is the global stack pointer shared by all translated functions.
-     */
-    g_esp = XBOX_STACK_TOP;
-    fprintf(stderr, "  Stack: %u KB at Xbox VA 0x%08X (ESP = 0x%08X)\n",
-            XBOX_STACK_SIZE / 1024, XBOX_STACK_BASE, g_esp);
-
-    /*
-     * Populate the fake Thread Information Block (TIB) at Xbox VA 0x0.
-     *
-     * The original Xbox code uses fs:[offset] to read per-thread data,
-     * but the recompiler drops the fs: segment prefix and generates
-     * MEM32(offset) instead. Since we mapped low memory (0x0-0xFFFF),
-     * we populate the TIB fields that game code accesses:
-     *
-     *   fs:[0x00] = SEH exception list (-1 = end of chain)
-     *   fs:[0x04] = stack base (top of stack)
-     *   fs:[0x08] = stack limit (bottom of stack)
-     *   fs:[0x18] = self pointer (TIB address)
-     *   fs:[0x20] = KPCR Prcb pointer (→ fake structure)
-     *   fs:[0x28] = TLS / RW engine context pointer
-     *
-     * We use free space in the BSS area for the fake structures.
-     */
-    {
-        #define XBOX_VA(va) ((void *)((uintptr_t)(va) + g_memory_offset))
-        #define MEM32_INIT(va, val) (*(uint32_t *)XBOX_VA(va) = (uint32_t)(val))
-
-        /* Fake TIB at address 0x0 */
-        MEM32_INIT(XBOX_FS_BASE + 0x00, 0xFFFFFFFF);       /* SEH: end of chain */
-        MEM32_INIT(XBOX_FS_BASE + 0x04, XBOX_STACK_TOP);   /* Stack base (high address) */
-        MEM32_INIT(XBOX_FS_BASE + 0x08, XBOX_STACK_BASE);  /* Stack limit (low address) */
-        MEM32_INIT(XBOX_FS_BASE + 0x18, XBOX_FS_BASE);     /* Self pointer */
-
-        /*
-         * fs:[0x20] - On Xbox KPCR, this is the Prcb pointer.
-         * Game code reads [fs:[0x20] + 0x250] which on the real Xbox
-         * accesses a D3D cache structure. We set it to 0 so the read
-         * at offset 0x250 returns 0, causing the cache init to be skipped.
-         */
-        /* A zeroed block rather than a null pointer. The read is
-         * [fs:[0x20] + 0x250], and this used to be left at 0 so that read
-         * landed on guest address 0x250 and returned zero by accident -- which
-         * only worked while page zero was mapped. Pointing at real zeroed
-         * memory says the same thing to the title and survives that page being
-         * unmapped, which is what makes a genuine null dereference visible. */
-        #define FAKE_PRCB_VA XBOX_LOW_VA(0x00761000)  /* zeroed KPCR Prcb stand-in */
-        memset(XBOX_VA(FAKE_PRCB_VA), 0, 0x400);
-        MEM32_INIT(XBOX_FS_BASE + 0x20, FAKE_PRCB_VA);
-        #undef FAKE_PRCB_VA
-
-        /*
-         * fs:[0x28] - Thread local storage / RW engine context.
-         * The RW engine reads [fs:[0x28] + 0x28] to get a pointer
-         * to its data area. We allocate a fake structure at 0x00760000
-         * (in the BSS area) and a data buffer at 0x00700000.
-         */
-        #define FAKE_TLS_VA     XBOX_LOW_VA(0x00760000)  /* Fake TLS structure (in BSS) */
-        #define FAKE_RWDATA_VA  XBOX_LOW_VA(0x00700000)  /* RW engine data area (in BSS) */
-
-        MEM32_INIT(XBOX_FS_BASE + 0x28, FAKE_TLS_VA);
-        /* TLS[0x28] = pointer to RW data area */
-        MEM32_INIT(FAKE_TLS_VA + 0x28, FAKE_RWDATA_VA);
-
-        /* The running thread's identity. Zero here made every guest thread
-         * look like the same thread; see XBOX_THREAD_OBJ_MAIN above. */
-        MEM32_INIT(FAKE_TLS_VA + XBOX_THREAD_ID_OFF, g_next_guest_thread_id++);
-
-        /*
-         * XBE TLS directory.
-         *
-         * An image with __declspec(thread) data carries one, and on hardware
-         * the loader acts on it. Nothing here did, so thread-local access read
-         * whatever memory happened to be under fs:[4].
-         *
-         * Xbox reaches thread-local data through NtTib.StackBase -- fs:[4] --
-         * not Win32's fs:[0x2C], and the block sits BELOW that pointer: the
-         * image's entry point computes its own index, negative, as
-         * -(blocksize/4). Wreckless does this at guest 0x000EB57E and arrives
-         * at -5 for its 20-byte block, so [fs:[4] + index*4] is the block's
-         * first dword. The rounding below mirrors that arithmetic exactly,
-         * because fs:[4] has to land where the title's own index says it is.
-         *
-         * The index itself is deliberately NOT written here: the title
-         * computes and stores it. What the loader owes it is a block in the
-         * right place.
-         *
-         * Slot 0 holds a pointer to per-thread data -- XAPI's SetLastError is
-         * [[fs:[4] + index*4] + 4] = err -- so it gets a zeroed block rather
-         * than being left NULL, which had SetLastError writing the error code
-         * over fs:[4] itself and the next call faulting at guest 0xFFFFFFEF.
-         *
-         * ponytail: one block for the whole process, not one per thread.
-         * Every guest thread therefore shares LastError. Give this a per-thread
-         * allocation when a title is observed to care.
-         */
-        #define FAKE_TLS_BLOCK_VA  XBOX_LOW_VA(0x00770000)  /* image TLS data          */
-        #define FAKE_TLS_THREAD_VA XBOX_LOW_VA(0x00770200)  /* what slot 0 points at   */
-        {
-            if (image.tls_directory) {
-                uint32_t data_start = image.tls_start;
-                uint32_t init_size = image.tls_bytes;
-                uint32_t total = image_tls_total;
-
-                memset(XBOX_VA(FAKE_TLS_BLOCK_VA), 0, total);
-                memset(XBOX_VA(FAKE_TLS_THREAD_VA), 0, 64);
-                if (init_size)
-                    memcpy(XBOX_VA(FAKE_TLS_BLOCK_VA),
-                           XBOX_VA(data_start), init_size);
-
-                MEM32_INIT(FAKE_TLS_BLOCK_VA, FAKE_TLS_THREAD_VA);
-                MEM32_INIT(XBOX_FS_BASE + 0x04, FAKE_TLS_BLOCK_VA + total);
-
-                /* KTHREAD.TlsData, which is what fs:[0x28] leads to at +0x28
-                 * (Cxbx-Reloaded types.h: KPCR.PrcbData at 0x28, KTHREAD at
-                 * PrcbData+0 with TlsData at 0x28). On hardware that is this
-                 * block -- a thread's TLS data and the image's TLS block are
-                 * the same memory.
-                 *
-                 * It used to point at FAKE_RWDATA_VA instead, a separate
-                 * buffer that is only ever zeroed. The name came from the
-                 * first title that needed something there, and "somewhere
-                 * writable" was enough for RenderWare, but a title that keeps
-                 * real per-thread state in TLS reads zeros. Jet Set Radio
-                 * Future reads TlsData+0x10 -- the last dword of its 20-byte
-                 * block -- as a function pointer, called it through null, and
-                 * relaunched itself from \Device\Cdrom0 rather than start.
-                 *
-                 * Only when the image has a TLS directory; without one there
-                 * is no block to point at and the old buffer still stands. */
-                MEM32_INIT(FAKE_TLS_VA + 0x28, FAKE_TLS_BLOCK_VA);
-
-                g_tls_template_va = FAKE_TLS_BLOCK_VA;
-                g_tls_total       = total;
-
-                fprintf(stderr, "  TLS: %u-byte block at 0x%08X,"
-                        " fs:[4] = 0x%08X (index will be %d)\n",
-                        total, FAKE_TLS_BLOCK_VA, FAKE_TLS_BLOCK_VA + total,
-                        -(int)(total / 4));
-            }
-        }
-        #undef FAKE_TLS_BLOCK_VA
-        #undef FAKE_TLS_THREAD_VA
-
-        fprintf(stderr, "  TIB: fake TIB at VA 0x%X, TLS at 0x%08X, RW data at 0x%08X\n",
-                XBOX_FS_BASE, FAKE_TLS_VA, FAKE_RWDATA_VA);
-
-        #undef FAKE_TLS_VA
-        #undef FAKE_RWDATA_VA
-        #undef MEM32_INIT
-        #undef XBOX_VA
-    }
 
     /*
      * Contiguous / physical memory window at 0x80000000.
@@ -2401,6 +2215,18 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
         xbox_MemoryLayoutShutdown();
         return FALSE;
     }
+    /* Project main-thread storage is ready before any device worker starts. */
+    if (!tsfp_thread_memory_init(&g_guest_threads, &g_guest_allocations, &image) ||
+        g_guest_threads.low_shift != image_low_shift ||
+        g_guest_threads.tls_total != image_tls_total) {
+        fprintf(stderr, "Project thread storage rejected the image layout\n");
+        xbox_MemoryLayoutShutdown();
+        return FALSE;
+    }
+    g_fs_base = XBOX_TIB_MAIN;
+    g_esp = XBOX_STACK_TOP;
+    fprintf(stderr, "  Project thread storage: TIB 0x%08X, TLS %u bytes, ESP 0x%08X\n",
+            (unsigned)g_fs_base, (unsigned)g_guest_threads.tls_total, (unsigned)g_esp);
     fprintf(stderr, "  Project allocations: heap 0x%08X..0x%08X, physical %s\n",
             (unsigned)XBOX_HEAP_BASE, (unsigned)g_memory_size,
             g_contig_memory ? "available" : "unavailable");
@@ -2650,6 +2476,7 @@ void xbox_ProtectMirrorsForDebug(void)
 void xbox_MemoryLayoutShutdown(void)
 {
     /* Reject subsequent ownership requests before their mappings disappear. */
+    tsfp_thread_memory_stop(&g_guest_threads);
     tsfp_allocations_stop(&g_guest_allocations);
     if (g_kernel_memory) {
         VirtualFree(g_kernel_memory, 0, MEM_RELEASE);
@@ -2713,140 +2540,37 @@ ptrdiff_t xbox_GetMemoryOffset(void)
     return g_memory_offset;
 }
 
-/*
- * Simulated stacks for spawned threads.
- *
- * The main thread owns the top of the XBOX_STACK region and grows down; worker
- * stacks are carved from the bottom upward so the two cannot meet until the
- * whole 8 MB is gone. Xbox VAs, not host memory: recompiled code addresses its
- * stack through MEM32() like any other Xbox pointer.
- */
-uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
+/* Project thread-memory ABI adapters. */
+uint32_t xbox_CurrentThreadObject(void)
+{
+    return tsfp_thread_current_object(&g_guest_threads, g_fs_base);
+}
 
-#define XBOX_THREAD_STACK_SIZE  (512 * 1024)
-#define XBOX_MAX_THREAD_STACKS  8
-
-static int g_thread_stacks_used = 0;
-
-/* A TIB and TLS block for a newly spawned guest thread.
- *
- * A TIB is per-thread on the console and was per-process here: one address,
- * 0x1000, for everyone. Two things live in it that must not be shared. fs:[0]
- * is the SEH chain head, so two threads unwinding at once walk each other's
- * frames. fs:[4] points at the image's TLS block, whose slot 0 is the CRT's
- * per-thread data -- errno, the locale, and the bookkeeping _lock() uses to
- * decide who owns which lock.
- *
- * Half-Life 2 deadlocked on the last of those: two threads inside _lock(),
- * each holding the CRT lock the other was waiting for, because "which thread
- * am I" was a single shared answer.
- *
- * The new block is a copy of the template the loader built, so a thread starts
- * with the image's initialised thread-local data rather than zeros, and its
- * own per-thread structure behind slot 0.
- */
 uint32_t xbox_AllocThreadTib(void)
 {
-    /* XBOX_VA is scoped to the loader; the same arithmetic, spelled here. */
-    #define TIB_VA(va) ((void *)((uintptr_t)(va) + g_memory_offset))
-    const uint32_t tib_size = 0x40;
-    uint32_t tib, block, thread_data, total;
-
-    if (!g_tls_total)
-        return 0;                    /* image has no TLS; nothing to copy */
-
-    total = g_tls_total;
-    tib = xbox_HeapAlloc(tib_size + total + g_tls_thread_size, 16);
-    if (!tib)
-        return 0;
-    block       = tib + tib_size;
-    thread_data = block + total;
-
-    /* The TIB itself, copied so stack bounds and the fields the title filled
-     * in are inherited, then the two that must not be. */
-    memcpy(TIB_VA(tib), TIB_VA(XBOX_TIB_MAIN), tib_size);
-    memcpy(TIB_VA(block), TIB_VA(g_tls_template_va), total);
-    memset(TIB_VA(thread_data), 0, g_tls_thread_size);
-
-    *(uint32_t *)TIB_VA(tib + 0x00) = 0xFFFFFFFFu;   /* own SEH chain    */
-    *(uint32_t *)TIB_VA(block)      = thread_data;   /* slot 0           */
-    *(uint32_t *)TIB_VA(tib + 0x04) = block + total; /* fs:[4], see above*/
-
-    /* This thread's own current-thread object.
-     *
-     * The copy above inherited fs:[0x28] from the main thread, so without
-     * this every guest thread answers "which thread am I" with the same
-     * value. Copy the main thread's object so every field a title already
-     * relies on is inherited -- the RenderWare data pointer at +0x28 among
-     * them -- and change only the identity. */
-    {
-        uint32_t obj = xbox_HeapAlloc(XBOX_THREAD_OBJ_SIZE, 16);
-        if (obj) {
-            memcpy(TIB_VA(obj), TIB_VA(XBOX_THREAD_OBJ_MAIN),
-                   XBOX_THREAD_OBJ_SIZE);
-            *(uint32_t *)TIB_VA(obj + XBOX_THREAD_ID_OFF) =
-                g_next_guest_thread_id++;
-            *(uint32_t *)TIB_VA(tib + 0x28) = obj;
-        }
-    }
-
-    return tib;
-    #undef TIB_VA
+    return tsfp_thread_tib_create(&g_guest_threads);
 }
 
 uint32_t xbox_AllocThreadStack(void)
 {
-    uint32_t base;
-
-    if (g_thread_stacks_used >= XBOX_MAX_THREAD_STACKS) {
-        return 0;
-    }
-
-    /* From the heap, not from XBOX_STACK_BASE.
-     *
-     * The stack region begins at 0x00780000, which is fine only while the
-     * title's image ends below that. Half-Life 2's image runs to 0x009B68C0,
-     * so the first thread stack (0x00780000..0x00800000) landed inside its
-     * .rdata and .data: the worker spawned during engine init wrote its
-     * frames over the game's own static data. Nothing faults -- the pages are
-     * mapped and writable -- so it shows up later as globals that were
-     * correct when written and wrong when read.
-     *
-     * The heap already starts above the image and knows how big it is, so
-     * taking slices from it is correct for any image size instead of only
-     * for small ones.
-     */
-    base = xbox_HeapAlloc(XBOX_THREAD_STACK_SIZE, 4096);
-    if (!base)
-        return 0;
-    g_thread_stacks_used++;
-
-    /* Top of the slice, 16-byte aligned, growing down. */
-    return base + XBOX_THREAD_STACK_SIZE - 16;
+    return tsfp_thread_stack_acquire(&g_guest_threads);
 }
 
-/* Give a worker's stack back when the worker ends.
- *
- * The counter used to only ever go up, so a title that creates and destroys
- * threads ran the pool dry no matter how few were alive at once. The Xbox
- * Dashboard spawns one worker per ambient WAV and terminates it before loading
- * the next; after XBOX_MAX_THREAD_STACKS files the pool was empty and
- * PsCreateSystemThreadEx fell back to running the worker inline. That fallback
- * is a deadlock here rather than a slowdown: the worker ran to completion
- * before the caller reached its wait, so the main thread then waited forever on
- * events whose only signaller had already finished. It looked like an audio
- * hang, three layers away from the cause.
- *
- * Takes the value AllocThreadStack returned, so callers never do the arithmetic.
- */
-void xbox_FreeThreadStack(uint32_t stack_top)
+void xbox_FreeThreadStack(uint32_t top)
 {
-    if (!stack_top)
-        return;
-    xbox_HeapFree(stack_top + 16 - XBOX_THREAD_STACK_SIZE);
-    if (g_thread_stacks_used > 0)
-        g_thread_stacks_used--;
+    (void)tsfp_thread_stack_release(&g_guest_threads, top);
 }
+
+int xbox_worker_stack_alloc(void)
+{
+    return tsfp_worker_stack_acquire(&g_guest_threads);
+}
+
+void xbox_worker_stack_free(int slot)
+{
+    (void)tsfp_worker_stack_release(&g_guest_threads, slot);
+}
+/* End project thread-memory ABI adapters. */
 
 /* Project allocation ABI adapters; ownership and zeroing live in one provider. */
 uint32_t xbox_ReserveAlloc(uint32_t size, uint32_t alignment)

@@ -417,23 +417,4 @@ static HANDLE g_game_thread = NULL;
 void  xbox_set_game_thread(void *h) { g_game_thread = (HANDLE)h; }
 void *xbox_thread_debug_handle(void) { return (void *)g_game_thread; }
 
-/* One bit per worker stack slice. Interlocked because a host-driven title can
- * allocate a slice from the host thread while recompiled code allocates one for
- * a spawned worker, so the allocator itself must be thread-safe. */
-static volatile LONG g_worker_stack_used[XBOX_WORKER_STACK_COUNT];
-
-int xbox_worker_stack_alloc(void)
-{
-    int i;
-    for (i = 0; i < XBOX_WORKER_STACK_COUNT; i++) {
-        if (InterlockedCompareExchange(&g_worker_stack_used[i], 1, 0) == 0)
-            return i;
-    }
-    return -1;  /* all slices in use */
-}
-
-void xbox_worker_stack_free(int slot)
-{
-    if (slot >= 0 && slot < XBOX_WORKER_STACK_COUNT)
-        InterlockedExchange(&g_worker_stack_used[slot], 0);
-}
+/* Worker stack ownership lives in project guest_thread_memory.c. */

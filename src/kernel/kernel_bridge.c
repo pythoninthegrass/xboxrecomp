@@ -475,11 +475,17 @@ static HANDLE bridge_spawn_thread(recomp_func_t fn, uint32_t ctx1,
     struct bridge_thread_start *s = malloc(sizeof(*s));
     HANDLE th;
 
-    if (!s) return NULL;
+    if (!s) {
+        xbox_FreeThreadStack(stack_top);
+        return NULL;
+    }
     s->fn = fn; s->ctx1 = ctx1; s->ctx2 = ctx2; s->stack_top = stack_top;
 
     th = CreateThread(NULL, 0, bridge_thread_main, s, 0, NULL);
-    if (!th) free(s);
+    if (!th) {
+        free(s);
+        xbox_FreeThreadStack(stack_top);
+    }
     /* Record the game thread so a host-tick-driven title's watchdog can sample
      * it via xbox_thread_debug_handle. Harmless for default-model titles: they
      * spawn workers too, but never read it back. See kernel_thread.c. */
@@ -2955,6 +2961,7 @@ static DWORD WINAPI kernel_timer_thread(LPVOID unused)
          * before the routine runs. */
         uint32_t tib = xbox_AllocThreadTib();
         if (!tib) {
+            xbox_worker_stack_free(slot);
             fprintf(stderr, "  [KERNEL] timer thread has no TIB; "
                             "timer DPCs will not run\n");
             fflush(stderr);
