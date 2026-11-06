@@ -91,3 +91,9 @@ target_compile_definitions(xbox_kernel PRIVATE $<$<CONFIG:Debug>:_DEBUG>)
 target_sources(xbox_kernel PRIVATE
     "${TSFP_SHARED_SOURCE}/runtime/host_blocks.c"
     "${TSFP_SHARED_SOURCE}/native/host_pages.c")
+
+# Original guest Mm policy and host memory snapshots.
+target_sources(xbox_kernel PRIVATE
+    "${TSFP_SHARED_SOURCE}/runtime/guest_memory_services.c"
+    "${TSFP_SHARED_SOURCE}/runtime/memory_statistics.c"
+    "${TSFP_SHARED_SOURCE}/native/host_memory_stats.c")

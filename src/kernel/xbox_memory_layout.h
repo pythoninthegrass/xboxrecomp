@@ -31,6 +31,9 @@ void xbox_GetGuestVirtualMemory(struct tsfp_guest_vm *context);
 extern "C" {
 #endif
 
+struct tsfp_guest_mm;
+void xbox_GetGuestMemoryServices(struct tsfp_guest_mm *context);
+
 /* ================================================================
  * Xbox memory map constants
  * ================================================================ */

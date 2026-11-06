@@ -17,6 +17,10 @@
 #include "guest_allocation.h"
 #include "guest_thread_memory.h"
 #include "guest_virtual_memory.h"
+#include "guest_memory_services.h"
+#include "host_pages.h"
+#include "host_memory_stats.h"
+#include "host_virtual_memory.h"
 #include "pc_guest_memory.h"
 #include "kernel.h"
 #include "recomp_config.h"
@@ -2590,6 +2594,35 @@ void xbox_GetGuestVirtualMemory(tsfp_guest_vm *context)
     context->host_page_size = page_size;
 }
 /* End project guest VM adapter. */
+
+/* Project guest Mm boundary: common policy, registered spans, host operations. */
+static uint32_t guest_mm_query_access(void *host,const void *address)
+{
+    tsfp_host_page_region region;
+    (void)host;
+    return tsfp_host_pages_query(address,&region)?region.protection:1;
+}
+static int guest_mm_set_access(void *host,void *address,uint32_t bytes,uint32_t protection)
+{
+    (void)host;
+    return tsfp_host_pages_protect(address,bytes,tsfp_host_vm_protection(protection));
+}
+static int guest_mm_available(void *host,uint64_t *bytes)
+{
+    (void)host;return tsfp_host_available_memory(bytes);
+}
+void xbox_GetGuestMemoryServices(tsfp_guest_mm *memory)
+{
+    xbox_GetGuestVirtualMemory(&memory->vm);
+    memory->physical_base=XBOX_CONTIG_BASE;
+    memory->physical_size=XBOX_CONTIG_SIZE;
+    memory->gpu_default=XBOX_GPU_INSTANCE_DEFAULT;
+    memory->query_access=guest_mm_query_access;
+    memory->set_access=guest_mm_set_access;
+    memory->available=guest_mm_available;
+}
+/* End project guest Mm boundary. */
+
 
 BOOL xbox_IsXboxAddress(uintptr_t address)
 {

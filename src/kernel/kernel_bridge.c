@@ -27,6 +27,7 @@
 
 #include "kernel.h"
 #include "guest_virtual_memory.h"
+#include "guest_memory_services.h"
 #include "xbox_memory_layout.h"
 #include "recomp_icall_feedback.h"
 #ifdef _WIN32
@@ -652,21 +653,9 @@ static void bridge_NtClose(void)
  */
 static void bridge_MmAllocateContiguousMemory(void)
 {
-    uint32_t size = STACK_ARG(0);
-
-    /* From the contiguous window, not the general heap: the caller is
-     * entitled to assume (VA & 0x0FFFFFFF) | 0x80000000 == VA, because that
-     * is how a driver converts between the address it holds and the one it
-     * hands the hardware. See xbox_ContiguousAlloc. */
-    uint32_t xbox_va = xbox_ContiguousAlloc(size, 4096);
-
-    if (KERNEL_LOG_ON_HALF()) {
-        fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemory: size=%u → Xbox VA 0x%08X\n",
-                size, xbox_va);
-        fflush(stderr);
-    }
-
-    g_eax = xbox_va;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_allocate(&memory,TSFP_MM_CONTIGUOUS,STACK_ARG(0));
 }
 
 /* ── MmAllocateSystemMemory (ordinal 167) ─────────────────
@@ -688,22 +677,9 @@ static void bridge_MmAllocateContiguousMemory(void)
  */
 static void bridge_MmAllocateSystemMemory(void)
 {
-    uint32_t size = STACK_ARG(0);
-    uint32_t prot = STACK_ARG(1);
-    uint32_t xbox_va;
-
-    (void)prot;
-    if (!size) {
-        g_eax = 0;
-        return;
-    }
-    xbox_va = xbox_HeapAlloc(size, 4096);
-    if (xbox_va)
-        memset((void *)((uintptr_t)xbox_va + g_xbox_mem_offset), 0, size);
-    else
-        fprintf(stderr, "  [KERNEL] MmAllocateSystemMemory: %u bytes REFUSED\n",
-                size);
-    g_eax = xbox_va;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_allocate(&memory,TSFP_MM_SYSTEM,STACK_ARG(0));
 }
 
 /* ── MmAllocateContiguousMemoryEx (ordinal 166) ───────────
@@ -718,26 +694,9 @@ static void bridge_MmAllocateSystemMemory(void)
 
 static void bridge_MmAllocateContiguousMemoryEx(void)
 {
-    uint32_t size = STACK_ARG(0), low = STACK_ARG(1), high = STACK_ARG(2);
-    uint32_t alignment = STACK_ARG(3), result = 0;
-    uint64_t width = high >= low ? (uint64_t)high - low + 1u : 0;
-    /* Preserve the narrow-range fixed-address convention, with bounds and
-     * ownership checked before any memory write. The protection word does
-     * not change the host mapping's existing writable policy. */
-    if (!width || low >= XBOX_CONTIG_SIZE) {
-        result = 0;
-    } else if (low && width <= (uint64_t)size + 4096u) {
-        if (low < XBOX_CONTIG_SIZE && size <= width)
-            result = xbox_ContiguousAllocAt(XBOX_CONTIG_BASE + low, size);
-    } else {
-        uint32_t ceiling = high < XBOX_CONTIG_SIZE ? high : XBOX_CONTIG_SIZE - 1u;
-        result = xbox_ContiguousAllocRange(size, alignment,
-            XBOX_CONTIG_BASE + low, XBOX_CONTIG_BASE + ceiling);
-    }
-    g_eax = result;
-    if (KERNEL_LOG_ON_HALF())
-        fprintf(stderr, "  [KERNEL] physical allocation size=%u low=0x%08X high=0x%08X align=%u -> 0x%08X\n",
-                size, low, high, alignment, result);
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_contiguous_ex(&memory,STACK_ARG(0),STACK_ARG(1),STACK_ARG(2),STACK_ARG(3));
 }
 
 /* ── MmFreeContiguousMemory (ordinal 171) ─────────────────
@@ -745,12 +704,9 @@ static void bridge_MmAllocateContiguousMemoryEx(void)
  */
 static void bridge_MmFreeContiguousMemory(void)
 {
-    uint32_t addr = STACK_ARG(0);
-    /* The contiguous arena's own free. Handing these to xbox_HeapFree freed
-     * nothing: the heap does not own the window, so every block stayed in use
-     * (see xbox_ContiguousAlloc). */
-    if (!xbox_ContiguousFree(addr))
-        xbox_HeapFree(addr);
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    tsfp_guest_mm_release(&memory,TSFP_MM_CONTIGUOUS,STACK_ARG(0));
     g_eax = 0;
 }
 
@@ -1132,8 +1088,9 @@ static void bridge_KeQuerySystemTime(void)
 /* ── MmQueryStatistics (ordinal 181) ─────────────────────── */
 static void bridge_MmQueryStatistics(void)
 {
-    uint32_t stats_ptr = STACK_ARG(0);
-    g_eax = (uint32_t)xbox_MmQueryStatistics(XBOX_TO_NATIVE(stats_ptr));
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_statistics(&memory,STACK_ARG(0));
 }
 
 /* ── NtCreateEvent (ordinal 189) ─────────────────────────── */
@@ -1783,10 +1740,9 @@ static void bridge_NtWaitForMultipleObjectsEx(void)
  */
 static void bridge_MmQueryAddressProtect(void)
 {
-    uint32_t address = STACK_ARG(0);
-
-    g_eax = address ? (uint32_t)xbox_MmQueryAddressProtect(XBOX_TO_NATIVE(address))
-                    : 0;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_query_access(&memory,STACK_ARG(0));
 }
 
 /* ── NtUserIoApcDispatcher (ordinal 232) ─────────────────── */
@@ -1884,42 +1840,17 @@ static void bridge_NtYieldExecution(void)
 /* ── MmGetPhysicalAddress (ordinal 173) ──────────────────── */
 static void bridge_MmGetPhysicalAddress(void)
 {
-    uint32_t addr = STACK_ARG(0);
-
-    /* Identity below 64 MB, minus the window base inside it.
-     *
-     * The old comment here was half right: the lower 64 MB is identity
-     * mapped, so returning the VA is correct there. It is wrong for the
-     * contiguous window, which is precisely where anything that asks this
-     * question lives -- a caller wants a physical address because it is
-     * about to hand a buffer to the GPU, and a GPU buffer comes from
-     * MmAllocateContiguousMemory.
-     *
-     * Physical page P is visible at XBOX_CONTIG_BASE + P, so the physical
-     * address of a window VA is the VA minus that base.
-     *
-     * Measured against the real title in xemu, at the same point in its
-     * boot: Burnout 2 stores VA - PA at 0x005A8860 during audio pool setup.
-     * Hardware has 0x83FDE000 - 0x03FDE000 = 0x80000000 there. Returning the
-     * VA unchanged made that delta 0, so every buffer address the title
-     * converted for the GPU stayed virtual. The title submitted two draw
-     * calls and then stopped advancing DMA_PUT at all.
-     */
-    if (addr >= XBOX_CONTIG_BASE
-        && (uint64_t)addr < (uint64_t)XBOX_CONTIG_BASE + XBOX_CONTIG_SIZE)
-        g_eax = addr - XBOX_CONTIG_BASE;
-    else
-        g_eax = addr;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_physical(&memory,STACK_ARG(0));
 }
 
 /* ── MmSetAddressProtect (ordinal 182) ───────────────────── */
 static void bridge_MmSetAddressProtect(void)
 {
-    uint32_t addr = STACK_ARG(0);
-    uint32_t size = STACK_ARG(1);
-    uint32_t prot = STACK_ARG(2);
-
-    xbox_MmSetAddressProtect(XBOX_TO_NATIVE(addr), size, prot);
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    (void)tsfp_guest_mm_set_access(&memory,STACK_ARG(0),STACK_ARG(1),STACK_ARG(2));
     g_eax = 0;
 }
 
@@ -2594,16 +2525,9 @@ uint32_t xbox_GetConnectedInterrupt(uint32_t vector)
  */
 static void bridge_MmClaimGpuInstanceMemory(void)
 {
-    uint32_t bytes      = STACK_ARG(0);
-    uint32_t padding_va = STACK_ARG(1);
-
-    if (bytes == 0xFFFFFFFFu) {
-        bytes = XBOX_GPU_INSTANCE_DEFAULT;
-    }
-    if (padding_va) {
-        BRIDGE_MEM32(padding_va) = 0;
-    }
-    g_eax = XBOX_CONTIG_BASE + XBOX_CONTIG_SIZE - bytes;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_gpu(&memory,STACK_ARG(0),STACK_ARG(1));
 }
 
 /* VOID HalRegisterShutdownNotification(PHAL_SHUTDOWN_REGISTRATION, BOOLEAN)
@@ -4518,16 +4442,9 @@ static void bridge_RtlRaiseException(void)
  */
 static void bridge_MmMapIoSpace(void)
 {
-    uint32_t phys_addr = STACK_ARG(0);
-    uint32_t num_bytes = STACK_ARG(1);
-    uint32_t protect = STACK_ARG(2);
-    uint32_t xbox_va = xbox_HeapAlloc(num_bytes, 4096);
-
-    fprintf(stderr, "  [KERNEL] MmMapIoSpace: phys=0x%08X size=%u → Xbox VA 0x%08X\n",
-            phys_addr, num_bytes, xbox_va);
-    fflush(stderr);
-
-    g_eax = xbox_va;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_allocate(&memory,TSFP_MM_IO,STACK_ARG(1));
 }
 
 /* ── MmPersistContiguousMemory (ordinal 178) ─────────────
@@ -4538,8 +4455,7 @@ static void bridge_MmMapIoSpace(void)
  */
 static void bridge_MmPersistContiguousMemory(void)
 {
-    /* No-op stub */
-    g_eax = 0;
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_NOOP,0);
 }
 
 /* ── Generic fallback for simple value-only functions ────── */
@@ -4697,9 +4613,7 @@ static void bridge_KeStallExecutionProcessor(void)
 /* ── MmLockUnlockBufferPages (ordinal 175, 3 args) */
 static void bridge_MmLockUnlockBufferPages(void)
 {
-    xbox_MmLockUnlockBufferPages(XBOX_TO_NATIVE(STACK_ARG(0)),
-                                 STACK_ARG(1), (BOOLEAN)STACK_ARG(2));
-    g_eax = 0;
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_NOOP,0);
 }
 
 /* ── MmQueryAllocationSize (ordinal 180, 1 arg)
@@ -4713,7 +4627,9 @@ static void bridge_MmLockUnlockBufferPages(void)
  */
 static void bridge_MmQueryAllocationSize(void)
 {
-    g_eax = xbox_HeapBlockSize(STACK_ARG(0));
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_size(&memory,STACK_ARG(0));
 }
 
 /* ── NtCreateMutant (ordinal 192, 3 args) */
@@ -4888,7 +4804,9 @@ static void bridge_ExSaveNonVolatileSetting(void)
  * matches against the block table and takes the raw 32-bit guest VA. */
 static void bridge_MmUnmapIoSpace(void)
 {
-    xbox_HeapFree(STACK_ARG(0));
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    tsfp_guest_mm_release(&memory,TSFP_MM_IO,STACK_ARG(0));
     g_eax = 0;
 }
 
@@ -5416,8 +5334,7 @@ static void bridge_IofCompleteRequest(void)
  * never dereferenced. */
 static void bridge_MmLockUnlockPhysicalPage(void)
 {
-    xbox_MmLockUnlockPhysicalPage(STACK_ARG(0), (BOOLEAN)STACK_ARG(1));
-    g_eax = 0;
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_NOOP,0);
 }
 
 /* ── MmFreeSystemMemory (ordinal 172, 2 args)
@@ -5425,7 +5342,9 @@ static void bridge_MmLockUnlockPhysicalPage(void)
  * seen this address. */
 static void bridge_MmFreeSystemMemory(void)
 {
-    xbox_HeapFree(STACK_ARG(0));
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    tsfp_guest_mm_release(&memory,TSFP_MM_SYSTEM,STACK_ARG(0));
     g_eax = 0;
 }
 
@@ -5437,15 +5356,16 @@ static void bridge_MmFreeSystemMemory(void)
  * guest heap here: create returns base+size, delete frees the base (arg 1). */
 static void bridge_MmCreateKernelStack(void)
 {
-    uint32_t size = STACK_ARG(0);
-    uint32_t base_va = xbox_HeapAlloc(size, 16);
-
-    g_eax = base_va ? base_va + size : 0;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_allocate(&memory,TSFP_MM_STACK,STACK_ARG(0));
 }
 
 static void bridge_MmDeleteKernelStack(void)
 {
-    xbox_HeapFree(STACK_ARG(1));
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    tsfp_guest_mm_release(&memory,TSFP_MM_STACK,STACK_ARG(1));
     g_eax = 0;
 }
 
@@ -6792,11 +6712,9 @@ static void ke_shadow_remove(uint32_t guest_va)
 /* --- MmGlobalData (ordinal 102, 0 args) --- */
 static void bridge_MmGlobalData(void)
 {
-    /* Titles rarely dereference this; give it a stable, mapped address that
-     * reads back the address itself (self-referential placeholder). */
-    BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_MMGLOBAL) =
-        XBOX_KERNEL_DATA_BASE + KDATA_MMGLOBAL;
-    g_eax = XBOX_KERNEL_DATA_BASE + KDATA_MMGLOBAL;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_global(&memory,XBOX_KERNEL_DATA_BASE+KDATA_MMGLOBAL);
 }
 
 /* --- KeInterruptTime (ordinal 120, 0 args) --- */
@@ -7884,8 +7802,7 @@ static void bridge_KeSetDisableBoostThread(void)
 /* --- MmIsAddressValid (ordinal 174, 1 arg = 4 bytes) --- */
 static void bridge_MmIsAddressValid(void)
 {
-    (void)STACK_ARG(0);
-    g_eax = 1;  /* assume every guest address is valid */
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_VALID_ADDRESS,STACK_ARG(0));
 }
 
 /* --- MmDbgAllocateMemory (ordinal 374, 2 args = 8 bytes)
@@ -7893,50 +7810,38 @@ static void bridge_MmIsAddressValid(void)
  * Allocates zeroed guest memory. */
 static void bridge_MmDbgAllocateMemory(void)
 {
-    uint32_t size = STACK_ARG(0);
-    uint32_t tag = STACK_ARG(1);
-    uint32_t va;
-
-    (void)tag;
-    if (!size) {
-        g_eax = 0;
-        return;
-    }
-    va = xbox_HeapAlloc(size, 16);
-    if (va)
-        memset((void *)((uintptr_t)va + g_xbox_mem_offset), 0, size);
-    g_eax = va;
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    g_eax = tsfp_guest_mm_allocate(&memory,TSFP_MM_DEBUG,STACK_ARG(0));
 }
 
 /* --- MmDbgFreeMemory (ordinal 375, 2 args = 8 bytes)
  * VOID MmDbgFreeMemory(PVOID BaseAddress, ULONG Size); */
 static void bridge_MmDbgFreeMemory(void)
 {
-    (void)STACK_ARG(1);
-    xbox_HeapFree(STACK_ARG(0));
+    tsfp_guest_mm memory;
+    xbox_GetGuestMemoryServices(&memory);
+    tsfp_guest_mm_release(&memory,TSFP_MM_DEBUG,STACK_ARG(0));
     g_eax = 0;
 }
 
 /* --- MmDbgQueryAvailablePages (ordinal 376, 0 args = 0 bytes) --- */
 static void bridge_MmDbgQueryAvailablePages(void)
 {
-    g_eax = 0x10000;  /* large made-up free-page count */
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_AVAILABLE_PAGES,0);
 }
 
 /* --- MmDbgReleaseAddress (ordinal 377, 2 args = 8 bytes) --- */
 static void bridge_MmDbgReleaseAddress(void)
 {
-    (void)STACK_ARG(0);
-    (void)STACK_ARG(1);
-    g_eax = 0;
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_NOOP,0);
 }
 
 /* --- MmDbgWriteCheck (ordinal 378, 2 args = 8 bytes)
  * Passthrough: returns the first argument (the guest VA). */
 static void bridge_MmDbgWriteCheck(void)
 {
-    (void)STACK_ARG(1);
-    g_eax = STACK_ARG(0);
+    g_eax = tsfp_guest_mm_advisory(TSFP_MM_WRITE_CHECK,STACK_ARG(0));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -1,20 +1,10 @@
-/*
- * kernel_memory.c - Xbox Memory Management
- *
- * Implements Mm* and NtAllocateVirtualMemory/NtFreeVirtualMemory/NtQueryVirtualMemory
- * using Win32 VirtualAlloc/VirtualFree/VirtualQuery.
- *
- * Xbox contiguous memory (MmAllocateContiguousMemory) is used for GPU-accessible
- * buffers. On Windows, actual GPU resources are handled by our D3D11 layer;
- * these allocations just need to return valid CPU-accessible memory.
- */
+/* Project native Mm adapters and pointer-width Nt VM boundary.
+ * Allocation/page services and memory statistics are separate from guest ABI. */
 
 #include "kernel.h"
 #include "host_virtual_memory.h"
-#if defined(_WIN32)
-/* _aligned_malloc/_aligned_free; POSIX gets them from win32_compat.h */
-#include <malloc.h>
-#endif
+#include "memory_statistics.h"
+#include "host_memory_stats.h"
 
 /* ============================================================================
  * Helper: Xbox protect flags → Win32 protect flags
@@ -130,28 +120,22 @@ VOID __stdcall xbox_MmFreeSystemMemory(PVOID address,ULONG bytes)
  * Memory Query & Protection
  * ============================================================================ */
 
-NTSTATUS __stdcall xbox_MmQueryStatistics(PXBOX_MM_STATISTICS MemoryStatistics)
+/* Project native memory statistics and advisory hints. */
+_Static_assert(sizeof(XBOX_MM_STATISTICS)==TSFP_MEMORY_STATISTICS_BYTES,
+    "native statistics record must contain nine 32-bit words");
+static int native_memory_available(void *host,uint64_t *bytes)
 {
-    MEMORYSTATUSEX ms;
-    ms.dwLength = sizeof(ms);
+    (void)host;return tsfp_host_available_memory(bytes);
+}
+/* End project native memory statistics adapter. */
 
-    if (!MemoryStatistics)
-        return STATUS_INVALID_PARAMETER;
-
-    if (!GlobalMemoryStatusEx(&ms))
-        return STATUS_UNSUCCESSFUL;
-
-    memset(MemoryStatistics, 0, sizeof(XBOX_MM_STATISTICS));
-    MemoryStatistics->Length = sizeof(XBOX_MM_STATISTICS);
-
-    /* Xbox has 64MB RAM. Report plausible values. */
-    ULONG page_size = 4096;
-    MemoryStatistics->TotalPhysicalPages = 64 * 1024 * 1024 / page_size; /* 16384 pages */
-    MemoryStatistics->AvailablePages = (ULONG)(ms.ullAvailPhys / page_size);
-    if (MemoryStatistics->AvailablePages > MemoryStatistics->TotalPhysicalPages)
-        MemoryStatistics->AvailablePages = MemoryStatistics->TotalPhysicalPages / 2;
-
-    return STATUS_SUCCESS;
+NTSTATUS __stdcall xbox_MmQueryStatistics(PXBOX_MM_STATISTICS output)
+{
+    uint32_t words[TSFP_MEMORY_STATISTICS_WORDS],status;
+    if(!output)return (NTSTATUS)UINT32_C(0xc000000d);
+    status=tsfp_memory_statistics(native_memory_available,NULL,words);
+    if(!status)memcpy(output,words,sizeof(words));
+    return (NTSTATUS)status;
 }
 
 PVOID __stdcall xbox_MmMapIoSpace(ULONG_PTR physical,ULONG bytes,ULONG protection)
@@ -167,16 +151,17 @@ VOID __stdcall xbox_MmUnmapIoSpace(PVOID address,ULONG bytes)
     (void)bytes;native_mm_release(address,NATIVE_MM_IO);
 }
 
-ULONG_PTR __stdcall xbox_MmGetPhysicalAddress(PVOID BaseAddress)
+ULONG_PTR __stdcall xbox_MmGetPhysicalAddress(PVOID address)
 {
-    /* No physical address translation on Windows - return the VA as a placeholder */
-    return (ULONG_PTR)BaseAddress;
+    /* Native pointers retain their full width; guest physical translation is
+     * provided by the separate guest Mm service. */
+    return (ULONG_PTR)address;
 }
 
-VOID __stdcall xbox_MmPersistContiguousMemory(PVOID BaseAddress, ULONG NumberOfBytes, BOOLEAN Persist)
+VOID __stdcall xbox_MmPersistContiguousMemory(PVOID address,ULONG bytes,BOOLEAN persist)
 {
-    /* Xbox: mark memory to survive soft-reboot. No-op on Windows. */
-    XBOX_TRACE(XBOX_LOG_MEM, "MmPersistContiguousMemory(%p, %u, %d) - stub", BaseAddress, NumberOfBytes, Persist);
+    /* This process has no persistent Xbox soft-reboot memory lifetime. */
+    (void)address;(void)bytes;(void)persist;
 }
 
 ULONG __stdcall xbox_MmQueryAddressProtect(PVOID address)
@@ -204,15 +189,15 @@ PVOID __stdcall xbox_MmClaimGpuInstanceMemory(ULONG bytes,PULONG padding)
     return native_mm_allocate(bytes,0,4,NATIVE_MM_CONTIGUOUS);
 }
 
-VOID __stdcall xbox_MmLockUnlockBufferPages(PVOID BaseAddress, ULONG NumberOfBytes, BOOLEAN UnlockPages)
+VOID __stdcall xbox_MmLockUnlockBufferPages(PVOID address,ULONG bytes,BOOLEAN unlock)
 {
-    /* Page locking is not meaningful in user mode. No-op. */
-    XBOX_TRACE(XBOX_LOG_MEM, "MmLockUnlockBufferPages(%p, %u, %d) - stub", BaseAddress, NumberOfBytes, UnlockPages);
+    /* Native pages retain normal host paging; this hint does not pin them. */
+    (void)address;(void)bytes;(void)unlock;
 }
 
-VOID __stdcall xbox_MmLockUnlockPhysicalPage(ULONG_PTR PhysicalAddress, BOOLEAN UnlockPage)
+VOID __stdcall xbox_MmLockUnlockPhysicalPage(ULONG_PTR address,BOOLEAN unlock)
 {
-    XBOX_TRACE(XBOX_LOG_MEM, "MmLockUnlockPhysicalPage(0x%08X, %d) - stub", (ULONG)PhysicalAddress, UnlockPage);
+    (void)address;(void)unlock;
 }
 
 /* ============================================================================
