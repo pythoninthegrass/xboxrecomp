@@ -1642,7 +1642,7 @@ HRESULT host_SetRenderTarget(IDirect3DDevice8 *dev, IDirect3DBaseTexture8 *textu
     } else if (texture) {
         IDirect3DTexture8 *t = (IDirect3DTexture8 *)texture;
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(TSFP_RHI_RENDERER)
         if (depth && depth == g_device_depth && level == 0) {
             hr = xbox_D3D8PrepareSharedDepthTarget(t, depth);
             if (FAILED(hr)) return hr;

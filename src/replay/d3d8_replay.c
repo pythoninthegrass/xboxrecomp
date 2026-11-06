@@ -769,7 +769,7 @@ static void do_set_render_target(Replay *r, const D3D8CapChunk *c)
         } else {
             IDirect3DTexture8 *tex = (IDirect3DTexture8 *)slot->tex;
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(TSFP_RHI_RENDERER)
             if (depth == r->device_depth && t->level == 0 &&
                 FAILED(xbox_D3D8PrepareSharedDepthTarget(tex, depth))) {
                 r->failed++;
