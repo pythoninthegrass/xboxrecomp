@@ -1195,6 +1195,41 @@ extern volatile uint64_t g_icall_guard_misses;
  * .c files) to avoid polluting hand-written code.
  * ================================================================ */
 
+/* New generator files declare this protocol before including the header.
+ * Legacy/manual sources keep direct global aliases. References point at the
+ * same thread-local cells: no register values are copied, delayed or flushed. */
+#ifndef RECOMP_GPR_ANCHORS
+#define RECOMP_GPR_ANCHORS(site) 0
+#endif
+#if defined(RECOMP_GENERATED_CODE) && defined(RECOMP_GPR_REFS_SUPPORTED) && \
+    defined(RECOMP_USE_GPR_REFS) && RECOMP_USE_GPR_REFS
+#define RECOMP_DECLARE_GPRS(site) \
+    const int _recomp_use_refs = !!RECOMP_GPR_ANCHORS(site); \
+    uint32_t *const _recomp_eax=&g_eax; (void)_recomp_eax; \
+    uint32_t *const _recomp_ecx=&g_ecx; (void)_recomp_ecx; \
+    uint32_t *const _recomp_edx=&g_edx; (void)_recomp_edx; \
+    uint32_t *const _recomp_esp=&g_esp; (void)_recomp_esp; \
+    uint32_t *const _recomp_ebx=&g_ebx; (void)_recomp_ebx; \
+    uint32_t *const _recomp_esi=&g_esi; (void)_recomp_esi; \
+    uint32_t *const _recomp_edi=&g_edi; (void)_recomp_edi; \
+    RecompXmm *const _recomp_xmm0=&g_xmm0; (void)_recomp_xmm0; \
+    RecompXmm *const _recomp_xmm1=&g_xmm1; (void)_recomp_xmm1; \
+    RecompXmm *const _recomp_xmm2=&g_xmm2; (void)_recomp_xmm2; \
+    RecompXmm *const _recomp_xmm3=&g_xmm3; (void)_recomp_xmm3; \
+    RecompXmm *const _recomp_xmm4=&g_xmm4; (void)_recomp_xmm4; \
+    RecompXmm *const _recomp_xmm5=&g_xmm5; (void)_recomp_xmm5; \
+    RecompXmm *const _recomp_xmm6=&g_xmm6; (void)_recomp_xmm6; \
+    RecompXmm *const _recomp_xmm7=&g_xmm7; (void)_recomp_xmm7; \
+    (void)_recomp_use_refs
+#define eax (*(_recomp_use_refs ? _recomp_eax : &g_eax))
+#define ecx (*(_recomp_use_refs ? _recomp_ecx : &g_ecx))
+#define edx (*(_recomp_use_refs ? _recomp_edx : &g_edx))
+#define esp (*(_recomp_use_refs ? _recomp_esp : &g_esp))
+#define ebx (*(_recomp_use_refs ? _recomp_ebx : &g_ebx))
+#define esi (*(_recomp_use_refs ? _recomp_esi : &g_esi))
+#define edi (*(_recomp_use_refs ? _recomp_edi : &g_edi))
+#else
+#define RECOMP_DECLARE_GPRS(site) ((void)0)
 #ifdef RECOMP_GENERATED_CODE
 #define eax g_eax
 #define ecx g_ecx
@@ -1203,6 +1238,10 @@ extern volatile uint64_t g_icall_guard_misses;
 #define ebx g_ebx
 #define esi g_esi
 #define edi g_edi
+#endif
+#endif
+
+#ifdef RECOMP_GENERATED_CODE
 
 /* ================================================================
  * MMX register file
@@ -1509,3 +1548,37 @@ void recomp_unimpl(const char *text, uint32_t va);
 #define RECOMP_UNIMPL(_text, _va) recomp_unimpl((_text), (_va))
 
 #endif /* RECOMP_TYPES_H */
+
+/* Intentionally outside the type guard: generated function prefixes reinclude
+ * this header with a site. Unselected bodies retain their direct aliases before
+ * optimization, avoiding conditional vector-expression growth in large code. */
+#if defined(RECOMP_GENERATED_CODE) && defined(RECOMP_REGISTER_SITE)
+#undef xmm0
+#undef xmm1
+#undef xmm2
+#undef xmm3
+#undef xmm4
+#undef xmm5
+#undef xmm6
+#undef xmm7
+#if defined(RECOMP_GPR_REFS_SUPPORTED) && defined(RECOMP_USE_GPR_REFS) && RECOMP_USE_GPR_REFS && RECOMP_GPR_ANCHORS(RECOMP_REGISTER_SITE)
+#define xmm0 (*_recomp_xmm0)
+#define xmm1 (*_recomp_xmm1)
+#define xmm2 (*_recomp_xmm2)
+#define xmm3 (*_recomp_xmm3)
+#define xmm4 (*_recomp_xmm4)
+#define xmm5 (*_recomp_xmm5)
+#define xmm6 (*_recomp_xmm6)
+#define xmm7 (*_recomp_xmm7)
+#else
+#define xmm0 g_xmm0
+#define xmm1 g_xmm1
+#define xmm2 g_xmm2
+#define xmm3 g_xmm3
+#define xmm4 g_xmm4
+#define xmm5 g_xmm5
+#define xmm6 g_xmm6
+#define xmm7 g_xmm7
+#endif
+#undef RECOMP_REGISTER_SITE
+#endif

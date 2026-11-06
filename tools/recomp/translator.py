@@ -1166,6 +1166,13 @@ class FunctionTranslator:
             lines.append(f" * Frame: {frame_type}")
         lines.append(f" */")
 
+        # Select vector aliases before C optimization; the type header's site
+        # section is intentionally reincludable. Legacy sources keep globals.
+        lines.append('#ifdef RECOMP_GPR_REFS_SUPPORTED')
+        lines.append(f"#define RECOMP_REGISTER_SITE 0x{start:08X}u")
+        lines.append('#include "recomp_types.h"')
+        lines.append('#endif')
+
         # Function signature
         lines.append(f"{ret_type} {name}({param_str})")
         lines.append(f"{{")
@@ -1181,6 +1188,12 @@ class FunctionTranslator:
         # return tracing/overrides retain the complete generated body.
         if start not in self.trace_functions and start not in self.force_returns:
             lines.append(f"    if (RECOMP_FAST_ENTRY(0x{start:08X}u)) return;")
+
+        # References remain live across every nested guest/host call. Capture
+        # their addresses after entry callbacks and optional fast returns.
+        lines.append('#ifdef RECOMP_GPR_REFS_SUPPORTED')
+        lines.append(f"    RECOMP_DECLARE_GPRS(0x{start:08X}u);")
+        lines.append('#endif')
 
         # _CxxThrowException. This runtime cannot unwind, so the call inside
         # does nothing and control falls through the int3 the compiler put
@@ -1774,6 +1787,7 @@ class BatchTranslator:
         c_chunks.append(" */")
         c_chunks.append("")
         c_chunks.append('#define RECOMP_GENERATED_CODE')
+        c_chunks.append('#define RECOMP_GPR_REFS_SUPPORTED 1')
         c_chunks.append('#include "recomp_types.h"')
         c_chunks.append('#include <math.h>')
         c_chunks.append("")
@@ -2090,6 +2104,7 @@ class BatchTranslator:
                 " */",
                 "",
                 "#define RECOMP_GENERATED_CODE",
+                "#define RECOMP_GPR_REFS_SUPPORTED 1",
                 f'#include "{header_name}"',
                 '#include <math.h>',
                 "",
@@ -2116,6 +2131,7 @@ class BatchTranslator:
                 " */",
                 "",
                 "#define RECOMP_GENERATED_CODE",
+                "#define RECOMP_GPR_REFS_SUPPORTED 1",
                 f'#include "{header_name}"',
                 "",
             ]
