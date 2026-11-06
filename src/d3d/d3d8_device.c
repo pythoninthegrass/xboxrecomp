@@ -478,7 +478,11 @@ BOOL d3d8_GetScissor(RhiRect *out)
 {
     if (out) {
         float sx = rt_scale_x(), sy = rt_scale_y();
-        float left = g_scissor.left * sx, right = g_scissor.right * sx;
+        int32_t clip[4]={g_scissor.left,g_scissor.top,g_scissor.right,g_scissor.bottom};
+#ifdef TSFP_PC_DISPLAY
+        pc_ui_vignette_clip(g_2d_tag,g_2d_placement,clip);
+#endif
+        float left = clip[0] * sx, right = clip[2] * sx;
         float k, cx, ky=two_d_vertical_scale(), cy=g_device_state.height*.5f;
 
         /* Stored as the title gave them, converted here, so the stored
@@ -489,9 +493,9 @@ BOOL d3d8_GetScissor(RhiRect *out)
             right = cx + (right - cx) * k;
         }
         out->left   = (int32_t)left;
-        out->top    = (int32_t)(cy+(g_scissor.top*sy-cy)*ky);
+        out->top    = (int32_t)(cy+(clip[1]*sy-cy)*ky);
         out->right  = (int32_t)right;
-        out->bottom = (int32_t)(cy+(g_scissor.bottom*sy-cy)*ky);
+        out->bottom = (int32_t)(cy+(clip[3]*sy-cy)*ky);
     }
     return g_scissor_enabled;
 }

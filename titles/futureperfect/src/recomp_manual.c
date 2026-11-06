@@ -1018,6 +1018,18 @@ void sub_0001BA70(void)
 #endif
 }
 
+/* Crane/remote-gun vignette: four mirrored texture quadrants form one
+ * screen effect. Scope only the art, not the caller's control labels. */
+extern void sub_00137010_gen(void);
+void sub_00137010(void)
+{
+#if defined(TSFP_PC_CONTROLS) || defined(TSFP_NATIVE_DISPLAY)
+    pc_display_aim_panel(sub_00137010_gen,0x00137010u);
+#else
+    sub_00137010_gen();
+#endif
+}
+
 extern void sub_00138F70_gen(void);
 void sub_00138F70(void)
 {
