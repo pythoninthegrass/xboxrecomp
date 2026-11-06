@@ -1966,6 +1966,10 @@ class Lifter:
             # dead, so the exception unwound past every handler and off the top
             # of the stack.
             out.append("g_seh_ebp = ebp;")
+        # A title may service a known emulated hardware handshake after a
+        # completed store. Default policy emits no code; never reorder the write.
+        if (ops[0].type == "mem" and ops[0].mem_size == 4 and not ops[0].mem_seg):
+            out.append(f"RECOMP_AFTER_STORE32(0x{insn.address:X}, {_fmt_mem(ops[0])});")
         return out
 
     def _lift_movzx(self, insn, ops):

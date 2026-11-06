@@ -36,6 +36,10 @@ extern "C" {
 /* Base address of all XBE files in Xbox memory */
 #define XBOX_BASE_ADDRESS       0x00010000
 
+/* Wake the existing acknowledgement service after a verified guest store.
+ * This notification never changes guest registers or completes GPU work. */
+void xbox_Nv2aNotifyPfbFlush(uint32_t guest_address);
+
 /* Start of mapped region - includes low memory (KPCR at 0x0) because
  * game code reads from addresses like 0x20 and 0x28 (Xbox kernel structures). */
 #define XBOX_MAP_START          0x00000000

@@ -60,6 +60,9 @@
  * CMakeLists) -- MSVC's C4013 was emitted and discarded. Same failure as the
  * missing stdlib.h in kernel_bridge.c, in a hotter path. */
 #include <math.h>
+#ifndef RECOMP_AFTER_STORE32
+#define RECOMP_AFTER_STORE32(site, address) ((void)0)
+#endif
 #if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
 #include <xmmintrin.h>
 #endif

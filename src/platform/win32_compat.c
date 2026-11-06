@@ -464,6 +464,47 @@ static DWORD wait_single(w32_object *o, DWORD ms)
     return result;
 }
 
+/* Event-only timed wait for sub-millisecond host services. Recheck a
+ * monotonic deadline after every wake, including spurious notifications. */
+DWORD w32_WaitForEventMicroseconds(HANDLE h, uint32_t microseconds)
+{
+    w32_object *o = (w32_object *)h;
+    struct timespec now;
+    uint64_t end, current;
+    DWORD result = WAIT_TIMEOUT;
+    if (!o || o->kind != K_EVENT) return WAIT_FAILED;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    end = (uint64_t)now.tv_sec * 1000000000ull + now.tv_nsec +
+          (uint64_t)microseconds * 1000ull;
+    pthread_mutex_lock(&o->lock);
+    for (;;) {
+        uint64_t remaining;
+        struct timespec delay;
+        if (o->signaled) {
+            if (!o->manual_reset) o->signaled = 0;
+            result = WAIT_OBJECT_0;
+            break;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        current = (uint64_t)now.tv_sec * 1000000000ull + now.tv_nsec;
+        if (current >= end) break;
+        remaining = end - current;
+        delay.tv_sec = (time_t)(remaining / 1000000000ull);
+        delay.tv_nsec = (long)(remaining % 1000000000ull);
+#ifdef __APPLE__
+        pthread_cond_timedwait_relative_np(&o->cond, &o->lock, &delay);
+#else
+        clock_gettime(CLOCK_REALTIME, &now);
+        now.tv_sec += delay.tv_sec;
+        now.tv_nsec += delay.tv_nsec;
+        if (now.tv_nsec >= 1000000000L) { now.tv_sec++; now.tv_nsec -= 1000000000L; }
+        pthread_cond_timedwait(&o->cond, &o->lock, &now);
+#endif
+    }
+    pthread_mutex_unlock(&o->lock);
+    return result;
+}
+
 DWORD WaitForSingleObject(HANDLE h, DWORD ms)
 {
     if (!h || h == PSEUDO_CURRENT_THREAD || h == PSEUDO_CURRENT_PROCESS)

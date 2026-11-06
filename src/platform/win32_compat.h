@@ -127,6 +127,8 @@ int         w32_handle_fd(HANDLE h);
 const char *w32_handle_path(HANDLE h);
 
 /* ---- Events ----------------------------------------------------------- */
+/* Interruptible sub-millisecond event wait; no multi-object polling. */
+DWORD  w32_WaitForEventMicroseconds(HANDLE h, uint32_t microseconds);
 HANDLE CreateEventA(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, BOOL initialState, LPCSTR name);
 HANDLE CreateEventW(LPSECURITY_ATTRIBUTES sa, BOOL manualReset, BOOL initialState, LPCWSTR name);
 BOOL   SetEvent(HANDLE h);

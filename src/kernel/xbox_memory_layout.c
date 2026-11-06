@@ -214,6 +214,8 @@ static size_t xbox_TiledApertureSize(void)
 }
 
 static HANDLE g_nv2a_ack_thread = NULL;
+static HANDLE g_nv2a_ack_wake = NULL; /* auto-reset: requests may coalesce */
+static volatile LONG g_nv2a_ack_notifiers = 0;
 static volatile LONG g_nv2a_ack_stop = 0;
 
 /*
@@ -1324,9 +1326,22 @@ static void nv2a_ack_wait(void)
         Sleep(0);   /* busy: a waiter is spinning on another core */
         return;
     }
+#ifndef _WIN32
+    if (g_nv2a_ack_wake) {
+        w32_WaitForEventMicroseconds(g_nv2a_ack_wake,
+            (uint32_t)(idle_us > 50000 ? 50000 : idle_us));
+        return;
+    }
+#endif
     due.QuadPart = -(LONGLONG)idle_us * 10;   /* relative, 100 ns units */
-    if (SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE))
-        WaitForSingleObject(timer, 50);
+    if (SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) {
+        if (g_nv2a_ack_wake) {
+            HANDLE waits[] = {g_nv2a_ack_wake, timer};
+            WaitForMultipleObjects(2, waits, FALSE, 50);
+        } else {
+            WaitForSingleObject(timer, 50);
+        }
+    }
     else
         Sleep(1);
 }
@@ -1497,12 +1512,42 @@ static DWORD WINAPI nv2a_ack_thread(LPVOID param)
 static void xbox_Nv2aAckStart(void)
 {
     g_nv2a_ack_stop = 0;
+    g_nv2a_ack_wake = CreateEventW(NULL, FALSE, FALSE, NULL);
     g_nv2a_ack_thread = CreateThread(NULL, 0, nv2a_ack_thread,
                                      g_nv2a_memory, 0, NULL);
     if (g_nv2a_ack_thread) {
         fprintf(stderr, "  NV2A busy-bit ack: %zu register(s) acknowledged\n",
                 sizeof(NV2A_ACK) / sizeof(NV2A_ACK[0]));
+    } else if (g_nv2a_ack_wake) {
+        CloseHandle(g_nv2a_ack_wake);
+        g_nv2a_ack_wake = NULL;
     }
+}
+
+/* Do not acknowledge one register on the guest thread. The worker must
+ * service its original busy-bit, DMA and fence sequence. An auto-reset event
+ * retains a request arriving before/during the timed wait; no reset can lose it.
+ * Failure to create/signal the event retains the normal polling fallback. */
+void xbox_Nv2aNotifyPfbFlush(uint32_t guest_address)
+{
+    static volatile LONG policy; /* 0 unknown, 1 enabled, 2 diagnostic fallback */
+    LONG enabled;
+    if (guest_address != XBOX_NV2A_BASE + 0x100410u)
+        return;
+    enabled = InterlockedCompareExchange(&policy, 0, 0);
+    if (!enabled) {
+        enabled = xbox_EnvSwitch("RECOMP_PFB_WAKE_ACK", 1) ? 1 : 2;
+        InterlockedCompareExchange(&policy, enabled, 0);
+    }
+    if (enabled == 2)
+        return;
+    /* Enter before checking stop. Shutdown publishes stop, drains callers,
+     * wakes/joins the worker, then releases the event. Later callers see stop. */
+    InterlockedIncrement(&g_nv2a_ack_notifiers);
+    if (!InterlockedCompareExchange(&g_nv2a_ack_stop, 0, 0) &&
+        g_nv2a_memory && g_nv2a_ack_thread && g_nv2a_ack_wake)
+        SetEvent(g_nv2a_ack_wake);
+    InterlockedDecrement(&g_nv2a_ack_notifiers);
 }
 
 /* Separate allocation for Xbox kernel address space (0x80010000+).
@@ -3028,9 +3073,17 @@ void xbox_MemoryLayoutShutdown(void)
     }
     if (g_nv2a_ack_thread) {
         InterlockedExchange(&g_nv2a_ack_stop, 1);
+        while (InterlockedCompareExchange(&g_nv2a_ack_notifiers, 0, 0))
+            Sleep(0);
+        if (g_nv2a_ack_wake)
+            SetEvent(g_nv2a_ack_wake);
         WaitForSingleObject(g_nv2a_ack_thread, 1000);
         CloseHandle(g_nv2a_ack_thread);
         g_nv2a_ack_thread = NULL;
+    }
+    if (g_nv2a_ack_wake) {
+        CloseHandle(g_nv2a_ack_wake);
+        g_nv2a_ack_wake = NULL;
     }
     if (g_nv2a_memory) {
         VirtualFree(g_nv2a_memory, 0, MEM_RELEASE);
