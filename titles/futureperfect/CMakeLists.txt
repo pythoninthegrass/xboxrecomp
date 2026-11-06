@@ -108,6 +108,13 @@ add_executable(${PROJECT_NAME} WIN32
     ${RECOMP_GEN_SOURCES}
 )
 
+# A build-generated resource embeds the icon before executable identity sealing.
+# SDL on Windows uses the executable's first group icon for its window class.
+if(WIN32 AND TSFP_GAME_ICON_RESOURCE)
+    enable_language(RC)
+    target_sources(${PROJECT_NAME} PRIVATE "${TSFP_GAME_ICON_RESOURCE}")
+endif()
+
 # Link against the xboxrecomp umbrella target (all 6 runtime libraries)
 target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp)
 
