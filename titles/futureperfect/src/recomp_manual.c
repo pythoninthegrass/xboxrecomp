@@ -156,11 +156,11 @@ void sub_001956A0(void) { pc_surface_dispatch_guest(pc_surface_simulation_call);
 extern void sub_001953B0_gen(void);
 extern void sub_001952D0_gen(void);
 extern void sub_00195110_gen(void);
-extern void sub_0002BA80_gen(void);
+extern void sub_001950B0_gen(void);
 void sub_001953B0(void) { pc_surface_disturbance_guest(sub_001953B0_gen); }
 void sub_001952D0(void) { pc_surface_disturbance_guest(sub_001952D0_gen); }
 void sub_00195110(void) { pc_surface_feedback_guest(sub_00195110_gen); }
-void sub_0002BA80(void) { pc_surface_filter_guest(sub_0002BA80_gen); }
+void sub_001950B0(void) { pc_surface_smoothing_guest(sub_001950B0_gen); }
 void sub_00195280(void) { pc_surface_final_guest(sub_00195280_gen); }
 #include "pc_surface_precision_guest.h"
 extern void sub_00194A10_gen(void);
