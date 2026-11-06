@@ -79,3 +79,10 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
     target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_discord.c"
                                       "${TSFP_PC_CONTROLS_DIR}/pc_discord_model.c")
 endif()
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/../pc_discord.c"
+        "${TSFP_NATIVE_DIR}/../pc_discord_model.c" "${TSFP_NATIVE_DIR}/crash_posix.c")
+    target_link_libraries(xbox_input PUBLIC "-framework CoreGraphics" "-framework CoreFoundation")
+endif()
+

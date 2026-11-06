@@ -270,3 +270,8 @@ if(WIN32 AND TSFP_PC_CONTROLS_DIR)
         "${TSFP_PC_CONTROLS_DIR}/pc_discord_model.c")
     target_include_directories(tsfp_pc_discord_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
 endif()
+
+if(APPLE AND TSFP_NATIVE_DIR)
+    set_property(SOURCE "${TSFP_NATIVE_DIR}/../pc_display_menu.c" APPEND PROPERTY
+        COMPILE_DEFINITIONS TSFP_PC_DISCORD)
+endif()
