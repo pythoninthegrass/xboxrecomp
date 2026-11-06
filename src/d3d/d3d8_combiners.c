@@ -36,6 +36,12 @@
 #include "d3d8_combiners.h"
 #include <string.h>
 #include <stdio.h>
+#ifdef TSFP_PC_DISPLAY
+#include "pc_menu_sampling.h"
+#else
+#define TSFP_MENU_HLSL "float4 menu_sample(Texture2D t, SamplerState s, float2 uv, float enabled) { return t.Sample(s, uv); }\n"
+#endif
+
 #include <stdlib.h>
 #include <stddef.h>
 
@@ -728,8 +734,8 @@ static int emit_xbox_textures(const NV2ACombinerState *state, char *buf,
         case XTM_PROJECT2D:
         case XTM_BUMPENVMAP:
         case XTM_BUMPENVMAP_LUM:
-            EMIT("    r_t%d = tex%d.Sample(samp%d, input.tc%d.xy / qdiv(input.tc%d.w)"
-                 " * tex_scale[%d].xy);\n", i, i, i, i, i, i);
+            EMIT("    r_t%d = menu_sample(tex%d, samp%d, input.tc%d.xy / qdiv(input.tc%d.w)"
+                 " * tex_scale[%d].xy, tex_scale[%d].z);\n", i, i, i, i, i, i, i);
             break;
         case XTM_PROJECT3D:
             EMIT("    r_t%d = tex%d.Sample(samp%d, input.tc%d.xyz / qdiv(input.tc%d.w));\n",
@@ -824,7 +830,7 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
             EMIT("SamplerState samp%d : register(s%d);\n", i, i);
         }
     }
-    EMIT("\n");
+    EMIT("%s\n", TSFP_MENU_HLSL);
 
     /* ---- Constant buffer ---- */
     EMIT("cbuffer CombinerCB : register(b0) {\n");
@@ -974,8 +980,8 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
             EMIT("    float4 r_t%d = tex%d.Sample(samp%d, input.tc%d.xyz);\n",
                  i, i, i, i);
         } else {
-            EMIT("    float4 r_t%d = tex%d.Sample(samp%d, input.tc%d.xy * tex_scale[%d].xy);\n",
-                 i, i, i, i, i);
+            EMIT("    float4 r_t%d = menu_sample(tex%d, samp%d, input.tc%d.xy * tex_scale[%d].xy, tex_scale[%d].z);\n",
+                 i, i, i, i, i, i);
         }
         /* Preserve disabled stages and sampled alpha. */
         if (state->tex_mode[i] != NV2A_TEXMODE_NONE)
@@ -1234,8 +1240,8 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
 
 static RhiShader *compile_combiner_shader(const NV2ACombinerState *state)
 {
-    /* 16KB should be more than enough for any combiner shader */
-    char hlsl[16384];
+    /* Include space for the frontend reconstruction helper. */
+    char hlsl[32768];
     char err[4096];
     RhiShaderSource ss;
     RhiShader *ps = NULL;
@@ -1567,6 +1573,9 @@ BOOL d3d8_combiners_prepare_draw(void)
              * NV2APSConstants.tex_scale. */
             cb->tex_scale[i][0] = cb->tex_scale[i][1] = 1.0f;
             cb->tex_scale[i][2] = cb->tex_scale[i][3] = 0.0f;
+#ifdef TSFP_PC_DISPLAY
+            cb->tex_scale[i][2] = pc_menu_filter_stage(i);
+#endif
             if (tex && d3d8_format_is_linear(format) && d3d8_base_size(tex, &w, &h) && w && h) {
                 cb->tex_scale[i][0] = 1.0f / (float)w;
                 cb->tex_scale[i][1] = 1.0f / (float)h;

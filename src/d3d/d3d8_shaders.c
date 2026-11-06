@@ -23,6 +23,12 @@
 #include "d3d8_fvf.h"
 #include <string.h>
 #include <stdio.h>
+#ifdef TSFP_PC_DISPLAY
+#include "pc_menu_sampling.h"
+#else
+#define TSFP_MENU_HLSL "float4 menu_sample(Texture2D t, SamplerState s, float2 uv, float enabled) { return t.Sample(s, uv); }\n"
+#endif
+
 #include <math.h>
 /* malloc: without <stdlib.h> its pointer is truncated to int. */
 #include <stdlib.h>
@@ -448,7 +454,7 @@ static const char g_ps_tail[] =
  * Texture object declarations must match the dimension of the SRV bound
  * at each stage, otherwise D3D11 fails to sample it correctly.
  */
-#define FF_PS_SRC_SIZE 16384
+#define FF_PS_SRC_SIZE 32768
 
 static void build_ps_source(UINT sig, char *buf, int bufsize)
 {
@@ -464,14 +470,14 @@ static void build_ps_source(UINT sig, char *buf, int bufsize)
         off += snprintf(buf + off, bufsize - off,
                         "SamplerState samp%d : register(s%d);\n", i, i);
     }
-    off += snprintf(buf + off, bufsize - off, "%s", g_ps_body);
+    off += snprintf(buf + off, bufsize - off, "%s%s", TSFP_MENU_HLSL, g_ps_body);
 
     for (i = 0; i < 4; i++) {
         UINT dim = (sig >> (i * 2)) & 3u;
         off += snprintf(buf + off, bufsize - off,
                         dim ? "    texels[%d] = tex%d.Sample(samp%d, input.tex%d.xyz);\n"
-                            : "    texels[%d] = tex%d.Sample(samp%d, input.tex%d.xy * TexScale[%d].xy);\n",
-                        i, i, i, i, i);
+                            : "    texels[%d] = menu_sample(tex%d, samp%d, input.tex%d.xy * TexScale[%d].xy, TexScale[%d].z);\n",
+                        i, i, i, i, i, i);
         /* Xbox A8 samples white RGB; DXGI A8 supplies zero RGB. */
         off += snprintf(buf + off, bufsize - off,
                         "    if (AlphaOnly[%d]) texels[%d].rgb = 1.0;\n", i, i);
@@ -1202,6 +1208,9 @@ void d3d8_shaders_prepare_draw(DWORD handle)
              * NV2APSConstants.tex_scale in d3d8_combiners.h. */
             pc->tex_scale[stage][0] = pc->tex_scale[stage][1] = 1.0f;
             pc->tex_scale[stage][2] = pc->tex_scale[stage][3] = 0.0f;
+#ifdef TSFP_PC_DISPLAY
+            pc->tex_scale[stage][2] = pc_menu_filter_stage(stage);
+#endif
             if (tex && d3d8_format_is_linear(format) && d3d8_base_size(tex, &w, &h) && w && h) {
                 pc->tex_scale[stage][0] = 1.0f / (float)w;
                 pc->tex_scale[stage][1] = 1.0f / (float)h;
