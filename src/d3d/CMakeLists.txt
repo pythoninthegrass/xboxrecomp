@@ -20,18 +20,18 @@ if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
         rhi_shader_cache.c
     )
     if(TSFP_PC_CONTROLS_DIR)
-        target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/texture_pack.c")
+        target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/textures/texture_pack.c")
         target_include_directories(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}")
         target_compile_definitions(xbox_d3d8 PUBLIC TSFP_TEXTURE_PACK)
         add_executable(tsfp_texture_toggle_test
-            "${TSFP_PC_CONTROLS_DIR}/../tests/texture_toggle.c"
-            "${TSFP_PC_CONTROLS_DIR}/texture_pack.c"
-            "${TSFP_PC_CONTROLS_DIR}/texture_mode.c")
+            "${TSFP_PC_CONTROLS_DIR}/../tests/textures/texture_toggle.c"
+            "${TSFP_PC_CONTROLS_DIR}/textures/texture_pack.c"
+            "${TSFP_PC_CONTROLS_DIR}/textures/texture_mode.c")
         target_include_directories(tsfp_texture_toggle_test PRIVATE
             "${TSFP_PC_CONTROLS_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/..")
         target_compile_definitions(tsfp_texture_toggle_test PRIVATE TSFP_TEXTURE_PACK)
-        add_executable(tsfp_texture_format_test "${TSFP_PC_CONTROLS_DIR}/../tests/texture_pack_format.c")
+        add_executable(tsfp_texture_format_test "${TSFP_PC_CONTROLS_DIR}/../tests/textures/texture_pack_format.c")
         target_include_directories(tsfp_texture_format_test PRIVATE "${TSFP_PC_CONTROLS_DIR}")
     endif()
     if(WIN32)
@@ -83,8 +83,8 @@ if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
     else()
         target_sources(xbox_d3d8 PRIVATE
             "${TSFP_NATIVE_DIR}/renderer_rhi_sdl.c" "${TSFP_NATIVE_DIR}/renderer_host_sdl.c"
-            "${TSFP_NATIVE_DIR}/../texture_mode.c"
-            "${TSFP_NATIVE_DIR}/../texture_pack.c")
+            "${TSFP_NATIVE_DIR}/../textures/texture_mode.c"
+            "${TSFP_NATIVE_DIR}/../textures/texture_pack.c")
         target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}" "${TSFP_NATIVE_DIR}/..")
         target_compile_definitions(xbox_d3d8 PUBLIC TSFP_RHI_RENDERER TSFP_PC_DISPLAY TSFP_TEXTURE_PACK)
         target_link_libraries(xbox_d3d8 PUBLIC platform SDL3::SDL3)
@@ -100,7 +100,7 @@ if(WIN32 OR (APPLE AND TSFP_NATIVE_RHI))
 else()
     if(APPLE AND TSFP_NATIVE_DIR)
         add_library(xbox_d3d8 STATIC "${TSFP_NATIVE_DIR}/renderer_gl.c"
-            "${TSFP_NATIVE_DIR}/../texture_mode.c"
+            "${TSFP_NATIVE_DIR}/../textures/texture_mode.c"
             "${TSFP_NATIVE_DIR}/renderer_host_sdl.c" rhi.c)
     else()
         add_library(xbox_d3d8 STATIC d3d8_gl.c)
@@ -127,10 +127,10 @@ else()
 endif()
 
 if(TSFP_PC_CONTROLS_DIR)
-    target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_display.c")
+    target_sources(xbox_d3d8 PRIVATE "${TSFP_PC_CONTROLS_DIR}/interface/pc_display.c")
     target_compile_definitions(xbox_d3d8 PRIVATE TSFP_PC_DISPLAY)
     if(WIN32)
-        add_executable(tsfp_pc_clear_test "${TSFP_PC_CONTROLS_DIR}/../tests/pc_clear.c")
+        add_executable(tsfp_pc_clear_test "${TSFP_PC_CONTROLS_DIR}/../tests/graphics/pc_clear.c")
         target_include_directories(tsfp_pc_clear_test PRIVATE "${TSFP_PC_CONTROLS_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../hle")
         target_link_libraries(tsfp_pc_clear_test PRIVATE xbox_d3d8)
     endif()
@@ -143,7 +143,7 @@ if(APPLE AND TSFP_NATIVE_DIR AND NOT TSFP_NATIVE_RHI)
 endif()
 
 if(APPLE AND TSFP_NATIVE_DIR)
-    target_sources(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/../pc_display.c")
+    target_sources(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/../interface/pc_display.c")
     target_include_directories(xbox_d3d8 PRIVATE "${TSFP_NATIVE_DIR}/..")
 endif()
 

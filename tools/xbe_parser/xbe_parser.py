@@ -7,8 +7,8 @@ import sys
 explicit = os.environ.get('TSFP_PROJECT_ROOT')
 roots = [Path(explicit)] if explicit else list(Path(__file__).resolve().parents)
 for root in roots:
-    if (root / 'tools/xbe_image.py').is_file():
-        sys.path.insert(0, str(root / 'tools'))
+    if (root / 'tools/compiler/xbe_image.py').is_file():
+        sys.path.insert(0, str(root / 'tools/compiler'))
         break
 else:
     raise ImportError('Project XBE reader missing; set TSFP_PROJECT_ROOT to the source checkout')

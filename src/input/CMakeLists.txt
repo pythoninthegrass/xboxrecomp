@@ -17,10 +17,10 @@ target_link_libraries(xbox_input PUBLIC platform SDL3::SDL3)
 # Shared debug overlay reads the same native update target as the title clock.
 target_link_libraries(xbox_input PRIVATE xbox_config)
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
-    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_controls.c"
-                                      "${TSFP_PC_CONTROLS_DIR}/texture_mode.c"
-                                      "${TSFP_PC_CONTROLS_DIR}/pc_input.c"
-                                      "${TSFP_PC_CONTROLS_DIR}/pc_settings.c")
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/input/pc_controls.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/textures/texture_mode.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/input/pc_input.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/interface/pc_settings.c")
     target_include_directories(xbox_input PUBLIC "${TSFP_PC_CONTROLS_DIR}")
     # Keep the define private: adding it to generated game sources would
     # recompile millions of unchanged lines for a host-input change.
@@ -32,7 +32,7 @@ if(WIN32)
 endif()
 
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
-    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_prompts.c")
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/input/pc_prompts.c")
 endif()
 
 if(MSVC)
@@ -48,7 +48,7 @@ target_link_libraries(recomp_pad_probe PRIVATE xbox_input)
 
 # PC diagnostics use the same host-input library as the settings dialog.
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
-    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_debug.c")
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/diagnostics/pc_debug.c")
     target_include_directories(xbox_input PRIVATE "${CMAKE_BINARY_DIR}/generated")
     file(STRINGS "${TSFP_PC_CONTROLS_DIR}/../VERSION" TSFP_PC_VERSION LIMIT_COUNT 1)
     target_compile_definitions(xbox_input PRIVATE TSFP_PC_VERSION="${TSFP_PC_VERSION}")
@@ -58,12 +58,12 @@ endif()
 if(APPLE AND TSFP_NATIVE_DIR)
     # Compile the same portable input model used by the Windows adapter.
     target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/input_sdl.c"
-                                      "${TSFP_NATIVE_DIR}/../pc_input.c"
+                                      "${TSFP_NATIVE_DIR}/../input/pc_input.c"
                                       "${TSFP_NATIVE_DIR}/config_files.c"
                                       "${TSFP_NATIVE_DIR}/text_bitmap_macos.m"
                                       "${TSFP_NATIVE_DIR}/settings_macos.m"
-                                      "${TSFP_NATIVE_DIR}/../pc_prompts.c"
-                                      "${TSFP_NATIVE_DIR}/../pc_debug.c")
+                                      "${TSFP_NATIVE_DIR}/../input/pc_prompts.c"
+                                      "${TSFP_NATIVE_DIR}/../diagnostics/pc_debug.c")
     enable_language(OBJC)
     set_source_files_properties("${TSFP_NATIVE_DIR}/settings_macos.m" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     target_link_libraries(xbox_input PUBLIC "-framework Cocoa" "-framework CoreText")
@@ -76,13 +76,13 @@ if(APPLE AND TSFP_NATIVE_DIR)
 endif()
 
 if(WIN32 AND TSFP_PC_CONTROLS_DIR)
-    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/pc_discord.c"
-                                      "${TSFP_PC_CONTROLS_DIR}/pc_discord_model.c")
+    target_sources(xbox_input PRIVATE "${TSFP_PC_CONTROLS_DIR}/network/pc_discord.c"
+                                      "${TSFP_PC_CONTROLS_DIR}/network/pc_discord_model.c")
 endif()
 
 if(APPLE AND TSFP_NATIVE_DIR)
-    target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/../pc_discord.c"
-        "${TSFP_NATIVE_DIR}/../pc_discord_model.c" "${TSFP_NATIVE_DIR}/crash_posix.c")
+    target_sources(xbox_input PRIVATE "${TSFP_NATIVE_DIR}/../network/pc_discord.c"
+        "${TSFP_NATIVE_DIR}/../network/pc_discord_model.c" "${TSFP_NATIVE_DIR}/crash_posix.c")
     target_link_libraries(xbox_input PUBLIC "-framework CoreGraphics" "-framework CoreFoundation")
 endif()
 
