@@ -238,6 +238,26 @@ void sub_002CBAF0(void)
 #endif
 }
 
+extern void sub_001CBDA0_gen(void);
+void sub_001CBDA0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_browser_match(sub_001CBDA0_gen);
+#else
+    sub_001CBDA0_gen();
+#endif
+}
+
+extern void sub_002BECE0_gen(void);
+void sub_002BECE0(void)
+{
+#ifdef TSFP_PC_CONTROLS
+    pc_story_browser_thumbnail(sub_002BECE0_gen);
+#else
+    sub_002BECE0_gen();
+#endif
+}
+
 extern void sub_00079860_gen(void);
 void sub_00079860(void)
 {
