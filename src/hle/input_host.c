@@ -10,7 +10,7 @@
  *
  * Which host device drives which of the four ports, and which key or pad
  * control drives each Xbox input, is src/input/input_bindings.c reading the
- * config file the input UI writes (`py -3 -m tools.input_ui`). With no config
+ * bindings config file. With no config
  * file the defaults are what this file used to hard-code: XInput pad 0 plus
  * the keyboard on port 1 -- arrows = D-pad, Enter = START, Backspace = BACK,
  * Z = A, X = B, A = X, S = Y, Q = White, W = Black, E/R = triggers -- and

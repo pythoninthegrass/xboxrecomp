@@ -2,8 +2,8 @@
 
 add_library(xbox_input STATIC
     xinput_device.c
-    # Host device choice and per-control bindings, from the config file the
-    # input UI writes (tools/input_ui). Used by both input paths: the XAPI
+    # Host device choice and per-control bindings, from the bindings config
+    # file. Used by both input paths: the XAPI
     # replacement in src/hle and the USB gamepad in src/usb.
     input_bindings.c
     # The pads themselves: SDL3 everywhere, XInput on Windows behind

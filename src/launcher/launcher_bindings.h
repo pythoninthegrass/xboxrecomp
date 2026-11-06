@@ -10,8 +10,7 @@
  * The vocabulary is the runtime's and nothing here may invent any of
  * it. A control the runtime does not know is a binding that silently
  * does nothing, which is worse than refusing to write it, so the names
- * below are the runtime's table copied deliberately and checked against
- * it by tools/input_ui/test_runtime_vocabulary.py.
+ * below are the runtime's table copied deliberately.
  *
  * Bindings belong to the person, not the title: one file, shared by
  * every game the toolkit builds, in the place the runtime looks.

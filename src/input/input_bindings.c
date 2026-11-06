@@ -103,9 +103,7 @@ static const struct {
  * Enter = START, Backspace = BACK, Z = A, X = B, A = X, S = Y, Q = White,
  * W = Black, E/R = triggers. It is applied to port 1 only. Sticks have no
  * keyboard default: every comfortable key is already a button here.
- *
- * tools/input_ui/test_runtime_vocabulary.py reads this table out of this file
- * and fails if the UI's defaults have drifted from it. */
+ */
 static const struct { const char *control, *pad, *key; } DEFAULTS[] = {
     { "a",            "pad:a",          "key:Z"      },
     { "b",            "pad:b",          "key:X"      },

@@ -8,7 +8,7 @@
  * the USB gamepad in src/usb -- so a binding changed once applies to a title
  * whichever way it reads its pads.
  *
- * The file is JSON, written by `py -3 -m tools.input_ui`; see
+ * The file is JSON; see
  * docs/technical/input-binding.md for the format and the search order. With
  * no file present the built-in defaults are what the runtime always did:
  * XInput pad 0 plus the keyboard on port 1, XInput pad N on port N.
